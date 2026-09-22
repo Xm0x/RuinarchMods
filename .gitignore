@@ -1,0 +1,23 @@
+# No game binaries or assets, ever.
+*.dll
+*.exe
+*.pdb
+
+# Build output / deployed copies
+build/
+bin/
+obj/
+
+# Player-generated config (seeded at runtime)
+config.json
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Keep our source
+!**/*.cs
+!**/mod.json
