@@ -107,36 +107,39 @@ Self-contained. Each fix is independently verifiable in-game. Split into **confi
 - Quarantine: `Quarantine.cs` GOAP (`INTERACTION_TYPE.QUARANTINE`) -> Hospice BedClinic +
   `CarePlagueBearersBehaviour.cs`.
 
-**What's MISSING (the mod's job):**
-1. **Corpse decomposition:** `Tombstone` has *no* rot timer. Add a per-tick decay
-   counter (via `Signals.TICK_ENDED`, same pattern `Crops.cs` uses for ripening). Stages:
-   fresh -> bloated -> rotting -> skeletal -> gone. **[M]**
-2. **Mass Grave:** a demonic buildable structure that clears corpse-litter. **Delivered
-   as a Ruinarch+ feature via the `Ruinarch.ModContent` framework** (NOT baked into the
-   decompiled source; an earlier source-fork attempt was reverted; see
-   `../ARCHITECTURE.md` sections 1 and 2). Ruinarch+ calls `ModContent.RegisterStructure(...)` in
-   `OnLoad`, registering a virtual `STRUCTURE_TYPE` + `MassGrave : DemonicStructure` +
-   `MassGraveData` build-skill against the **stock** game; the framework's factory prefixes
-   make it buildable/saveable/menu-visible. Reuses the Crypt's prefab/visual + unlock.
-   **Mechanism (source-verified):** the original "auto-issue `BuryCharacter` jobs" plan
-   doesn't work, because `BuryCharacter.GetTargetStructure` routes corpses to the *village*
-   Cemetery, and villagers won't path into hostile demon territory to bury. Instead the pit
-   runs a **passive hourly consume** (`Signals.HOUR_STARTED`): scans within 12 tiles, pulls
-   unburied corpses in, and sapient dead become tombstones *inside* the pit (reusing the game's
-   `BuryCharacter.AfterBurySuccess` disposal: `SetGrave` + `DestroyMarker`), animals/monsters
-   cleared. Skips carried / player-seized / already-being-buried corpses and villages with
-   their own Cemetery. Fully try/catch-guarded. Tracks `bodyCount` + `fillRatio`
-   (0 to 1, `MoundCapacity=30`). The consume logic ports onto the framework as the first consumer.
-   **Status:** framework-first; feature is the first consumer. **[M]**
-3. **Corpse-borne disease:** feed rotting, *unburied* corpses into the existing
-   `Transmission` system as an Airborne/Contact source scaled by corpse count & proximity.
-   "3 corpses rotting in a village -> outbreak fast," but not every stray body infects.
-   This is the wire between Decay and the existing Plague system. **[M]**
-4. **Settlement curfew / quarantine escalation:** today quarantine is per-character.
-   Add a settlement-level `Curfew` event (extend `PlaguedEvent`) that keeps residents
-   indoors and, later (Phase 6), closes borders. **[M to L]**
-5. **Starvation death:** `CharacterNeedsComponent` has `STARVING<=20` but no death trigger
-   (recon gap). Wire prolonged starvation -> death; feeds famine in Phase 5. **[M]**
+**What's SHIPPED (Phase 2 so far):**
+1. **Corpse decomposition** - `Phase2/CorpseDecay.cs`: per-tick rot on unburied `Tombstone`s
+   (fresh -> bloated -> rotting -> skeletal -> gone), same `TICK_ENDED` pattern as `Crops`. **[done]**
+2. **Corpse-borne disease** - `Phase2/CorpseDisease.cs`: rotting *unburied* corpses feed the
+   existing `Transmission` system, scaled by corpse count & proximity. **[done]**
+3. **Mass Grave v1** - now a **non-demonic VILLAGE building** (`MassGrave : ManMadeStructure`,
+   mirroring `Cemetery`), registered as new content via `Ruinarch.ModContent` and classified
+   `IsVillageStructure` (NOT demonic; earlier demonic version reverted). Passive hourly consume
+   within 12 tiles: sapient dead -> tombstone inside the pit, animals/monsters cleared; skips
+   settlements that already have a Cemetery. Reuses the Cemetery prefab/footprint for now;
+   debug-placeable via RuinarchDebug. **[done - in-engine test pending]**
+4. **Starvation death** - opt-in, default off. **[done]**
+
+**What's NEXT for Phase 2 (Mass Grave autonomy - source-confirmed paths):**
+5. **Villager-built from materials [M]:** village buildings are constructed by villagers via
+   `JOB_TYPE.PLACE_BLUEPRINT` -> `BUILD_BLUEPRINT` (`CharacterJobTriggerComponent.cs:3605`),
+   hauling WOOD/STONE from settlement resource piles against the blueprint's `craftCost`
+   (`BuildBlueprint.cs:133-137`); each structure's material is a `StructureSetting(type, resource)`.
+   The Mass Grave already extends `ManMadeStructure` (`wallsAreMadeOf = Wood`), so it is
+   **destructible like any village building** already. Make villages *build* it: when a
+   settlement has unburied corpses and no Cemetery, register a Mass Grave `StructureSetting`
+   and issue the blueprint so villagers construct it from wood - instead of us debug-placing it.
+   Needs a `StructureTemplate`/prefab footprint (Unity, or reuse the Cemetery template).
+6. **Burial reroute [M]:** `CharacterJobTriggerComponent.TriggerBuryMe` (:2196) targets
+   `CULT_TEMPLE ?? CEMETERY ?? wilderness` - no graveyard => tombstones scatter into the
+   wilderness (the "buried anywhere" behaviour observed in play). Postfix so a settlement's
+   Mass Grave counts as a valid bury target and corpses route there instead of scattering.
+7. **Creature-corpse disposal [M]:** `TriggerBuryMe` early-outs for `Animal` and non-members,
+   so beast corpses are never hauled. Add bury jobs (or an active haul job on the Mass Grave)
+   so creature corpses in a village get disposed too.
+8. **Settlement curfew / quarantine escalation [M to L]:** today quarantine is per-character.
+   Add a settlement-level `Curfew` event (extend `PlaguedEvent`) that keeps residents indoors
+   and, later (Phase 6), closes borders.
 
 *Dependency:* unlocks the disease pressure that makes Phase 5's famine/unrest meaningful.
 
