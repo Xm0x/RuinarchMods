@@ -31,11 +31,6 @@ namespace RuinarchPlus
 		// Percent infection chance, per rotting corpse, per in-game hour, per nearby villager.
 		public int corpseDiseaseChancePerCorpse = 3;
 
-		// Starvation death (default OFF - opt in). A sapient villager who stays Starving
-		// (fullness < 20) for this many continuous in-game hours dies of starvation.
-		// Feeds Phase 5 famine. Monsters/summons/undead don't eat and are exempt.
-		public bool starvationDeathEnabled = false;
-		public int starvationDeathHours = 48;
 		public static RuinarchPlusConfig Current { get; private set; } = new RuinarchPlusConfig();
 
 		public static void Load(string modDirectory)

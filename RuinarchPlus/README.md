@@ -24,9 +24,8 @@ didn't ask for.
 |---------|--------------------|
 | **Corpse decomposition** | Unburied corpses left lying in the open now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Buried graves in a cemetery, and corpses being carried, are left alone. Tunable via `corpseDecayDays`. On by default. |
 | **Corpse-borne plague** *(opt-in)* | Rotting/skeletal unburied corpses inside a settlement sicken the living present, scaled by corpse count — "bodies rotting in a house → outbreak." Uses the game's own plague (Quarantined resistance applies). Enable with `corpseDiseaseEnabled`. |
-| **Starvation death** *(opt-in)* | A sapient villager who stays Starving (fullness < 20) for `starvationDeathHours` continuous hours dies of starvation. Monsters/summons/undead exempt. Enable with `starvationDeathEnabled`. |
 
-*Both opt-in wires default OFF, so your game is unchanged until you enable them. Mass graves and settlement curfews are the next Phase 2 pass.*
+*The plague wire defaults OFF, so your game is unchanged until you enable it. (Note: starvation-to-death is already in the base game via the Malnourished status — no mod needed.) Mass graves and settlement curfews are the next Phase 2 pass.*
 
 ## Optional QOL (config)
 
@@ -39,9 +38,7 @@ your `Mods/RuinarchPlus/` folder:
     "corpseDecayEnabled": true,
     "corpseDecayDays": 3,
     "corpseDiseaseEnabled": false,
-    "corpseDiseaseChancePerCorpse": 3,
-    "starvationDeathEnabled": false,
-    "starvationDeathHours": 48
+    "corpseDiseaseChancePerCorpse": 3
 }
 ```
 
@@ -52,8 +49,6 @@ your `Mods/RuinarchPlus/` folder:
 | `corpseDecayDays` | `3` | In-game days an unburied corpse takes to fully decompose (480 ticks/day; floor 1/4 day). |
 | `corpseDiseaseEnabled` | `false` | Opt-in. Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
 | `corpseDiseaseChancePerCorpse` | `3` | Percent infection chance, per rotting corpse, per in-game hour, per nearby villager. |
-| `starvationDeathEnabled` | `false` | Opt-in. Prolonged-starvation villagers die of starvation. |
-| `starvationDeathHours` | `48` | Continuous in-game hours Starving before death. |
 
 Edit the file and relaunch for changes to take effect.
 
