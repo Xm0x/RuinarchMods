@@ -16,6 +16,13 @@ namespace RuinarchPlus
 		// Off by default: base game behaviour is unchanged until the player opts in.
 		public bool disableTutorial = false;
 
+		// Phase 2 - Death, Decay & Disease.
+		// Unburied corpses left in the open rot over time and eventually vanish,
+		// instead of littering the map forever. Buried graves (in a cemetery) persist.
+		public bool corpseDecayEnabled = true;
+		// In-game days a corpse takes to fully decompose (480 ticks/day). Floor is 1/4 day.
+		public float corpseDecayDays = 3f;
+
 		public static RuinarchPlusConfig Current { get; private set; } = new RuinarchPlusConfig();
 
 		public static void Load(string modDirectory)

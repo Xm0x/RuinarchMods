@@ -18,6 +18,14 @@ didn't ask for.
 | 4 | Exploit | **Infinite chaos-orb kennel closed.** "Drain Spirit" granted a chaos orb *before* applying drain damage, so an immortal target (a hibernating golem is `Indestructible`) produced an orb every tick forever. The tick now no-ops when the target can't actually be damaged. |
 | 5 | Bug | **Released prisoners no longer reveal your Portal.** Freed captives were dropped on a tile beside the prison — inside your base, next to the Portal — then walked off to report it. They're now knocked **Unconscious** and relocated to their **home structure** instead. |
 
+## Phase 2 — Death, Decay & Disease (in progress)
+
+| Feature | What you'll notice |
+|---------|--------------------|
+| **Corpse decomposition** | Unburied corpses left lying in the open now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Buried graves in a cemetery, and corpses being carried, are left alone. Tunable via `corpseDecayDays`. |
+
+*More Phase 2 wires (mass graves, corpse-borne disease, curfews, starvation) build on this once the decay foundation is confirmed in live play.*
+
 ## Optional QOL (config)
 
 On first launch the mod writes **`config.json`** next to `RuinarchPlus.dll` in
@@ -25,13 +33,17 @@ your `Mods/RuinarchPlus/` folder:
 
 ```json
 {
-    "disableTutorial": false
+    "disableTutorial": false,
+    "corpseDecayEnabled": true,
+    "corpseDecayDays": 3
 }
 ```
 
 | Flag | Default | Effect |
 |------|---------|--------|
 | `disableTutorial` | `false` | Set to `true` to skip the tutorial/alert bootstrap (`TutorialManager.Initialize`). Veterans get no tutorial alert hand-holding. Off = base game unchanged. |
+| `corpseDecayEnabled` | `true` | Unburied corpses rot and eventually decompose away. Set `false` for vanilla (corpses persist forever). |
+| `corpseDecayDays` | `3` | In-game days an unburied corpse takes to fully decompose (480 ticks/day; floor 1/4 day). |
 
 Edit the file and relaunch for changes to take effect.
 
@@ -41,9 +53,9 @@ Edit the file and relaunch for changes to take effect.
 2. Copy the `RuinarchPlus/` folder into your game's `Mods/` folder.
 3. Launch. Check `Mods/mods.log` — you should see:
    ```
-   [ruinarch.plus] Applied 6 patch(es): TraitItem.OnHover, PrisonCell.IsValidBrainwashTarget,
+   [ruinarch.plus] Applied 9 patch(es): TraitItem.OnHover, PrisonCell.IsValidBrainwashTarget,
    SchemeData.CanPerformAbilityTowards, BeingDrained.DrainPerTick, MovementComponent.LetGo,
-   TutorialManager.Initialize
+   TutorialManager.Initialize, Tombstone.OnPlacePOI, Tombstone.OnDestroyPOI, GameManager.TickEnded
    ```
 
 ## Build from source
