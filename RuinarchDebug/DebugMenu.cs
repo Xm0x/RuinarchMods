@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Inner_Maps;
 using UnityEngine;
+using HarmonyLib;
 
 namespace RuinarchDebug
 {
@@ -22,16 +24,39 @@ namespace RuinarchDebug
 			_inst = go.AddComponent<DebugMenu>();
 		}
 
+		// True when the cursor is over the always-visible toggle button or (when
+		// open) the debug window. The game's UIManager.IsMouseOnUI() is postfixed
+		// with this so world clicks and hover under our IMGUI overlay are ignored.
+		internal static bool IsPointerOverDebugUI()
+		{
+			var i = _inst;
+			if (i == null)
+			{
+				return false;
+			}
+			Vector3 mp = Input.mousePosition;
+			var p = new Vector2(mp.x, Screen.height - mp.y);
+			if (new Rect(4f, 4f, 96f, 26f).Contains(p))
+			{
+				return true;
+			}
+			return i._open && i._win.Contains(p);
+		}
+
 		private bool _open;
 		private Rect _win = new Rect(16f, 40f, 340f, 560f);
 		private Vector2 _scroll;
 		private string _trait = "Injured";
 		private int _summonIndex = 1; // Wolf (0 = None)
 		private SUMMON_TYPE[] _summons;
+		private STRUCTURE_TYPE[] _structs;
+		private int _structIndex;
 
 		private void Awake()
 		{
 			_summons = (SUMMON_TYPE[])Enum.GetValues(typeof(SUMMON_TYPE));
+			_structs = ((STRUCTURE_TYPE[])Enum.GetValues(typeof(STRUCTURE_TYPE)))
+				.Where(HasStructureClass).ToArray();
 		}
 
 		private void OnGUI()
@@ -162,6 +187,27 @@ namespace RuinarchDebug
 				Safe(() => SpawnSummon(t));
 			}
 
+			GUILayout.Label("-- Place building (in a village, at mouse tile) --");
+			if (_structs != null && _structs.Length > 0)
+			{
+				GUILayout.BeginHorizontal();
+				if (GUILayout.Button("<", GUILayout.Width(30f)))
+				{
+					_structIndex = Mathf.Max(0, _structIndex - 1);
+				}
+				GUILayout.Label(_structs[_structIndex].ToString(), GUILayout.Width(230f));
+				if (GUILayout.Button(">", GUILayout.Width(30f)))
+				{
+					_structIndex = Mathf.Min(_structs.Length - 1, _structIndex + 1);
+				}
+				GUILayout.EndHorizontal();
+				if (GUILayout.Button("Place " + _structs[_structIndex]))
+				{
+					var st = _structs[_structIndex];
+					Safe(() => PlaceBuilding(st));
+				}
+			}
+
 			GUILayout.Label("-- World --");
 			if (GUILayout.Button("Open Full Dev Console (70+ cmds)")) Safe(() => UIManager.Instance.ToggleConsole());
 			if (GUILayout.Button("Kill ALL villagers")) Safe(KillAllVillagers);
@@ -171,6 +217,57 @@ namespace RuinarchDebug
 
 			GUILayout.EndScrollView();
 			GUI.DragWindow(new Rect(0f, 0f, 100000f, 22f));
+		}
+
+		// Only STRUCTURE_TYPE values with a matching class under
+		// Inner_Maps.Location_Structures can be instantiated; mirror the game's own
+		// reflection so the selector never offers a type that would throw.
+		private static bool HasStructureClass(STRUCTURE_TYPE t)
+		{
+			try
+			{
+				string cls = t.ToStringEnumWithSpace().Replace(" ", string.Empty);
+				return Type.GetType("Inner_Maps.Location_Structures." + cls +
+					", Assembly-CSharp, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") != null;
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private void PlaceBuilding(STRUCTURE_TYPE type)
+		{
+			var im = InnerMapManager.Instance;
+			var tile = im != null ? im.GetTileFromMousePosition() : null;
+			if (tile == null)
+			{
+				RuinarchDebug.Log?.Info("Place building: hover a tile in a village first.");
+				return;
+			}
+			var area = tile.area;
+			var settlement = area != null ? area.GetFirstNPCSettlementOnArea() : null;
+			if (settlement == null)
+			{
+				RuinarchDebug.Log?.Info("Place building: point at a tile inside a village (NPC settlement).");
+				return;
+			}
+			var structure = LandmarkManager.Instance.CreateNewStructureAt(area.region, type, settlement);
+			int assigned = 0;
+			tile.SetStructure(structure);
+			assigned++;
+			if (tile.neighbourList != null)
+			{
+				foreach (var n in tile.neighbourList)
+				{
+					if (n != null && n.area == area)
+					{
+						n.SetStructure(structure);
+						assigned++;
+					}
+				}
+			}
+			RuinarchDebug.Log?.Info($"Placed {type} on {assigned} tile(s) in a village.");
 		}
 
 		private void SpawnVillager()
@@ -235,6 +332,21 @@ namespace RuinarchDebug
 			catch (Exception e)
 			{
 				RuinarchDebug.Log?.Info("Debug action failed: " + e.Message);
+			}
+		}
+	}
+
+	// Suppress world click-through under the IMGUI overlay: when the cursor is
+	// over our toggle button or window, report the mouse as over UI so
+	// InnerMapManager.OnClickMapObject() bails out at its IsMouseOnUI() gate.
+	[HarmonyPatch(typeof(UIManager), "IsMouseOnUI")]
+	internal static class UIManager_IsMouseOnUI_Patch
+	{
+		private static void Postfix(ref bool __result)
+		{
+			if (!__result && DebugMenu.IsPointerOverDebugUI())
+			{
+				__result = true;
 			}
 		}
 	}
