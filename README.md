@@ -4,18 +4,18 @@ Gameplay mods for [Ruinarch](https://store.steampowered.com/app/1268820/Ruinarch
 loaded by the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) and built
 against the decompiled reference in [RuinarchRE](https://github.com/Xm0x/RuinarchRE).
 
-These mods patch the **stock** game DLL at runtime via Harmony — no forked
-`Assembly-CSharp`, no edits to the game's shipped assemblies.
+These mods patch the **stock** game DLL at runtime via Harmony. There is no forked
+`Assembly-CSharp` and no edits to the game's shipped assemblies.
 
 ## Mods
 
 | Mod | What it does |
 |---|---|
-| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes + new content (corpse decay, corpse-borne disease, opt-in starvation death, **Mass Grave** — a new buildable demonic structure added via the content-injection framework). Every feature is source-verified against `RuinarchRE` and defaults are conservative/opt-in where risky. |
+| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes plus new content (corpse decay, corpse-borne disease, opt-in starvation death, and **Mass Grave**, a new buildable demonic structure added via the content-injection framework). Every feature is source-verified against `RuinarchRE`, and defaults are conservative or opt-in where risky. |
 | **RuinarchDebug** | A separate dev-only overlay mod (tile/entity debug helpers). Kept out of `RuinarchPlus` on purpose so it never ships in a normal play session. |
 
 New enum-backed content (new `STRUCTURE_TYPE`, new build skill) is made possible by the
-`Ruinarch.ModContent` framework that lives in the **RuinarchModLoader** repo — it allocates
+`Ruinarch.ModContent` framework that lives in the **RuinarchModLoader** repo. It allocates
 deterministic *virtual* enum values and Harmony-prefixes the game's reflection factories so
 a mod can add genuinely new content without touching the game DLL.
 
@@ -42,7 +42,7 @@ the exact commands.
 
 ## Rules (see `ARCHITECTURE.md`)
 
-- **No game binaries or assets are committed here** — ever. `.gitignore` blocks
+- **No game binaries or assets are committed here**, ever. `.gitignore` blocks
   `*.dll`/`*.exe`/`*.pdb` and build output; only source (`*.cs`, `mod.json`, docs) is tracked.
-- **Never add features to `RuinarchRE`** — it is the pristine decompiled reference.
+- **Never add features to `RuinarchRE`**; it is the pristine decompiled reference.
 - Patch the stock DLL at runtime; never fork `Assembly-CSharp`.
