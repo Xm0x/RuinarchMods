@@ -18,6 +18,8 @@ config.json
 *.swp
 .DS_Store
 
-# Keep our source
+# Keep our source + a mod's own shipped art (loose PNGs we authored, under art/).
+# Game binaries/assets are never committed; mod-authored content is.
 !**/*.cs
 !**/mod.json
+!**/art/**

@@ -187,7 +187,7 @@ namespace RuinarchDebug
 				Safe(() => SpawnSummon(t));
 			}
 
-			GUILayout.Label("-- Place building (in a village, at mouse tile) --");
+			GUILayout.Label("-- Place building (select a villager first; places at their tile) --");
 			if (_structs != null && _structs.Length > 0)
 			{
 				GUILayout.BeginHorizontal();
@@ -244,18 +244,17 @@ namespace RuinarchDebug
 
 		private void PlaceBuilding(STRUCTURE_TYPE type)
 		{
-			var im = InnerMapManager.Instance;
-			var tile = im != null ? im.GetTileFromMousePosition() : null;
+			var tile = SpawnTile(Selected());
 			if (tile == null)
 			{
-				RuinarchDebug.Log?.Info("Place building: hover a tile in a village first.");
+				RuinarchDebug.Log?.Info("Place building: select a villager inside a village first (click a character), then click Place.");
 				return;
 			}
 			var area = tile.area;
 			var settlement = area != null ? area.GetFirstNPCSettlementOnArea() : null;
 			if (settlement == null)
 			{
-				RuinarchDebug.Log?.Info("Place building: point at a tile inside a village (NPC settlement).");
+				RuinarchDebug.Log?.Info("Place building: the selected tile is not inside a village. Select a villager who lives in a settlement.");
 				return;
 			}
 			var structure = LandmarkManager.Instance.CreateNewStructureAt(area.region, type, settlement);

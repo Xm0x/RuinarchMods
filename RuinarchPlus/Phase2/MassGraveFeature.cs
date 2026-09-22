@@ -15,6 +15,15 @@ namespace RuinarchPlus.Phase2
 	{
 		public const string Id = "ruinarch.plus.mass_grave";
 
+		// Number of fill-stage sprites shipped under art/mass_grave/ (empty -> full).
+		public const int FillStages = 4;
+
+		/// <summary>Absolute path to one of this mod's shipped art files (deployed next to the DLL).</summary>
+		public static string ArtPath(string relative)
+		{
+			return System.IO.Path.Combine(RuinarchPlus.ModDir ?? string.Empty, "art", "mass_grave", relative);
+		}
+
 		public static void Register()
 		{
 			try
@@ -38,10 +47,33 @@ namespace RuinarchPlus.Phase2
 				});
 				Debug.Log(string.Format("[RuinarchPlus] Mass Grave registered as village building (STRUCTURE_TYPE={0}).",
 					(int)reg.StructureType));
+				PreloadArt();
 			}
 			catch (Exception e)
 			{
 				Debug.LogError("[RuinarchPlus] Mass Grave registration failed: " + e);
+			}
+		}
+
+		// Validate the loose-PNG art pipeline end to end (deploy -> decode -> Sprite) and
+		// warm the cache. Logs each stage's pixel size to mods.log so a missing/undeployed
+		// asset is obvious. The sprites themselves are wired to the structure visual later
+		// (Unity StructureTemplate swap); this only proves the framework art path works.
+		private static void PreloadArt()
+		{
+			for (int i = 0; i < FillStages; i++)
+			{
+				string path = ArtPath(string.Format("mass_grave_{0}.png", i));
+				UnityEngine.Sprite sp = ModArt.LoadSprite(path, 256f);
+				if (sp != null)
+				{
+					Debug.Log(string.Format("[RuinarchPlus] Loaded mass_grave_{0}.png ({1}x{2}px).",
+						i, (int)sp.rect.width, (int)sp.rect.height));
+				}
+				else
+				{
+					Debug.LogWarning(string.Format("[RuinarchPlus] Mass Grave art missing: {0}", path));
+				}
 			}
 		}
 	}

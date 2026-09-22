@@ -11,11 +11,13 @@ namespace RuinarchPlus
 	public class RuinarchPlus : IRuinarchMod
 	{
 		internal static ModLogger Log;
+		internal static string ModDir;
 
 		public void OnLoad(ModContext context)
 		{
 			Log = context.Logger;
 			Log.Info($"{context.Info.name} v{context.Info.version} loading...");
+			ModDir = context.ModDirectory;
 			RuinarchPlusConfig.Load(context.ModDirectory);
 
 			var harmony = new Harmony(context.Info.id);
