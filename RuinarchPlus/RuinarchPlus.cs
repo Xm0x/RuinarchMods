@@ -21,6 +21,9 @@ namespace RuinarchPlus
 			var harmony = new Harmony(context.Info.id);
 			harmony.PatchAll(typeof(RuinarchPlus).Assembly);
 
+			// Register Ruinarch+ new-content features against the ModContent framework.
+			Phase2.MassGraveFeature.Register();
+
 			var patched = Harmony.GetAllPatchedMethods()
 				.Select(m => (m.DeclaringType != null ? m.DeclaringType.Name : "?") + "." + m.Name)
 				.ToArray();
