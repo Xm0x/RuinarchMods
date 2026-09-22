@@ -23,6 +23,19 @@ namespace RuinarchPlus
 		// In-game days a corpse takes to fully decompose (480 ticks/day). Floor is 1/4 day.
 		public float corpseDecayDays = 3f;
 
+
+		// Corpse-borne disease (default OFF - opt in). Rotting unburied corpses in a
+		// settlement sicken the living present, scaled by corpse count. Requires
+		// corpseDecayEnabled (it reads the decay stage).
+		public bool corpseDiseaseEnabled = false;
+		// Percent infection chance, per rotting corpse, per in-game hour, per nearby villager.
+		public int corpseDiseaseChancePerCorpse = 3;
+
+		// Starvation death (default OFF - opt in). A sapient villager who stays Starving
+		// (fullness < 20) for this many continuous in-game hours dies of starvation.
+		// Feeds Phase 5 famine. Monsters/summons/undead don't eat and are exempt.
+		public bool starvationDeathEnabled = false;
+		public int starvationDeathHours = 48;
 		public static RuinarchPlusConfig Current { get; private set; } = new RuinarchPlusConfig();
 
 		public static void Load(string modDirectory)

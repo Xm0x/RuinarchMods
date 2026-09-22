@@ -78,6 +78,21 @@ namespace RuinarchPlus
 			}
 		}
 
+		// Phase 2 corpse-borne disease reads this: corpses that have reached the
+		// Rotting or Skeletal stage are infectious. Returns a fresh list (safe to mutate).
+		internal static List<Tombstone> GetRottingCorpses()
+		{
+			List<Tombstone> list = new List<Tombstone>();
+			foreach (KeyValuePair<Tombstone, Entry> kv in _corpses)
+			{
+				if (kv.Value.stage == Stage.Rotting || kv.Value.stage == Stage.Skeletal)
+				{
+					list.Add(kv.Key);
+				}
+			}
+			return list;
+		}
+
 		internal static void Tick()
 		{
 			if (_corpses.Count == 0)

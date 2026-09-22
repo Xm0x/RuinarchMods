@@ -24,7 +24,11 @@ namespace RuinarchPlus
 			var patched = Harmony.GetAllPatchedMethods()
 				.Select(m => (m.DeclaringType != null ? m.DeclaringType.Name : "?") + "." + m.Name)
 				.ToArray();
-			Log.Info($"Applied {patched.Length} patch(es): {string.Join(", ", patched)}");
+			// Several features postfix the same GameManager.TickEnded method, so the
+			// distinct-method count understates our patches - also count patch CLASSES.
+			int patchClasses = typeof(RuinarchPlus).Assembly.GetTypes()
+				.Count(t => t.GetCustomAttributes(typeof(HarmonyPatch), inherit: false).Length > 0);
+			Log.Info($"Applied {patchClasses} patch class(es) over {patched.Length} method(s): {string.Join(", ", patched)}");
 		}
 	}
 }

@@ -22,9 +22,11 @@ didn't ask for.
 
 | Feature | What you'll notice |
 |---------|--------------------|
-| **Corpse decomposition** | Unburied corpses left lying in the open now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Buried graves in a cemetery, and corpses being carried, are left alone. Tunable via `corpseDecayDays`. |
+| **Corpse decomposition** | Unburied corpses left lying in the open now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Buried graves in a cemetery, and corpses being carried, are left alone. Tunable via `corpseDecayDays`. On by default. |
+| **Corpse-borne plague** *(opt-in)* | Rotting/skeletal unburied corpses inside a settlement sicken the living present, scaled by corpse count — "bodies rotting in a house → outbreak." Uses the game's own plague (Quarantined resistance applies). Enable with `corpseDiseaseEnabled`. |
+| **Starvation death** *(opt-in)* | A sapient villager who stays Starving (fullness < 20) for `starvationDeathHours` continuous hours dies of starvation. Monsters/summons/undead exempt. Enable with `starvationDeathEnabled`. |
 
-*More Phase 2 wires (mass graves, corpse-borne disease, curfews, starvation) build on this once the decay foundation is confirmed in live play.*
+*Both opt-in wires default OFF, so your game is unchanged until you enable them. Mass graves and settlement curfews are the next Phase 2 pass.*
 
 ## Optional QOL (config)
 
@@ -35,7 +37,11 @@ your `Mods/RuinarchPlus/` folder:
 {
     "disableTutorial": false,
     "corpseDecayEnabled": true,
-    "corpseDecayDays": 3
+    "corpseDecayDays": 3,
+    "corpseDiseaseEnabled": false,
+    "corpseDiseaseChancePerCorpse": 3,
+    "starvationDeathEnabled": false,
+    "starvationDeathHours": 48
 }
 ```
 
@@ -44,6 +50,10 @@ your `Mods/RuinarchPlus/` folder:
 | `disableTutorial` | `false` | Set to `true` to skip the tutorial/alert bootstrap (`TutorialManager.Initialize`). Veterans get no tutorial alert hand-holding. Off = base game unchanged. |
 | `corpseDecayEnabled` | `true` | Unburied corpses rot and eventually decompose away. Set `false` for vanilla (corpses persist forever). |
 | `corpseDecayDays` | `3` | In-game days an unburied corpse takes to fully decompose (480 ticks/day; floor 1/4 day). |
+| `corpseDiseaseEnabled` | `false` | Opt-in. Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
+| `corpseDiseaseChancePerCorpse` | `3` | Percent infection chance, per rotting corpse, per in-game hour, per nearby villager. |
+| `starvationDeathEnabled` | `false` | Opt-in. Prolonged-starvation villagers die of starvation. |
+| `starvationDeathHours` | `48` | Continuous in-game hours Starving before death. |
 
 Edit the file and relaunch for changes to take effect.
 
