@@ -25,17 +25,19 @@ namespace RuinarchPlus.Phase2
 					DisplayName = "Mass Grave",
 					// Framework passes the allocated virtual STRUCTURE_TYPE into these.
 					Factory = (type, region) => new MassGrave(type, region),
-					LoadFactory = (type, region, save) => new MassGrave(region, (SaveDataDemonicStructure)save),
-					// Reuse the Crypt's prefab/visual/footprint - no new Unity asset needed.
-					PrefabSource = STRUCTURE_TYPE.CRYPT,
-					Skill = new MassGraveData(),
-					// Appears in the demonic build menu when the player unlocks the Crypt.
-					UnlockWith = PLAYER_SKILL_TYPE.CRYPT,
-					IsDemonic = true,
-					IsPlayerStructure = true
+					LoadFactory = (type, region, save) => new MassGrave(region, (SaveDataManMadeStructure)save),
+					// Reuse the Cemetery's prefab/visual/footprint - no new Unity asset needed yet.
+					PrefabSource = STRUCTURE_TYPE.CEMETERY,
+					// A normal village building, not a demonic/player structure. No build skill:
+					// it is village infrastructure, not something placed from the demonic build menu.
+					Skill = null,
+					UnlockWith = PLAYER_SKILL_TYPE.NONE,
+					IsDemonic = false,
+					IsPlayerStructure = false,
+					IsVillageStructure = true
 				});
-				Debug.Log(string.Format("[RuinarchPlus] Mass Grave registered (STRUCTURE_TYPE={0}, PLAYER_SKILL_TYPE={1}).",
-					(int)reg.StructureType, (int)reg.SkillType));
+				Debug.Log(string.Format("[RuinarchPlus] Mass Grave registered as village building (STRUCTURE_TYPE={0}).",
+					(int)reg.StructureType));
 			}
 			catch (Exception e)
 			{

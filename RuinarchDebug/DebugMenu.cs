@@ -207,6 +207,10 @@ namespace RuinarchDebug
 					Safe(() => PlaceBuilding(st));
 				}
 			}
+			if (GUILayout.Button("Place Mass Grave (village building)"))
+			{
+				Safe(PlaceMassGrave);
+			}
 
 			GUILayout.Label("-- World --");
 			if (GUILayout.Button("Open Full Dev Console (70+ cmds)")) Safe(() => UIManager.Instance.ToggleConsole());
@@ -222,13 +226,15 @@ namespace RuinarchDebug
 		// Only STRUCTURE_TYPE values with a matching class under
 		// Inner_Maps.Location_Structures can be instantiated; mirror the game's own
 		// reflection so the selector never offers a type that would throw.
+		private static readonly System.Reflection.Assembly GameAsm = typeof(LocationGridTile).Assembly;
+
 		private static bool HasStructureClass(STRUCTURE_TYPE t)
 		{
 			try
 			{
-				string cls = t.ToStringEnumWithSpace().Replace(" ", string.Empty);
-				return Type.GetType("Inner_Maps.Location_Structures." + cls +
-					", Assembly-CSharp, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null") != null;
+				string cls = string.Concat(t.ToString().Split('_')
+					.Select(p => p.Length == 0 ? string.Empty : char.ToUpper(p[0]) + p.Substring(1).ToLower()));
+				return GameAsm.GetType("Inner_Maps.Location_Structures." + cls) != null;
 			}
 			catch
 			{
@@ -268,6 +274,19 @@ namespace RuinarchDebug
 				}
 			}
 			RuinarchDebug.Log?.Info($"Placed {type} on {assigned} tile(s) in a village.");
+		}
+
+		// Places the mod's registered non-demonic Mass Grave (via its framework-allocated
+		// virtual STRUCTURE_TYPE). Requires RuinarchPlus (which registers it) to be enabled.
+		private void PlaceMassGrave()
+		{
+			var t = Ruinarch.ModContent.ModContent.StructureTypeFor("ruinarch.plus.mass_grave");
+			if ((int)t == 0)
+			{
+				RuinarchDebug.Log?.Info("Mass Grave not registered - is RuinarchPlus enabled?");
+				return;
+			}
+			PlaceBuilding(t);
 		}
 
 		private void SpawnVillager()

@@ -10,12 +10,14 @@ using UtilityScripts;
 namespace Inner_Maps.Location_Structures
 {
 	/// <summary>
-	/// A demonic buildable pit that clears corpse-litter. Registered as new content via
-	/// Ruinarch.ModContent (virtual STRUCTURE_TYPE), so it runs against the STOCK game.
-	/// Driven hourly by a mod-side Harmony postfix on GameManager.TickStarted (see
-	/// RuinarchPlus.Phase2.MassGraveFeature) rather than the game's internal Messenger bus.
+	/// A NON-demonic VILLAGE building: a pit that clears corpse-litter from the settlement.
+	/// Registered as new content via Ruinarch.ModContent (virtual STRUCTURE_TYPE) and
+	/// classified as a village structure (see MassGraveFeature), so the STOCK game treats
+	/// it like a first-class manmade building - no forked Assembly-CSharp. Mirrors the
+	/// game's own <see cref="Cemetery"/> (also a ManMadeStructure). Driven hourly by a
+	/// mod-side Harmony postfix on GameManager.TickStarted (see MassGraveFeature).
 	/// </summary>
-	public class MassGrave : DemonicStructure
+	public class MassGrave : ManMadeStructure
 	{
 		/// <summary>Live instances the hourly tick iterates. Add on build/load, remove on destroy.</summary>
 		internal static readonly List<MassGrave> Active = new List<MassGrave>();
@@ -36,29 +38,32 @@ namespace Inner_Maps.Location_Structures
 		public MassGrave(STRUCTURE_TYPE type, Region location)
 			: base(type, location)
 		{
-			SetMaxHPAndReset(1000);
+			base.wallsAreMadeOf = WALL_RESOURCE.Wood;
 			Active.Add(this);
 		}
 
-		public MassGrave(Region location, SaveDataDemonicStructure data)
+		public MassGrave(Region location, SaveDataManMadeStructure data)
 			: base(location, data)
 		{
+			base.wallsAreMadeOf = WALL_RESOURCE.Wood;
 			Active.Add(this);
 		}
 
-		public override void SetStructureObject(LocationStructureObject structureObj)
+		public override void OnTileDamaged(LocationGridTile tile, int amount, bool isPlayerSource)
 		{
-			base.SetStructureObject(structureObj);
-			Vector3 position = structureObj.transform.position;
-			position.x -= 0.5f;
-			position.y -= 0.5f;
-			worldPosition = position;
+			AdjustHP(amount, null, isPlayerSource);
+			OnStructureDamaged();
 		}
 
-		protected override void DestroyStructure(Character p_responsibleCharacter = null, bool isPlayerSource = false, bool shouldBeCleanedUp = true)
+		public override bool DoesTileContributeToDamage(LocationGridTile tile)
+		{
+			return true;
+		}
+
+		protected override void AfterStructureDestruction(Character p_responsibleCharacter = null)
 		{
 			Active.Remove(this);
-			base.DestroyStructure(p_responsibleCharacter, isPlayerSource, shouldBeCleanedUp);
+			base.AfterStructureDestruction(p_responsibleCharacter);
 		}
 
 		// Every in-game hour: pull nearby unburied corpses into the pit. Fully guarded -
@@ -129,8 +134,8 @@ namespace Inner_Maps.Location_Structures
 			{
 				return false;
 			}
-			// Don't interfere with normal village burial: a corpse a settlement with its own
-			// Cemetery will handle is left to them. The pit only clears loose territory litter.
+			// If the settlement has its own Cemetery, leave burial to the game. The pit only
+			// clears loose litter in villages that lack a graveyard.
 			if (c.gridTileLocation.IsNextToOrPartOfSettlement(out var settlement) && settlement is NPCSettlement npcSettlement && npcSettlement.HasStructure(STRUCTURE_TYPE.CEMETERY))
 			{
 				return false;
