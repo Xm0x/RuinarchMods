@@ -1,11 +1,11 @@
 # Ruinarch+: Design & Roadmap
 
-*A phased design for the Ruinarch+ mod, grounded against the decompiled
+*A phased design for the Ruinarch+ mod, checked against the decompiled
 source (`RuinarchRE/src/Assembly-CSharp`). Every "EXISTS" claim below cites a real
 class. Difficulty tags: **S** (hours), **M** (a day), **L** (multi-day system),
 **XL** (bigger than the base feature it touches).*
 
-This roadmap is a proposal open to approval, cutting, or reordering. Nothing is locked.
+The later phases are plans, not commitments; they may be cut or reordered.
 
 ---
 
@@ -13,12 +13,12 @@ This roadmap is a proposal open to approval, cutting, or reordering. Nothing is 
 
 **Ruinarch+** is one umbrella mod built on the ModLoader + Harmony. Two design laws:
 
-1. **Wire what exists before building new.** The recon showed the game already has
-   burial, graveyards, a full plague/transmission system, quarantine, farming, hunger,
-   and migration, just *disconnected*. Most of the target features are really **missing
-   wires between systems the devs half-built**, which is exactly what a mod does well.
-2. **Every phase ships on its own and feeds the next.** No working fix is held
-   hostage to a giant system. Phase 1 is playable this week; each later phase snaps on.
+1. **Connect what exists before building new.** The game already has burial,
+   graveyards, a full plague and transmission system, quarantine, farming, hunger and
+   migration, but they barely interact. Many of the target features are connections
+   between those systems.
+2. **Every phase ships on its own and feeds the next.** No finished fix waits on a
+   large system.
 
 The whole vision has one **realism spine**: each link is a system that already exists
 or that the mod adds, feeding the next:
@@ -45,7 +45,7 @@ mod; TruePlanet is the "replace the world" mod. They're designed to stack.
 
 | Phase | Name | Theme | Net difficulty | Ships |
 |---|---|---|---|---|
-| **1** | **Ruinarch+ Core** | Bugfixes + light QOL | **S to M** | now |
+| **1** | **Ruinarch+ Core** | Bugfixes + light QOL | **S to M** | shipped |
 | **2** | **Death, Decay & Disease** | corpses rot, mass grave, corpse-borne plague, curfews | **M to L** | wires existing systems |
 | **3** | **Knowledge & Fog of War** | villagers only know what they've seen; gossip; search parties; portal secrecy | **L** | new knowledge model |
 | **4** | **Living Population** | birth, aging, natural death, dementia/knowledge-loss, migration rework | **L to XL** | mostly net-new |
@@ -57,8 +57,8 @@ mod; TruePlanet is the "replace the world" mod. They're designed to stack.
 
 ## 2. PHASE 1: Ruinarch+ Core
 
-Self-contained. Each fix is independently verifiable in-game. Split into **confirmed**
-(source-verified, file:line) and **needs-repro** (code located, wants a live check first).
+Self-contained. Each fix is independently verifiable in-game. All of Phase 1 below
+(2a to 2c) has shipped.
 
 ### 2a. Bugfixes: confirmed in source
 
@@ -69,32 +69,30 @@ Self-contained. Each fix is independently verifiable in-game. Split into **confi
 | **Paralyzed can't be schemed** | Paralyzed villagers can still leave faction/home but can't be targeted by schemes | `GoapPlanner.cs:156` exempts Paralyzed; `SchemeData.cs:81-96` doesn't | Mirror the exemption in `SchemeData` target validation |
 | **Infinite chaos orbs** | Immortal monster (hibernating golem) in a Kennel produces endless orbs | `BeingDrained.cs:47-51` broadcasts the orb **before** `AdjustHP`; immune target loses no HP | Postfix so the orb only drops if damage actually landed |
 
-### 2b. Bugfixes: located in source, want a live repro to confirm the exact tint/branch
+### 2b. Bugfixes: confirmed with a live repro
 
-| Fix | Report | Where it lives | Fix hypothesis |
+| Fix | Report | Root cause | Patch |
 |---|---|---|---|
-| **Portal placement / zoom** | Portal is red (can't place) zoomed out, green zoomed in, inconsistent | `AreaStructureComponent.CanBuildDemonicStructureHere:97-112`; `THE_PORTAL` is exempted from the `currentlyShowingLocation != null` gate at line 99 | The zoom state (`currentlyShowingLocation`) leaks into portal validity. Normalize so portal validity doesn't flip on zoom |
-| **Released prisoner knows the portal** | Let-go prisoners path from the portal area and reveal it; should be knocked out & dropped near their own village by an imp | `LetGoData` -> `MovementComponent.LetGo:788-817` teleports them to a random Wilderness tile *adjacent to the prison* (which sits in the demon base) | Relocate the drop to near their **home settlement** + apply Unconscious/Dazed; optionally spawn an imp carry-job for flavor |
+| **Portal placement behind the banner** | The Portal cannot be placed on tiles that sit behind the "Pick a tile to place your portal" banner | Placement is gated on `UIManager.IsMouseOnUI()`, a UI raycast; the banner (`InitialWorldSetupMenu.pickPortalMessage`) is a UI element in the middle of the screen, so it swallows the raycast | A `CanvasGroup` with `blocksRaycasts = false` on the banner; it still shows (`Fix_PortalPlacementBehindBanner.cs`) |
+| **Released prisoner knows the portal** | Let-go prisoners walk out of the demon base and report the Portal | `LetGoData` -> `MovementComponent.LetGo:788-817` drops them on a Wilderness tile *next to the prison*, inside the demon base | Knock them Unconscious and move them to their home structure (`Fix_ReleasedPrisonerRevealsPortal.cs`) |
 
 ### 2c. QOL
 
 | Feature | Notes | Where |
 |---|---|---|
-| **Disable-tutorials toggle** | Add a Gameplay-settings switch that suppresses all tutorial alerts | `TutorialManager.cs:12-27` (14 alert types) + `SaveDataPlayer.cs:9-31` (no master flag today). Add a flag, gate alert spawn on it, add the UI row |
+| **Disable-tutorials toggle** | Suppresses all tutorial alerts; shipped as the `disableTutorial` config flag rather than a settings row | `TutorialManager.cs:12-27` (14 alert types) + `SaveDataPlayer.cs:9-31` (no master flag in the game) |
 
-### 2d. Optional Phase-1 exploit fixes (include on request)
+### 2d. Possible exploit fixes (not shipped)
 - **Flying-over-kennel Sacrifice/Let-Go:** `SacrificeData`/`LetGoData.ActivateAbility(LocationStructure)` bypasses the flying check in `IsValid`. Re-validate the target is actually *in* the kennel.
 - **Snatch dropoff list empty:** `SnatchObjectUIController.ConstructDropLocationChoices:444-460` only lists *bookmarked* structures; add a sane fallback.
 
-> **Proposed v1 = 2a + 2c + 2b.** All small, all verifiable, gives Ruinarch+ an honest
-> "bugfix & QOL pack" first release. Exploits (2d) ship behind a config flag so purists
-> can keep them.
+If these ship, they go behind a config flag so players who like the exploits can keep them.
 
 ---
 
 ## 3. PHASE 2: Death, Decay & Disease
 
-**Great news from recon: ~70% already exists, just unwired.**
+**Most of the pieces already exist in the game; they are not connected.**
 
 **What EXISTS:**
 - Corpses: a dead `Character` keeps its map marker and lies where it fell. A `Tombstone`
@@ -145,12 +143,30 @@ starts a real world and plays the scenario out at speed.
      e.g. the village is dead) is absorbed directly.
    - Known limit: the "this blueprint is a Mass Grave" mark is not saved; a Mass Grave saved
      half-built completes as a regular Cemetery after reload (which also stops scattering).
-   - **Look** (`MassGraveLook.cs`): a walled burial-pit sprite laid over the borrowed
-     Cemetery floor (above the ground tilemap, below walls, decorations and characters),
-     stepping through 4 fill stages as bodies are laid in. Loaded at gameplay time via the
-     framework's `ModArt`; stripped on destruction and on any pooled structure-object reset so
-     a real Cemetery never inherits it. *(verified: overlay present and correctly sorted,
-     absent on a real Cemetery, offscreen renders)* Art is an AI-generated placeholder.
+   - **Look** (`MassGraveLook.cs`): the pit's art laid over the borrowed Cemetery floor
+     (above the ground tilemap, below walls, objects and characters), optionally stepping
+     through 4 fill stages (`mass_grave_0..3.png`) or one image (`mass_grave.png`). Loaded at
+     gameplay time via the framework's `ModArt`; stripped on destruction and on any pooled
+     structure-object reset so a real Cemetery never inherits it. The Cemetery prefab's props
+     (BRAZIER, PLINTH_BOOK, GODDESS_STATUE, WATER_BASIN, TRASH) are not built on a Mass Grave
+     (prefix `LocationStructureObject.OnBuiltStructureObjectPlaced`) and are cleared from pits
+     saved before this; its STRUCTURE_TILE_OBJECT is kept (removing it made the pit count as
+     not standing). *(verified: overlay present and sorted, no props, absent on a real
+     Cemetery)* Art is a text placeholder until real art arrives. The floor is set to the
+     prefab's own dirt tile on build and load (the Cemetery's paved cross removed).
+   - **Anonymous burial:** a body laid in the pit (hauled or absorbed) leaves no Tombstone;
+     it is removed like a fully decomposed body (`Tombstone.SetRespawnCorpseOnDestroy(false)`
+     + `RemovePOI`), and older pits have their gravestones cleared once per session. Only the
+     pit's count remains (`bodyCount`, not saved).
+   - **Surroundings:** hourly, the pit also queues BURY jobs for bodies in the ring of map
+     areas around the village (`MassGrave.CatchmentAreas`): creatures, outsiders, and the
+     village's own dead when it has no Cemetery. Bodies are found through the region's
+     character list; an area's own list only gains a character when its marker moves
+     between areas, so a body that never moved is missing from it.
+   - **Who goes where:** a village's own people (`homeSettlement` / `homeSettlementOnDeath`)
+     go to its Cemetery / Cult Temple when it has one; outsiders, monsters and creatures go
+     to the Mass Grave (to the Cemetery only if there is no pit). At most one Mass Grave per
+     village, enforced for villager construction and for the debug/instant build.
 4. **Settlement curfew** (`Curfew.cs`): a ruler who answers a plague outbreak
    (`PlaguedEvent`) with a measured response, Quarantine or Exile, also puts the village under
    curfew until the event ends. Residents give up free time (visiting, taverns, wandering) and
@@ -174,7 +190,7 @@ starts a real world and plays the scenario out at speed.
 This is the conceptual keystone of the whole vision: **villagers should only know what they've
 witnessed or been told.** It also addresses why the portal keeps getting found.
 
-**What EXISTS (recon, cited against `RuinarchRE`):**
+**What EXISTS (cited against `RuinarchRE`):**
 - **Gossip about deeds, not places.** Each character keeps a pool of up to 40 witnessed or
   informed actions (`RumorComponent.AddAssumedWitnessedOrInformedNegativeInfo`,
   `RumorComponent.cs:57-79`, fed by `ReactionComponent.cs:120,150`). The transport is the
@@ -208,13 +224,16 @@ witnessed or been told.** It also addresses why the portal keeps getting found.
 - There is **no missing-person state** anywhere in the game.
 
 **Model ([L], extends the above rather than replacing it):**
-- A per-faction **known-locations ledger**: which demonic structures (and later, captives'
-  last-seen spots) the faction knows, each with its source. Fed by the existing report
-  (`AfterReportSuccess`) and by sightings; saved by the mod.
-- **Counterattacks go only where the faction knows:** postfix
-  `CounterattackPartyQuest.GetTargetDestination` to return a known structure
-  (`LocationStructure` is an `IPartyTargetDestination`) instead of the whole player
-  settlement. The portal is attacked only once someone has actually seen it.
+- **Shipped: per-faction known-structures ledger** (`Phase3/Knowledge.cs`, config
+  `knowledgeEnabled`). Fed by the game's own report (`AfterReportSuccess`), by sightings once
+  the faction is aware of the player (prefix `CharacterTrait.OnSeePOI`), and by adjacency
+  (postfix `SettlementPartyComponent.TryCreateCounterattackQuest`). Saved inside the player's
+  save through the loader's new `ModSave` (`ModData/ruinarch.plus.knowledge.json`).
+- **Shipped: counterattacks go only where the faction knows:** postfix
+  `CounterattackPartyQuest.GetTargetDestination` returns the nearest known structure, and a
+  prefix on `AttackDemonicStructureBehaviour.TryDoBehaviour` attacks known structures instead
+  of the hard-coded portal; with nothing known left standing, the quest ends as a success. A
+  faction that is aware but knows nothing (older saves) keeps vanilla behaviour.
 - **Rescue by last-known location:** the settlement roll only picks residents someone
   reported missing, and the destination is the last place they were seen, not their live
   position. The party searches there and learns more only by seeing it.
@@ -237,15 +256,15 @@ knowledge).
 `StifleMigrationData` resets it). Reproduction exists only for Ratmen (`BirthRatman`).
 
 **What's NEW:**
-1. **Migration rework [M]:** gate the migration meter on settlement health (population,
-   recent deaths, active war, food). A village crashing from 10 to 1 should *not* pull
-   immigrants. Recon: the meter (`SettlementVillageMigrationComponent.cs`) fills by
-   `perHourIncrement` (3 to 8) + faction bonus + a long-term modifier each hour, plus 20 to 30
-   per dwelling built, 30 to 40 per other building, and 20 to 30 per successful party quest
-   (`:94-115,151-164`). The only health gate is `residents.Count > 0` (`:263-274`), so a
-   village of one still pulls migrants. Each wave's size grows with the **player's portal
-   level** (`:337-355`). Hooks: `GetPerHourMigrationRate` and `OnStructureBuilt`.
-   *Shippable early, even before the rest of Phase 4.*
+1. **Migration rework [M]: shipped** (`Phase4/MigrationHealth.cs`, config
+   `migrationHealthEnabled`). Every natural gain funnels through
+   `SettlementVillageMigrationComponent.IncreaseVillageMigrationMeter`; a prefix scales it by
+   village health: 0 during plague (`isPlagued` or an active Plagued event) or siege, 0 when abandoned homes (beyond
+   2 spare) outnumber occupied ones, else halved per abandoned home beyond the 2 the build planner keeps spare, halved per unburied body on
+   village tiles. A postfix on `Character.Death` takes 150/1500 off the home village's meter.
+   The meter tooltip explains the throttle. Induce Migration bypasses the meter and is
+   unaffected. In vanilla the only gate is `residents.Count > 0`; wave size scales with
+   the player's portal level (`SettlementVillageMigrationComponent.cs:337-355`).
 2. **Natural birth [L]:** couples procreate at a slow rate scaled by food/housing; babies
    become children then adults over game-years.
 3. **Aging & natural death [L]:** age advances; elders sicken (dementia/alzheimer's as
@@ -261,7 +280,7 @@ knowledge).
 
 ## 6. PHASE 5: Settlements & Economy
 
-**What EXISTS (recon, cited against `RuinarchRE`):**
+**What EXISTS (cited against `RuinarchRE`):**
 - **No size tiers.** `SettlementType` (`Settlement_Types/SettlementType.cs`) is a culture
   flavour (`Human_Village`, `Elven_Hamlet`, `Capital`, `Cult_Town`...), set at founding
   (`NPCSettlement.SetSettlementType`, `NPCSettlement.cs:2339-2346`) and never changed by growth.
@@ -346,22 +365,10 @@ TruePlanet depends on Ruinarch+ Phases 3 to 6 being in place to feel alive; it s
 
 ---
 
-## 9. Open recon before committing to a phase
-
-- **Phase 3:** *done* (see section 4). Villagers remember deeds, not places; portal
-  knowledge is one faction-wide flag and the known-structure list is never read. Fog of war
-  is an *extension*: a known-locations ledger plus retargeted counterattack and rescue.
-- **Phase 2 portal bug & released-prisoner:** one live repro each to confirm the exact
-  branch/tint before patching.
-- **Phase 5 settlement tiers:** *done* (see section 6). Nothing tracks a soft size;
-  `maxDwellings`/`maxFacilities` are the two levers the build planner already obeys.
-
----
-
-## 10. Naming & packaging
+## 9. Naming & packaging
 
 - Display name **Ruinarch+**; mod id `ruinarch.plus` (namespace `RuinarchPlus`, since `+`
   isn't file-safe). Sister mod: **TruePlanet** (`trueplanet`).
-- Ships via the ModLoader (drop in `Mods/`, no external injector). Phase 1 releases as
-  `Ruinarch+ v0.1`; later phases bump minor versions or ship as optional add-on modules
-  behind config flags so players can pick their depth.
+- Ships via the ModLoader (drop in `Mods/`, no external injector). Phase 1 shipped as
+  `v0.1`; later phases bump the minor version, with a config flag per feature so players
+  can pick their depth.

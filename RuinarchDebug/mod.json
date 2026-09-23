@@ -3,5 +3,5 @@
     "name": "Ruinarch Debug Menu",
     "version": "1.0.0",
     "author": "Xm0x",
-    "description": "In-game debug overlay: spawn villagers/monsters, kill, set needs, control time - plus one-click access to the game's built-in 70-command dev console."
+    "description": "Development tool: an in-game debug overlay (spawn villagers and monsters, kill, set needs, control time, open the game's built-in dev console) and an unattended in-game test harness."
 }

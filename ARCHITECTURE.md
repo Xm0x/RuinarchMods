@@ -1,102 +1,45 @@
-# Ruinarch Modding: Project Architecture
+# Architecture
 
-Definitive layout for the whole Ruinarch reverse-engineering and modding effort.
-**If anything contradicts this doc, this doc wins.** Read it before touching any repo.
+Ruinarch modding is split across three repositories.
 
----
+| Repo | What it is |
+|---|---|
+| [RuinarchRE](https://github.com/Xm0x/RuinarchRE) | The game's code, decompiled into a buildable C# tree. A read-only reference: you read it to find what to patch. |
+| [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) | The loader that runs mods inside the game, plus the `Ruinarch.ModContent` framework for adding new content. |
+| RuinarchMods (this repo) | The mods themselves: Ruinarch+ and RuinarchDebug. |
 
-## 0. The three repos, and where they live
+## Conventions
 
-| # | Thing | Repo | On GitHub | Ever modified for a feature? |
-|---|---|---|---|---|
-| 1 | **Decompiled game source** | `RuinarchRE/` | yes (`Xm0x/RuinarchRE`) | **NO: pristine, reference only** |
-| 2 | **Mod loader + content framework** | `RuinarchModLoader/` | yes (`Xm0x/RuinarchModLoader`) | yes (framework code) |
-| 3 | **The mods** | `RuinarchMods/` | yes (`Xm0x/RuinarchMods`) | yes (all features) |
+1. **The game stays stock.** Mods are separate DLLs loaded at runtime into the unmodified
+   game; nothing ships a recompiled `Assembly-CSharp.dll`.
+2. **RuinarchRE only changes to improve the decompile.** Gameplay features never go
+   there; they are mods.
+3. **Gameplay features belong to Ruinarch+.** It is one mod with a config flag per
+   feature, rather than one mod per feature. RuinarchDebug is kept separate because it
+   is a development tool.
 
-The game install is only a **deploy target**. Nothing authoritative lives there.
+## Adding new content
 
----
+Harmony changes methods that already exist. It cannot add a new `STRUCTURE_TYPE`, a new
+structure class, or a new build skill, and the Mass Grave needs all three.
 
-## 1. The hard rules
+The game creates such content by reflection on the enum value's name
+(`Type.GetType(... + value.ToStringEnumNoSpace() ...)`, then
+`Activator.CreateInstance`; see `LandmarkManager.CreateNewStructureAt` and
+`PlayerSkillManager.ConstructAllDemonicStructureSkillsData` in RuinarchRE).
+`Ruinarch.ModContent` gives each registered piece of content a stable enum value outside
+the game's own range and patches those factories to return the mod's instance for it. A
+mod calls `ModContent.RegisterStructure(...)` in `OnLoad` and gets back a
+`STRUCTURE_TYPE` the game can build, save and load.
 
-1. **`RuinarchRE/` is the pristine decompiled game. It is NEVER edited to add a
-   feature.** It exists on GitHub so people can read the real game source and
-   write their own mods against it. Putting mod content there (new classes, new enum
-   values, feature code) *litters the reference* and is forbidden. It is a **read-only
-   reference** mods compile *against*, nothing more.
-   - The one and only reason to change files under `RuinarchRE/src` is to **improve the
-     decompile itself** (fix a decompiler artifact so it matches the real game better).
-     Never to add gameplay.
+Details: [CONTENT_FRAMEWORK.md](https://github.com/Xm0x/RuinarchModLoader/blob/master/docs/CONTENT_FRAMEWORK.md).
 
-2. **All features are mods, and all mods live in `RuinarchMods/`.** A "feature" =
-   gameplay content or behavior. It ships as a Harmony mod (a separate DLL loaded at
-   runtime into the *stock* game), never as a forked `Assembly-CSharp.dll`.
+## Build and deploy
 
-3. **Ruinarch+ is ONE umbrella mod.** Mass graveyards, corpse decay, disease,
-   bugfixes, QOL, TruePlanet-lite, all of it: every gameplay feature is a **feature
-   inside `RuinarchMods/RuinarchPlus/`**. There is no separate mod per
-   feature. (`RuinarchDebug` is the *only* other mod, a dev/testing overlay, not
-   gameplay. It stays separate on purpose.)
-
-4. **The game DLL stays stock.** Deploy = stock `Assembly-CSharp.dll` + the loader
-   injection + mod DLLs in `Mods/`. No recompiled game DLL is ever shipped. (An earlier
-   attempt baked "Mass Grave" into a recompiled `Assembly-CSharp`, which violated rules
-   1 and 4 and has been fully reverted.)
-
----
-
-## 2. How a mod adds NEW content (the core capability)
-
-Harmony patches *existing* methods; on its own it cannot add a new `STRUCTURE_TYPE`,
-a new structure class, or a new build skill, which is exactly what content like a Mass
-Grave needs. Rather than fork the game DLL, that capability is built **into the mod
-loader** as a content-injection **framework**.
-
-- **Framework:** `Ruinarch.ModContent` (ships with `RuinarchModLoader/`, loaded before
-  mods). It lets a mod *register* genuinely new content against the stock game.
-- **Mechanism (proven against the source):** the game instantiates almost everything by
-  **reflection on an enum name**:
-  `Type.GetType("<ns>." + enumValue.ToStringEnumNoSpace() + ", Assembly-CSharp")` then
-  `Activator.CreateInstance(...)` (see `LandmarkManager.CreateNewStructureAt:448-458`,
-  `PlayerSkillManager.ConstructAllDemonicStructureSkillsData:583-595`). The framework
-  puts a Harmony **prefix** on each such factory: if the value is a **registered
-  virtual enum value** (a cast-int in a reserved high range), it returns the mod's
-  instance directly and skips the reflection. Stock DLL, no source edits.
-- Full technical spec (API, every patch point with file:line, virtual-enum allocation,
-  save-stability, gotchas):
-  **[`RuinarchModLoader/docs/CONTENT_FRAMEWORK.md`](https://github.com/Xm0x/RuinarchModLoader/blob/master/docs/CONTENT_FRAMEWORK.md)**.
-
-Consequence: a mod like Ruinarch+ calls `ModContent.RegisterStructure(...)` in its
-`OnLoad`, gets back a usable `STRUCTURE_TYPE`, and the new structure is buildable,
-saveable, and menu-visible, all while the game DLL is untouched.
-
----
-
-## 3. Build & deploy pipeline (per repo)
-
-- **`RuinarchModLoader/`** builds via `tools/build.sh`: `Ruinarch.Modding.dll` (loader
-  API), `Ruinarch.ModContent.dll` (framework), and the Cecil `Patcher`. The patcher
-  injects `ModLoader.Initialize()` into the stock game's module initializer.
-- **`RuinarchMods/RuinarchPlus/`** builds via `tools/build-mod.sh`: compiles the mod against the
-  game's Managed DLLs + `Ruinarch.Modding` + `Ruinarch.ModContent` + `0Harmony`, emits
-  `RuinarchPlus.dll`, drops it in `Mods/RuinarchPlus/`.
-- **Deploy** = patch the stock game once (loader), then copy mod folders into the game's
-  `Mods/`. Launch from Steam normally.
-
----
-
-## 4. Naming
-
-- Umbrella mod: **Ruinarch+**, id `ruinarch.plus`, namespace `RuinarchPlus`.
-- Framework: **Ruinarch.ModContent** (or "ModContent" in prose).
-- Sister mod (much later, world-scale): **TruePlanet**, still just a mod in
-  `RuinarchMods/`, built on the same framework.
-
----
-
-## 5. One-line summary
-
-> `RuinarchRE/` = the clean decompiled game (read-only reference, on GitHub).
-> `RuinarchModLoader/` = loader **+ the framework that lets mods add new content**.
-> `RuinarchMods/RuinarchPlus/` = every gameplay feature, as one umbrella mod.
-> The shipped game DLL is always stock.
+- **RuinarchModLoader:** `tools/build.sh` builds the loader (`Ruinarch.Modding.dll`), the
+  framework (`Ruinarch.ModContent.dll`), the in-game mod menu and the patcher. The
+  installer patches one call to `ModLoader.Initialize()` into the game's module
+  initializer.
+- **Mods:** `tools/build-mod.sh` (in the loader repo) compiles a mod folder against the
+  game's DLLs, the loader, the framework and Harmony, checks every Harmony patch target,
+  and copies the result into the game's `Mods/` folder.

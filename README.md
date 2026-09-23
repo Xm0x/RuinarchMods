@@ -2,47 +2,55 @@
 DISCLAIMER: For %100 honesty, help of AI was used in this project.
 
 Gameplay mods for [Ruinarch](https://store.steampowered.com/app/909320/Ruinarch/),
-loaded by the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) and built
-against the decompiled reference in [RuinarchRE](https://github.com/Xm0x/RuinarchRE).
+loaded by the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) and written
+against the decompiled game source in [RuinarchRE](https://github.com/Xm0x/RuinarchRE).
 
-These mods patch the **stock** game DLL at runtime via Harmony. There is no forked
-`Assembly-CSharp` and no edits to the game's shipped assemblies.
+The mods patch the **stock** game at runtime with Harmony. The game's own DLLs are never
+replaced or recompiled.
 
 ## Mods
 
 | Mod | What it does |
 |---|---|
-| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes plus new content: corpse decay, corpse-borne disease, a plague curfew, and the **Mass Grave**, a new *village* building (added via the content-injection framework) that villagers build from materials and carry their dead (and creature carcasses) into, instead of scattering graves. Every feature is source-verified against `RuinarchRE`, and defaults are conservative or opt-in where risky. I also don't know how to really make sprites, art and stuff in general. Until someone would offer to handle the art/sprite side of the mod there will be generic placeholders for the buildings and things that require sprites, for debugging purposes. |
-| **RuinarchDebug** | A separate dev-only mod: an in-game debug overlay (spawn, kill, time, place buildings, dev console) plus an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. Kept out of `RuinarchPlus` on purpose so it never ships in a normal play session. |
+| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, and migration that follows a village's fortunes. Risky features are opt-in, and every feature can be switched off in `config.json`. The Mass Grave art is a placeholder; real art is welcome. |
+| **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
 
-New enum-backed content (new `STRUCTURE_TYPE`, new build skill) is made possible by the
-`Ruinarch.ModContent` framework that lives in the **RuinarchModLoader** repo. It allocates
-deterministic *virtual* enum values and Harmony-prefixes the game's reflection factories so
-a mod can add genuinely new content without touching the game DLL.
+New buildings such as the Mass Grave need a new `STRUCTURE_TYPE`, which Harmony alone
+cannot add. That part comes from the `Ruinarch.ModContent` framework in the
+RuinarchModLoader repo; see its
+[CONTENT_FRAMEWORK.md](https://github.com/Xm0x/RuinarchModLoader/blob/master/docs/CONTENT_FRAMEWORK.md).
 
 ## Layout
 
 ```
-RuinarchPlus/              # the one umbrella gameplay mod
-  RuinarchPlus.cs          #   entry point (OnLoad): applies fixes + registers content
-  Config.cs                #   runtime config toggles
-  Fixes/                   #   individual bugfix Harmony patches
-  Phase2/                  #   new-content features
-    MassGrave.cs           #     the Mass Grave village structure
-    MassGraveFeature.cs    #     registers it via Ruinarch.ModContent; hourly driver
-    MassGraveBurial.cs     #     burial reroute (no scattered graves; bodies to the pit)
-    MassGraveConstruction.cs #   villagers decide on, place and build a Mass Grave
-    CorpseDecay.cs         #     unburied bodies rot and disappear
-    CorpseDisease.cs       #     corpse-borne disease
-  art/mass_grave/          #   Mass Grave fill-stage sprites (loaded via ModArt)
-  README.md                #   mod overview
-  RuinarchPlus-DESIGN.md   #   design & roadmap
-  mod.json                 #   loader manifest
-RuinarchDebug/             # separate dev-only mod
-  DebugMenu.cs             #   IMGUI overlay: spawn / kill / place / dev-console helpers
-  AutoTest.cs              #   unattended in-game test harness (autotest.flag -> autotest.log)
-  PlusBridge.cs            #   reflection bridge to Ruinarch+ (no hard dependency)
-  RuinarchDebug.cs         #   entry point (OnLoad)
-  mod.json                 #   loader manifest
-ARCHITECTURE.md            # layout + the hard rules (read this first)
+RuinarchPlus/
+  RuinarchPlus.cs            entry point: applies the patches, registers the Mass Grave
+  Config.cs                  config.json options
+  Fixes/                     one Harmony patch class per bug fix
+  Phase2/                    death, decay and disease
+    CorpseDecay.cs           unburied bodies rot and disappear
+    CorpseDisease.cs         rotting bodies spread plague (opt-in)
+    Curfew.cs                plague curfew
+    MassGrave*.cs            the Mass Grave: structure, burial, construction, look
+  Phase3/Knowledge.cs        per-faction list of known demonic structures
+  Phase4/MigrationHealth.cs  migration follows village health
+  art/mass_grave/            Mass Grave sprite
+  RuinarchPlus-DESIGN.md     design notes and roadmap
+RuinarchDebug/
+  DebugMenu.cs               in-game overlay
+  AutoTest.cs                unattended in-game test harness
+  PlusBridge.cs              reaches Ruinarch+ by reflection (no hard dependency)
+ARCHITECTURE.md              how the three repos fit together
 ```
+
+## Building
+
+Mods are built with `tools/build-mod.sh` from a RuinarchModLoader checkout:
+
+```bash
+tools/build-mod.sh /path/to/RuinarchMods/RuinarchPlus "/path/to/Ruinarch/Mods"
+```
+
+`tools/run-autotest.sh` in the same repo runs the RuinarchDebug test harness in the game.
+
+This repo holds source only: no game binaries or assets.
