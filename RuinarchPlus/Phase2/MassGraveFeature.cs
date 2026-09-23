@@ -41,38 +41,43 @@ namespace RuinarchPlus.Phase2
 					// it is village infrastructure, not something placed from the demonic build menu.
 					Skill = null,
 					UnlockWith = PLAYER_SKILL_TYPE.NONE,
-					IsDemonic = false,
 					IsPlayerStructure = false,
 					IsVillageStructure = true
 				});
-				Debug.Log(string.Format("[RuinarchPlus] Mass Grave registered as village building (STRUCTURE_TYPE={0}).",
+				RuinarchPlus.Log?.Info(string.Format("Mass Grave registered as village building (STRUCTURE_TYPE={0}).",
 					(int)reg.StructureType));
-				PreloadArt();
 			}
 			catch (Exception e)
 			{
-				Debug.LogError("[RuinarchPlus] Mass Grave registration failed: " + e);
+				RuinarchPlus.Log?.Error("Mass Grave registration failed: " + e);
 			}
 		}
 
+		private static bool _artChecked;
+
 		// Validate the loose-PNG art pipeline end to end (deploy -> decode -> Sprite) and
-		// warm the cache. Logs each stage's pixel size to mods.log so a missing/undeployed
-		// asset is obvious. The sprites themselves are wired to the structure visual later
-		// (Unity StructureTemplate swap); this only proves the framework art path works.
-		private static void PreloadArt()
+		// warm the cache, once, on the first in-game hour. Must NOT run from OnLoad: mods load
+		// inside the game assembly's module initializer, before Unity's graphics device
+		// exists, and creating a Texture2D there crashes the player natively.
+		internal static void PreloadArtOnce()
 		{
+			if (_artChecked)
+			{
+				return;
+			}
+			_artChecked = true;
 			for (int i = 0; i < FillStages; i++)
 			{
 				string path = ArtPath(string.Format("mass_grave_{0}.png", i));
 				UnityEngine.Sprite sp = ModArt.LoadSprite(path, 256f);
 				if (sp != null)
 				{
-					Debug.Log(string.Format("[RuinarchPlus] Loaded mass_grave_{0}.png ({1}x{2}px).",
+					RuinarchPlus.Log?.Info(string.Format("Loaded mass_grave_{0}.png ({1}x{2}px).",
 						i, (int)sp.rect.width, (int)sp.rect.height));
 				}
 				else
 				{
-					Debug.LogWarning(string.Format("[RuinarchPlus] Mass Grave art missing: {0}", path));
+					RuinarchPlus.Log?.Warning(string.Format("Mass Grave art missing: {0}", path));
 				}
 			}
 		}
@@ -94,6 +99,8 @@ namespace RuinarchPlus.Phase2
 				{
 					return;
 				}
+				MassGraveFeature.PreloadArtOnce();
+				MassGraveConstruction.HourlyCheck();
 				System.Collections.Generic.List<MassGrave> active = MassGrave.Active;
 				for (int i = active.Count - 1; i >= 0; i--)
 				{

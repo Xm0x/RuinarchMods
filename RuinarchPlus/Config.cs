@@ -22,7 +22,13 @@ namespace RuinarchPlus
 		public bool corpseDecayEnabled = true;
 		// In-game days a corpse takes to fully decompose (480 ticks/day). Floor is 1/4 day.
 		public float corpseDecayDays = 3f;
-
+		// Mass Grave burial: villages with no Cemetery/Cult Temple stop scattering tombstones
+		// into the wilderness. Corpses lie where they fell until the settlement has a Mass
+		// Grave; then villagers carry every corpse (people and creatures) into it.
+		public bool massGraveBurialEnabled = true;
+		// In-game hours a corpse near a Mass Grave may go un-hauled (e.g. nobody left alive to
+		// carry it) before the pit absorbs it directly.
+		public int massGraveFallbackHours = 12;
 
 		// Corpse-borne disease (default OFF - opt in). Rotting unburied corpses in a
 		// settlement sicken the living present, scaled by corpse count. Requires

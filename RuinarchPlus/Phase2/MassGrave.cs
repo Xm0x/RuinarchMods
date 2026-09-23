@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Locations.Settlements;
+using RuinarchPlus;
 using UnityEngine;
 using UtilityScripts;
 
@@ -10,29 +11,41 @@ using UtilityScripts;
 namespace Inner_Maps.Location_Structures
 {
 	/// <summary>
-	/// A NON-demonic VILLAGE building: a pit that clears corpse-litter from the settlement.
-	/// Registered as new content via Ruinarch.ModContent (virtual STRUCTURE_TYPE) and
-	/// classified as a village structure (see MassGraveFeature), so the STOCK game treats
-	/// it like a first-class manmade building - no forked Assembly-CSharp. Mirrors the
-	/// game's own <see cref="Cemetery"/> (also a ManMadeStructure). Driven hourly by a
-	/// mod-side Harmony postfix on GameManager.TickStarted (see MassGraveFeature).
+	/// A NON-demonic VILLAGE building: a communal pit for the dead of a settlement that has
+	/// no Cemetery. Registered as new content via Ruinarch.ModContent (virtual STRUCTURE_TYPE)
+	/// and classified as a village structure (see MassGraveFeature), so the STOCK game treats
+	/// it like a first-class manmade building. Mirrors the game's own <see cref="Cemetery"/>.
+	///
+	/// Villagers do the work: the burial reroute (MassGraveBurial) turns every corpse in the
+	/// settlement - residents, strangers and creatures - into a normal BURY job that carries
+	/// the body here. Hourly, the pit re-issues those jobs for any corpse still lying around,
+	/// and only absorbs a nearby corpse directly when nobody has hauled it for
+	/// <c>massGraveFallbackHours</c> (e.g. the whole village is dead).
 	/// </summary>
 	public class MassGrave : ManMadeStructure
 	{
 		/// <summary>Live instances the hourly tick iterates. Add on build/load, remove on destroy.</summary>
 		internal static readonly List<MassGrave> Active = new List<MassGrave>();
 
-		// How close (in tiles) a corpse must be to the pit for it to be collected.
-		private const float CollectionRadius = 12f;
+		/// <summary>Bodies villagers carried into any pit / bodies the fallback absorbed.
+		/// Session totals, read by the RuinarchDebug test harness.</summary>
+		public static int HauledTotal { get; private set; }
+		public static int AbsorbedTotal { get; private set; }
 
-		// Bodies that visually "fill" the mound. The pit keeps clearing litter forever;
-		// this only caps how large the Phase-D mound sprite grows.
+		// How close (in tiles) an un-hauled corpse must be for the fallback to absorb it.
+		private const float FallbackRadius = 12f;
+
+		// Bodies that visually "fill" the mound. The pit keeps accepting bodies forever;
+		// this only caps the fill level used by the mound visual.
 		private const int MoundCapacity = 30;
 
-		// Number of corpses this pit has consumed - drives the mound/fill visual (Phase D).
+		// Hours each nearby, still-unburied corpse has been waiting (fallback timer).
+		private readonly Dictionary<Character, int> _waitingHours = new Dictionary<Character, int>();
+
+		/// <summary>Number of bodies laid in this pit (hauled by villagers or absorbed).</summary>
 		public int bodyCount { get; private set; }
 
-		// 0..1 fill level for the Phase-D mound visual. Caps at full; consumption never stops.
+		/// <summary>0..1 fill level for the mound visual. Caps at full; burial never stops.</summary>
 		public float fillRatio => Mathf.Clamp01((float)bodyCount / MoundCapacity);
 
 		public MassGrave(STRUCTURE_TYPE type, Region location)
@@ -49,6 +62,20 @@ namespace Inner_Maps.Location_Structures
 			Active.Add(this);
 		}
 
+		/// <summary>The live Mass Grave serving <paramref name="settlement"/>, or null.</summary>
+		internal static MassGrave FindFor(BaseSettlement settlement)
+		{
+			for (int i = 0; i < Active.Count; i++)
+			{
+				MassGrave pit = Active[i];
+				if (!pit.hasBeenDestroyed && pit.settlementLocation == settlement)
+				{
+					return pit;
+				}
+			}
+			return null;
+		}
+
 		public override void OnTileDamaged(LocationGridTile tile, int amount, bool isPlayerSource)
 		{
 			AdjustHP(amount, null, isPlayerSource);
@@ -60,61 +87,166 @@ namespace Inner_Maps.Location_Structures
 			return true;
 		}
 
+		public override void OnBuiltNewStructure()
+		{
+			base.OnBuiltNewStructure();
+			// Same as Cemetery: the moment the pit exists, every corpse already lying in the
+			// settlement becomes a burial job.
+			IssueBuryJobs();
+		}
+
 		protected override void AfterStructureDestruction(Character p_responsibleCharacter = null)
 		{
 			Active.Remove(this);
+			_waitingHours.Clear();
 			base.AfterStructureDestruction(p_responsibleCharacter);
 		}
 
-		// Every in-game hour: pull nearby unburied corpses into the pit. Fully guarded -
-		// any bad game state degrades to "collected nothing", never a crash.
+		/// <summary>A tile inside the pit to lay a body on (BURY target tile).</summary>
+		internal LocationGridTile GetBurialTile()
+		{
+			if (unoccupiedTiles != null && unoccupiedTiles.Count > 0)
+			{
+				return CollectionUtilities.GetRandomElement(unoccupiedTiles);
+			}
+			return GetRandomTile();
+		}
+
+		/// <summary>Called when a villager's BURY job targeting this pit succeeds.</summary>
+		internal void RecordBurial(Character corpse)
+		{
+			bodyCount++;
+			HauledTotal++;
+			if (corpse != null)
+			{
+				_waitingHours.Remove(corpse);
+			}
+			global::RuinarchPlus.RuinarchPlus.Log?.Info($"Mass Grave: {corpse?.name ?? "a body"} laid in the pit by a villager (bodyCount={bodyCount}).");
+		}
+
+		// Every in-game hour. Fully guarded: bad game state degrades to "did nothing".
 		internal void OnHourStarted()
 		{
 			try
 			{
-				if (hasBeenDestroyed || region?.charactersAtLocation == null)
+				if (hasBeenDestroyed)
 				{
 					return;
 				}
-				LocationGridTile pitReference = GetPlacementTile();
-				if (pitReference == null)
-				{
-					return;
-				}
-				List<Character> toCollect = RuinarchListPool<Character>.Claim();
-				List<Character> regionCharacters = region.charactersAtLocation;
-				for (int i = 0; i < regionCharacters.Count; i++)
-				{
-					Character c = regionCharacters[i];
-					try
-					{
-						if (IsCollectableCorpse(c, pitReference))
-						{
-							toCollect.Add(c);
-						}
-					}
-					catch
-					{
-					}
-				}
-				for (int i = 0; i < toCollect.Count; i++)
-				{
-					try
-					{
-						ConsumeCorpse(toCollect[i]);
-					}
-					catch
-					{
-					}
-				}
-				RuinarchListPool<Character>.Release(toCollect);
+				IssueBuryJobs();
+				AbsorbAbandonedCorpses();
 			}
 			catch
 			{
 			}
 		}
 
-		private bool IsCollectableCorpse(Character c, LocationGridTile pitReference)
+		// Mirror of the game's private SettlementJobTriggerComponent.TryCreateBuryJobs: ask
+		// every dead character in the settlement to request burial. The reroute turns each
+		// request into a BURY job that targets this pit.
+		private void IssueBuryJobs()
+		{
+			if (!(settlementLocation is NPCSettlement settlement) || settlement.areas == null)
+			{
+				return;
+			}
+			List<Character> dead = RuinarchListPool<Character>.Claim();
+			for (int i = 0; i < settlement.areas.Count; i++)
+			{
+				List<Character> here = settlement.areas[i].locationCharacterTracker?.charactersAtLocation;
+				if (here == null)
+				{
+					continue;
+				}
+				for (int j = 0; j < here.Count; j++)
+				{
+					if (here[j] != null && here[j].isDead)
+					{
+						dead.Add(here[j]);
+					}
+				}
+			}
+			for (int i = 0; i < dead.Count; i++)
+			{
+				try
+				{
+					dead[i].jobComponent.TriggerBuryMe();
+				}
+				catch
+				{
+				}
+			}
+			RuinarchListPool<Character>.Release(dead);
+		}
+
+		// Fallback only: absorb corpses near the pit that no villager has hauled for
+		// massGraveFallbackHours (nobody alive to carry them, or unreachable).
+		private void AbsorbAbandonedCorpses()
+		{
+			if (region?.charactersAtLocation == null)
+			{
+				return;
+			}
+			LocationGridTile pitReference = GetBurialTile();
+			if (pitReference == null)
+			{
+				return;
+			}
+			int limit = Mathf.Max(1, RuinarchPlusConfig.Current.massGraveFallbackHours);
+			List<Character> toAbsorb = RuinarchListPool<Character>.Claim();
+			List<Character> seen = RuinarchListPool<Character>.Claim();
+			List<Character> regionCharacters = region.charactersAtLocation;
+			for (int i = 0; i < regionCharacters.Count; i++)
+			{
+				Character c = regionCharacters[i];
+				try
+				{
+					if (!IsLooseCorpse(c, pitReference))
+					{
+						continue;
+					}
+					seen.Add(c);
+					_waitingHours.TryGetValue(c, out int hours);
+					hours++;
+					_waitingHours[c] = hours;
+					if (hours >= limit)
+					{
+						toAbsorb.Add(c);
+					}
+				}
+				catch
+				{
+				}
+			}
+			// Forget corpses that were hauled, buried or rotted away since last hour.
+			List<Character> stale = RuinarchListPool<Character>.Claim();
+			foreach (Character c in _waitingHours.Keys)
+			{
+				if (!seen.Contains(c))
+				{
+					stale.Add(c);
+				}
+			}
+			for (int i = 0; i < stale.Count; i++)
+			{
+				_waitingHours.Remove(stale[i]);
+			}
+			for (int i = 0; i < toAbsorb.Count; i++)
+			{
+				try
+				{
+					Absorb(toAbsorb[i]);
+				}
+				catch
+				{
+				}
+			}
+			RuinarchListPool<Character>.Release(stale);
+			RuinarchListPool<Character>.Release(seen);
+			RuinarchListPool<Character>.Release(toAbsorb);
+		}
+
+		private bool IsLooseCorpse(Character c, LocationGridTile pitReference)
 		{
 			if (c == null || !c.isDead || !c.hasMarker || c.gridTileLocation == null)
 			{
@@ -134,24 +266,22 @@ namespace Inner_Maps.Location_Structures
 			{
 				return false;
 			}
-			// If the settlement has its own Cemetery, leave burial to the game. The pit only
-			// clears loose litter in villages that lack a graveyard.
-			if (c.gridTileLocation.IsNextToOrPartOfSettlement(out var settlement) && settlement is NPCSettlement npcSettlement && npcSettlement.HasStructure(STRUCTURE_TYPE.CEMETERY))
+			// A settlement with its own Cemetery buries its people individually.
+			if (c.race.IsSapient() && c.gridTileLocation.IsNextToOrPartOfSettlement(out BaseSettlement settlement)
+				&& settlement is NPCSettlement npcSettlement && npcSettlement.HasStructure(STRUCTURE_TYPE.CEMETERY))
 			{
 				return false;
 			}
-			return c.gridTileLocation.GetDistanceTo(pitReference) <= CollectionRadius;
+			return c.gridTileLocation.GetDistanceTo(pitReference) <= FallbackRadius;
 		}
 
-		// Mirrors the game's own BuryCharacter.AfterBurySuccess disposal:
-		// sapient dead get a tombstone placed inside the pit (and persist for it);
-		// animals/monsters are cleared outright. Either way the litter leaves the map.
-		private void ConsumeCorpse(Character corpse)
+		// Mirrors the game's own BuryCharacter.AfterBurySuccess disposal: sapient dead get a
+		// tombstone inside the pit; animals/monsters are cleared. The litter leaves the map.
+		private void Absorb(Character corpse)
 		{
-			bool makeTombstone = corpse.race.IsSapient();
-			if (makeTombstone)
+			if (corpse.race.IsSapient())
 			{
-				LocationGridTile pitTile = GetPlacementTile();
+				LocationGridTile pitTile = GetBurialTile();
 				if (pitTile != null)
 				{
 					Tombstone tombstone = new Tombstone();
@@ -164,17 +294,10 @@ namespace Inner_Maps.Location_Structures
 			{
 				corpse.DestroyMarker();
 			}
+			_waitingHours.Remove(corpse);
 			bodyCount++;
-			Debug.Log($"[MassGrave] Consumed {corpse.name} into the pit (bodyCount={bodyCount}).");
-		}
-
-		private LocationGridTile GetPlacementTile()
-		{
-			if (unoccupiedTiles != null && unoccupiedTiles.Count > 0)
-			{
-				return CollectionUtilities.GetRandomElement(unoccupiedTiles);
-			}
-			return GetRandomTile();
+			AbsorbedTotal++;
+			global::RuinarchPlus.RuinarchPlus.Log?.Info($"Mass Grave: Absorbed un-hauled {corpse.name} into the pit (bodyCount={bodyCount}).");
 		}
 	}
 }

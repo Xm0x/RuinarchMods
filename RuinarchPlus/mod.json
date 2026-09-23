@@ -1,7 +1,7 @@
 {
   "id": "ruinarch.plus",
   "name": "Ruinarch+",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Xm0x",
-  "description": "Bugfix & QOL pack. Each fix is verified against decompiled source. Phase 1 of the Ruinarch+ roadmap."
+  "description": "Bugfixes, QOL, and Death & Decay: corpses rot, villages build a Mass Grave and carry their dead into it. Each change is verified against decompiled source."
 }
