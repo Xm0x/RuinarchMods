@@ -42,16 +42,24 @@ namespace RuinarchPlus
 			return Mathf.Max(TicksPerDay / 4, t); // never faster than a quarter day
 		}
 
-		/// <summary>An unburied body lying on the map: dead, still has its marker, no grave.</summary>
+		/// <summary>An unburied body lying on the map: dead, still has its marker, no grave.
+		/// A Mummified body is preserved (the game's own status) and never rots.</summary>
 		internal static bool IsUnburiedCorpse(Character c)
 		{
-			return c != null && c.isDead && c.hasMarker && c.grave == null && c.gridTileLocation != null && c.minion == null;
+			return c != null && c.isDead && c.hasMarker && c.grave == null && c.gridTileLocation != null && c.minion == null
+				&& !c.traitContainer.HasTrait("Mummified");
 		}
 
 		/// <summary>Decay stage of an unburied corpse, or null if it is not being tracked.</summary>
 		internal static Stage? GetStage(Character c)
 		{
 			return c != null && _corpses.TryGetValue(c, out Entry e) ? e.stage : (Stage?)null;
+		}
+
+		/// <summary>Share of its decay time an unburied corpse has left (1 fresh, 0 gone), or null if not tracked.</summary>
+		internal static float? Remaining(Character c)
+		{
+			return c != null && _corpses.TryGetValue(c, out Entry e) ? Mathf.Clamp01(1f - (float)e.elapsed / TotalTicks()) : (float?)null;
 		}
 
 		// Corpse-borne disease reads this: unburied bodies at the Rotting or Skeletal stage
