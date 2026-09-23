@@ -50,7 +50,10 @@ A character is tracked while all of these hold:
 - their faction is still the village's faction.
 
 A character who stops meeting these (moves away, becomes a vagrant, joins the player, the
-village is destroyed) is dropped from tracking silently.
+village is destroyed) is dropped from tracking silently. Death is the exception: the game
+removes the dead from `residents` (`Character.cs:6307-6313`) and keeps the village in
+`previousCharacterDataComponent.homeSettlementOnDeath`, so a record remembers its village
+and stays until the body or grave is seen.
 
 ## Being seen
 
@@ -58,9 +61,11 @@ Once per in-game hour (the existing `GameManager.TickStarted` hourly hook used b
 Grave), each tracked resident R counts as **seen** if either:
 
 1. R has a tile and `R.IsInHomeSettlement()`; or
-2. some other character W of R's faction, alive, sapient and able to witness
-   (`limiterComponent.canWitness`), has R in `W.marker.inVisionCharacters`, or has R's
-   grave (`R.grave`) in `W.marker.inVisionTileObjects`.
+2. some other character W of R's faction, alive, sapient, able to witness
+   (`limiterComponent.canWitness`) and not held themselves (Restrained, Unconscious,
+   Frozen, Ensnared, Enslaved: a fellow captive cannot tell anyone), has R or R's grave
+   (`R.grave`) in `W.marker.inVisionPOIs` (the list that holds characters, bodies and tile
+   objects alike, `CharacterMarker.AddPOIAsInVisionRange`).
 
 When R is seen, their record stores the tile (R's tile, or the grave's tile) and the time.
 A seen resident is never missing. Cost: one pass over the faction members' vision lists
@@ -118,6 +123,14 @@ alike), except where noted:
 - **Working, target in sight.** The prefix lets the base game run unchanged: it frees a
   restrained target, ends as "Target_Dead" for a body, or "Target_Safe" for someone free.
   The hourly check sees the target in the same hour and posts the "found" notification.
+- **Every end of a search.** Prefix `PartyQuest.EndQuest` (all endings pass through it,
+  while the party is still assigned): if a party member has the target or their grave in
+  sight, the person counts as seen there (found, or found dead); otherwise the search
+  counts as failed. A search whose target is seen alive and free is ended with the game's
+  "Target_Safe" reason; a captive seen by someone other than the party stays the search's
+  target, and the party heads for where they were just seen.
+- **Witness rescues.** Prefix `PartyQuestBoard.CreateRescuePartyQuest`: when a witness
+  posts the rescue, the target counts as seen at that moment, where they stand.
 - **Base-game roll off.** Prefix `SettlementPartyComponent.TryCreateRescueQuest` (private,
   patched by name like `TryCreateCounterattackQuest` in `Knowledge.cs`) skips the method.
 
@@ -170,8 +183,10 @@ Open points to confirm in the first implementation pass (not assumptions to buil
 
 - whether dead characters stay in `inVisionCharacters` (if not, bodies are matched through
   `inVisionPOIs`);
-- whether a test village has a party free to take the quest (if not, the harness forms one
-  the way the counterattack test does);
+- whether a test village has a party free to take the quest. Villager parties only take
+  quests at dawn (5 to 7 am, `Party.InitialScheduleToCheckQuest`), so a search posted in
+  the day waits for the next morning; if none takes it, the harness forms one at 5 am the
+  way the counterattack test does;
 - how the quest name reads in the party UI with the "Search for X" override.
 
 ## Out of scope
