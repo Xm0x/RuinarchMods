@@ -9,10 +9,11 @@ namespace RuinarchPlus
 	// PHASE 2 - Death, Decay & Disease: corpse-borne plague.  (default OFF)
 	//
 	// Wires the decay system (CorpseDecay) into the game's existing plague. Once per
-	// in-game hour, rotting/skeletal UNBURIED corpses inside a settlement structure
-	// sicken the living present, scaled by how many corpses share that structure -
-	// "3 bodies rotting in a house -> outbreak fast." Open Wilderness is skipped so a
-	// lone body in the wild can't infect a whole region.
+	// in-game hour, UNBURIED bodies at the rotting/skeletal stage lying inside a settlement
+	// structure sicken the living present, scaled by how many such corpses share that
+	// structure - "3 bodies rotting in a house -> outbreak fast." Open Wilderness is skipped
+	// so a lone body in the wild can't infect a whole region. Buried bodies (graves in a
+	// Cemetery or Mass Grave) are never infectious: CorpseDecay stops tracking them.
 	//
 	// Mirrors the game's own Transmission model: Quarantined targets get the same 75%
 	// resistance, and infection goes through interruptComponent.TriggerInterrupt(Plagued)
@@ -37,7 +38,7 @@ namespace RuinarchPlus
 			}
 			_tickAccum = 0;
 
-			List<Tombstone> rotting = CorpseDecay.GetRottingCorpses();
+			List<Character> rotting = CorpseDecay.GetRottingCorpses();
 			if (rotting.Count == 0)
 			{
 				return;
@@ -47,8 +48,8 @@ namespace RuinarchPlus
 			Dictionary<LocationStructure, int> byStructure = new Dictionary<LocationStructure, int>();
 			for (int i = 0; i < rotting.Count; i++)
 			{
-				Tombstone t = rotting[i];
-				LocationStructure s = (t != null && t.gridTileLocation != null) ? t.gridTileLocation.structure : null;
+				Character corpse = rotting[i];
+				LocationStructure s = corpse?.gridTileLocation?.structure;
 				if (s == null || s is Wilderness)
 				{
 					continue; // open ground doesn't seed a settlement outbreak

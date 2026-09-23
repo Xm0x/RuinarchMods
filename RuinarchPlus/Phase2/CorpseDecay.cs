@@ -1,24 +1,25 @@
 using System.Collections.Generic;
 using HarmonyLib;
-using Inner_Maps;
-using Inner_Maps.Location_Structures;
 using UnityEngine;
 
 namespace RuinarchPlus
 {
 	// PHASE 2 - Death, Decay & Disease: corpse decomposition.
 	//
-	// Vanilla corpses (Tombstone TileObjects placed where a character dies) never rot -
-	// they litter the map forever unless a villager buries them. This wires a decay timer:
-	// an UNBURIED corpse lying in the open advances Fresh -> Bloated -> Rotting -> Skeletal
-	// and then fully decomposes (removed from the map). Buried graves (in a CEMETERY),
-	// and corpses currently being carried, are left alone.
+	// A dead character keeps its map marker as a body lying where it fell; the game only
+	// creates a Tombstone when a villager BURIES it (BuryCharacter.AfterBurySuccess is the
+	// sole Tombstone creation site). So "unburied corpse" = a dead Character that still has a
+	// marker and no grave. Vanilla never rots those; they lie forever unless buried.
 	//
-	// Per-tick hook: GameManager.TickEnded() broadcasts Signals.TICK_ENDED every tick, but
-	// Messenger is internal so a mod can't subscribe. Instead we Harmony-postfix TickEnded
-	// itself. Corpses are tracked in a registry keyed off Tombstone.OnPlacePOI /
-	// OnDestroyPOI. Later Phase 2 work (corpse-borne disease) reads the Rotting/Skeletal
-	// stage from here.
+	// This wires a decay timer onto exactly those bodies: Fresh -> Bloated -> Rotting ->
+	// Skeletal, then the remains are gone from the map. Anything buried (a grave in a
+	// Cemetery, a Mass Grave, or anywhere else) never rots here, and a body pauses while a
+	// villager is carrying it. Corpse-borne disease (CorpseDisease) reads the stage.
+	//
+	// Corpses are discovered by an hourly scan of the region rather than a death hook, so
+	// bodies from loaded saves, spawned-and-killed creatures and every death path are all
+	// covered. Decay advances per tick via a postfix on GameManager.TickEnded (Messenger is
+	// internal, so the TICK_ENDED signal can't be subscribed to from a mod).
 	public static class CorpseDecay
 	{
 		public enum Stage { Fresh, Bloated, Rotting, Skeletal }
@@ -29,9 +30,11 @@ namespace RuinarchPlus
 			public Stage stage = Stage.Fresh;
 		}
 
-		private const int TicksPerDay = 480; // GameManager resets the day at tick > 480
+		private const int TicksPerDay = GameManager.ticksPerDay;
 
-		private static readonly Dictionary<Tombstone, Entry> _corpses = new Dictionary<Tombstone, Entry>();
+		private static readonly Dictionary<Character, Entry> _corpses = new Dictionary<Character, Entry>();
+
+		private static int _tickAccum;
 
 		private static int TotalTicks()
 		{
@@ -39,51 +42,24 @@ namespace RuinarchPlus
 			return Mathf.Max(TicksPerDay / 4, t); // never faster than a quarter day
 		}
 
-		// A corpse decays only if it's lying in the open (not in a cemetery).
-		private static bool IsDecayable(Tombstone t)
+		/// <summary>An unburied body lying on the map: dead, still has its marker, no grave.</summary>
+		internal static bool IsUnburiedCorpse(Character c)
 		{
-			if (t == null || t.character == null)
-			{
-				return false;
-			}
-			LocationGridTile tile = t.gridTileLocation;
-			if (tile == null || tile.structure == null)
-			{
-				return false;
-			}
-			return tile.structure.structureType != STRUCTURE_TYPE.CEMETERY;
+			return c != null && c.isDead && c.hasMarker && c.grave == null && c.gridTileLocation != null && c.minion == null;
 		}
 
-		internal static void Register(Tombstone t)
+		/// <summary>Decay stage of an unburied corpse, or null if it is not being tracked.</summary>
+		internal static Stage? GetStage(Character c)
 		{
-			if (!RuinarchPlusConfig.Current.corpseDecayEnabled)
-			{
-				return;
-			}
-			if (!IsDecayable(t))
-			{
-				return;
-			}
-			if (!_corpses.ContainsKey(t))
-			{
-				_corpses[t] = new Entry();
-			}
+			return c != null && _corpses.TryGetValue(c, out Entry e) ? e.stage : (Stage?)null;
 		}
 
-		internal static void Unregister(Tombstone t)
+		// Corpse-borne disease reads this: unburied bodies at the Rotting or Skeletal stage
+		// are infectious. Returns a fresh list (safe to mutate).
+		internal static List<Character> GetRottingCorpses()
 		{
-			if (t != null)
-			{
-				_corpses.Remove(t);
-			}
-		}
-
-		// Phase 2 corpse-borne disease reads this: corpses that have reached the
-		// Rotting or Skeletal stage are infectious. Returns a fresh list (safe to mutate).
-		internal static List<Tombstone> GetRottingCorpses()
-		{
-			List<Tombstone> list = new List<Tombstone>();
-			foreach (KeyValuePair<Tombstone, Entry> kv in _corpses)
+			List<Character> list = new List<Character>();
+			foreach (KeyValuePair<Character, Entry> kv in _corpses)
 			{
 				if (kv.Value.stage == Stage.Rotting || kv.Value.stage == Stage.Skeletal)
 				{
@@ -95,57 +71,69 @@ namespace RuinarchPlus
 
 		internal static void Tick()
 		{
+			if (!RuinarchPlusConfig.Current.corpseDecayEnabled)
+			{
+				return;
+			}
+			_tickAccum++;
+			if (_tickAccum >= GameManager.ticksPerHour)
+			{
+				_tickAccum = 0;
+				Discover();
+			}
 			if (_corpses.Count == 0)
 			{
 				return;
 			}
-			List<Tombstone> keys = new List<Tombstone>(_corpses.Keys);
-			List<Tombstone> toRemove = new List<Tombstone>();
+			List<Character> keys = new List<Character>(_corpses.Keys);
 			int total = TotalTicks();
 			for (int i = 0; i < keys.Count; i++)
 			{
-				Tombstone t = keys[i];
-				Entry e;
-				if (!_corpses.TryGetValue(t, out e))
+				Character c = keys[i];
+				if (!IsUnburiedCorpse(c))
 				{
+					// buried, raised, destroyed or otherwise gone: stop tracking
+					_corpses.Remove(c);
 					continue;
 				}
-				// corpse already removed / raised / invalid
-				if (t == null || t.character == null || t.gridTileLocation == null)
+				if (c.isBeingCarriedBy != null)
 				{
-					toRemove.Add(t);
-					continue;
+					continue; // paused while a villager carries it
 				}
-				// got buried after registration -> stop decaying it
-				LocationStructure structure = t.gridTileLocation.structure;
-				if (structure != null && structure.structureType == STRUCTURE_TYPE.CEMETERY)
-				{
-					toRemove.Add(t);
-					continue;
-				}
-				// paused while a villager is carrying it around
-				if (t.isBeingCarriedBy != null)
-				{
-					continue;
-				}
-
+				Entry e = _corpses[c];
 				e.elapsed++;
 				if (e.elapsed >= total)
 				{
-					Decompose(t);
-					toRemove.Add(t);
+					if (Decompose(c))
+					{
+						_corpses.Remove(c);
+					}
 					continue;
 				}
 				Stage ns = StageFor(e.elapsed, total);
 				if (ns != e.stage)
 				{
 					e.stage = ns;
-					RuinarchPlus.Log?.Info($"Corpse of {t.character.name} is now {ns}.");
+					RuinarchPlus.Log?.Info($"Corpse of {c.name} is now {ns}.");
 				}
 			}
-			for (int i = 0; i < toRemove.Count; i++)
+		}
+
+		// Hourly: start tracking every unburied body in the region.
+		private static void Discover()
+		{
+			List<Character> here = GridMap.Instance?.mainRegion?.charactersAtLocation;
+			if (here == null)
 			{
-				_corpses.Remove(toRemove[i]);
+				return;
+			}
+			for (int i = 0; i < here.Count; i++)
+			{
+				Character c = here[i];
+				if (IsUnburiedCorpse(c) && !_corpses.ContainsKey(c))
+				{
+					_corpses[c] = new Entry();
+				}
 			}
 		}
 
@@ -167,34 +155,21 @@ namespace RuinarchPlus
 			return Stage.Skeletal;
 		}
 
-		private static void Decompose(Tombstone t)
+		// The remains are gone: cancel anyone still coming to bury them, then remove the
+		// body from the map. Returns false (retry next tick) while the player is seizing it.
+		private static bool Decompose(Character c)
 		{
-			LocationGridTile tile = t.gridTileLocation;
-			string who = (t.character != null) ? t.character.name : "unknown";
-			if (tile != null && tile.structure != null)
+			if (PlayerManager.Instance?.player != null && PlayerManager.Instance.player.seizeComponent.seizedPOI == c)
 			{
-				t.SetRespawnCorpseOnDestroy(false); // corpse rots away, don't re-drop / bury-me
-				tile.structure.RemovePOI(t);
-				RuinarchPlus.Log?.Info($"Corpse of {who} has fully decomposed and returned to the earth.");
+				return false;
 			}
-		}
-
-		[HarmonyPatch(typeof(Tombstone), "OnPlacePOI")]
-		public static class Tombstone_OnPlacePOI
-		{
-			private static void Postfix(Tombstone __instance)
+			c.ForceCancelAllJobsTargetingThisCharacter(JOB_TYPE.BURY);
+			if (c.hasMarker)
 			{
-				Register(__instance);
+				c.DestroyMarker();
 			}
-		}
-
-		[HarmonyPatch(typeof(Tombstone), "OnDestroyPOI")]
-		public static class Tombstone_OnDestroyPOI
-		{
-			private static void Postfix(Tombstone __instance)
-			{
-				Unregister(__instance);
-			}
+			RuinarchPlus.Log?.Info($"Corpse of {c.name} has fully decomposed and returned to the earth.");
+			return true;
 		}
 
 		[HarmonyPatch(typeof(GameManager), "TickEnded")]
