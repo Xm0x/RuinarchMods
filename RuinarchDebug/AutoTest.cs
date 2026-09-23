@@ -532,7 +532,12 @@ namespace RuinarchDebug
 				for (int sample = 0; sample < 3; sample++)
 				{
 					yield return WaitGameHours(1f, null);
-					under = Math.Max(under, HomeShare(village, out count));
+					float share = HomeShare(village, out int n);
+					if (share >= under)
+					{
+						under = share;
+						count = n;
+					}
 				}
 				Check("under curfew, residents stay home in their free time", () =>
 					(count > 0 && under > baseline && (under >= 0.6f || under - baseline >= 0.25f), $"home share {under:P0} of {count} (before plague {baseline:P0})"));
@@ -648,14 +653,14 @@ namespace RuinarchDebug
 		}
 
 		// Share of the village's curfew-bound residents (alive, not ruler/leader, with a home)
-		// currently in their home structure. Only residents with no job and not plagued or
-		// quarantined count: the curfew governs idle free time, while work (plague care,
-		// burials) goes on and the sick are held or cared for elsewhere by design.
+		// currently in their home structure. The plagued and quarantined do not count: they
+		// are held or cared for elsewhere by design. (Jobs cannot be filtered out: the
+		// curfew itself sends people home through an IDLE_RETURN_HOME job.)
 		private static float HomeShare(NPCSettlement village, out int count)
 		{
 			List<Character> bound = village.residents.Where(r => r != null && !r.isDead && r.isNormalCharacter && !r.isSettlementRuler
 				&& !r.isFactionLeader && r.homeStructure != null && !r.homeStructure.hasBeenDestroyed
-				&& r.currentJob == null && !r.traitContainer.HasTrait("Plagued", "Quarantined")).ToList();
+				&& !r.traitContainer.HasTrait("Plagued", "Quarantined")).ToList();
 			count = bound.Count;
 			return count == 0 ? 0f : bound.Count(r => r.isAtHomeStructure) / (float)count;
 		}
