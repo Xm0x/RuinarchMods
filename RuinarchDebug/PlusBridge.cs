@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using Inner_Maps;
 using Inner_Maps.Location_Structures;
 using Locations.Settlements;
 
@@ -37,6 +38,27 @@ namespace RuinarchDebug
 		internal static LocationStructure InstantBuild(NPCSettlement settlement)
 		{
 			return ConstructionType?.GetMethod("InstantBuild", Any)?.Invoke(null, new object[] { settlement }) as LocationStructure;
+		}
+
+		/// <summary>On-screen width in pixels of the selected character's path line (Ruinarch+'s zoom fix), or -1.</summary>
+		internal static float PathLineWidth(InnerTileMap map)
+		{
+			object v = Plus?.GetType("RuinarchPlus.Fix_PathLineZoomedOut")?.GetMethod("ScreenWidth", Any)?.Invoke(null, new object[] { map });
+			return v is float f ? f : -1f;
+		}
+
+		/// <summary>Fill of the decay bar showing on this corpse, or -1 if none is showing.</summary>
+		internal static float DecayBarFill(Character corpse)
+		{
+			object v = Plus?.GetType("RuinarchPlus.Phase2.CorpseDecayBar")?.GetMethod("ShownFill", Any)?.Invoke(null, new object[] { corpse });
+			return v is float f ? f : -1f;
+		}
+
+		/// <summary>Share of its decay time the corpse has left, or -1 if not tracked.</summary>
+		internal static float DecayRemaining(Character corpse)
+		{
+			object v = Plus?.GetType("RuinarchPlus.CorpseDecay")?.GetMethod("Remaining", Any)?.Invoke(null, new object[] { corpse });
+			return v is float f ? f : -1f;
 		}
 
 		/// <summary>The live Mass Grave serving <paramref name="settlement"/>, or null.</summary>
@@ -111,6 +133,46 @@ namespace RuinarchDebug
 		internal static void Forget(Faction faction)
 		{
 			KnowledgeType?.GetMethod("Forget", Any)?.Invoke(null, new object[] { faction });
+		}
+
+		private static Type MissingType => Plus?.GetType("RuinarchPlus.Phase3.MissingPersons");
+
+		/// <summary>Tell Ruinarch+ that one of their people saw <paramref name="c"/> at <paramref name="at"/>.</summary>
+		internal static void MissingSaw(Character c, LocationGridTile at)
+		{
+			MissingType?.GetMethod("Saw", Any)?.Invoke(null, new object[] { c, at });
+		}
+
+		/// <summary>"Seen", "Missing", "Searching" or "Lost"; null if untracked.</summary>
+		internal static string MissingState(Character c)
+		{
+			return MissingType?.GetMethod("StateOf", Any)?.Invoke(null, new object[] { c }) as string;
+		}
+
+		internal static int FailedSearches(Character c)
+		{
+			return MissingType?.GetMethod("FailedSearchesOf", Any)?.Invoke(null, new object[] { c }) is int n ? n : -1;
+		}
+
+		internal static float HoursToNextSearch(Character c)
+		{
+			return MissingType?.GetMethod("HoursToNextSearch", Any)?.Invoke(null, new object[] { c }) is float h ? h : -1f;
+		}
+
+		/// <summary>"(x, y, 0) 3.0h ago"; null if untracked.</summary>
+		internal static string MissingLastSeen(Character c)
+		{
+			return MissingType?.GetMethod("LastSeenOf", Any)?.Invoke(null, new object[] { c }) as string;
+		}
+
+		internal static PartyQuest MissingSearch(Character c)
+		{
+			return MissingType?.GetMethod("SearchFor", Any)?.Invoke(null, new object[] { c }) as PartyQuest;
+		}
+
+		internal static void ClearMissing()
+		{
+			MissingType?.GetMethod("Clear", Any)?.Invoke(null, null);
 		}
 
 		private static int GetStaticInt(Type t, string property)
