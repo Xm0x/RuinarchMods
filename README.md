@@ -11,7 +11,7 @@ These mods patch the **stock** game DLL at runtime via Harmony. There is no fork
 
 | Mod | What it does |
 |---|---|
-| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes plus new content: corpse decay, corpse-borne disease, and the **Mass Grave**, a new *village* building (added via the content-injection framework) that villagers build from materials and carry their dead (and creature carcasses) into, instead of scattering graves. Every feature is source-verified against `RuinarchRE`, and defaults are conservative or opt-in where risky. AI-Generated sprites will be used for placeholder for now. I want to remove them as soon as someone that knows how to do art would offer to replace them with their authentic ones. |
+| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes plus new content: corpse decay, corpse-borne disease, a plague curfew, and the **Mass Grave**, a new *village* building (added via the content-injection framework) that villagers build from materials and carry their dead (and creature carcasses) into, instead of scattering graves. Every feature is source-verified against `RuinarchRE`, and defaults are conservative or opt-in where risky. AI-Generated sprites will be used for placeholder for now. I want to remove them as soon as someone that knows how to do art would offer to replace them with their authentic ones. |
 | **RuinarchDebug** | A separate dev-only mod: an in-game debug overlay (spawn, kill, time, place buildings, dev console) plus an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. Kept out of `RuinarchPlus` on purpose so it never ships in a normal play session. |
 
 New enum-backed content (new `STRUCTURE_TYPE`, new build skill) is made possible by the

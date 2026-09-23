@@ -145,16 +145,25 @@ starts a real world and plays the scenario out at speed.
      e.g. the village is dead) is absorbed directly.
    - Known limit: the "this blueprint is a Mass Grave" mark is not saved; a Mass Grave saved
      half-built completes as a regular Cemetery after reload (which also stops scattering).
-   - Art: 4 fill-stage sprites ship under `art/mass_grave/` and load through the framework's
-     `ModArt` pipeline; wiring them into the structure's look is the Unity `StructureTemplate`
-     step (see the loader's `docs/ASSETS_AND_CONTENT.md`).
+   - **Look** (`MassGraveLook.cs`): a walled burial-pit sprite laid over the borrowed
+     Cemetery floor (above the ground tilemap, below walls, decorations and characters),
+     stepping through 4 fill stages as bodies are laid in. Loaded at gameplay time via the
+     framework's `ModArt`; stripped on destruction and on any pooled structure-object reset so
+     a real Cemetery never inherits it. *(verified: overlay present and correctly sorted,
+     absent on a real Cemetery, offscreen renders)* Art is an AI-generated placeholder.
+4. **Settlement curfew** (`Curfew.cs`): a ruler who answers a plague outbreak
+   (`PlaguedEvent`) with a measured response, Quarantine or Exile, also puts the village under
+   curfew until the event ends. Residents give up free time (visiting, taverns, wandering) and
+   go home; work continues, since work is how the settlement's jobs (plague care, burials,
+   food) get done; the ruler and faction leader are exempt; needs and combat are untouched.
+   Enforced at `BehaviourComponent.RunBehaviour` (return home, else stay in). Deliberately
+   **not** a new `PLAGUE_EVENT_RESPONSE`: `ExecuteEffectsOfLeaderResponseToPlague` throws on
+   unknown values and the decision is saved and localized. The curfew is derived (active
+   event + measured decision), so nothing is saved. Announced in the event log.
 
 **What's NEXT for Phase 2:**
-4. **Settlement curfew / quarantine escalation [M to L]:** today quarantine is per-character.
-   Add a settlement-level `Curfew` event (extend `PlaguedEvent`) that keeps residents indoors
-   and, later (Phase 6), closes borders.
-5. **Mass Grave look [S to M]:** swap the borrowed Cemetery visual for the fill-stage art
-   (needs the Unity template, or a runtime sprite swap on the placed structure object).
+5. **Closed borders [M]:** extend the curfew so a village under curfew turns away visitors
+   and traders (ties into Phase 5 traders and Phase 6 border closure).
 
 *Dependency:* unlocks the disease pressure that makes Phase 5's famine/unrest meaningful.
 
