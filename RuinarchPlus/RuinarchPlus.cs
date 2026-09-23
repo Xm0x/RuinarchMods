@@ -25,6 +25,8 @@ namespace RuinarchPlus
 
 			// Register Ruinarch+ new-content features against the ModContent framework.
 			Phase2.MassGraveFeature.Register();
+			// Per-save data kept inside the player's save file (ModContent's ModSave).
+			Phase3.Knowledge.Register();
 
 			var patched = Harmony.GetAllPatchedMethods()
 				.Select(m => (m.DeclaringType != null ? m.DeclaringType.Name : "?") + "." + m.Name)

@@ -34,6 +34,17 @@ namespace RuinarchPlus
 		// orders residents home in their free time until the plague event ends.
 		public bool curfewEnabled = true;
 
+		// Phase 3 - Knowledge & Fog of War.
+		// Factions only attack demonic structures they know about (reported, seen, or next
+		// door); counterattacks no longer march on a portal nobody has seen.
+		public bool knowledgeEnabled = true;
+
+		// Phase 4 - Living Population.
+		// Migration follows the village's fortunes: no settlers during plague or siege, fewer
+		// while homes stand empty or the dead lie unburied, and each death sets the migration
+		// meter back. The player's Induce Migration skill is unaffected.
+		public bool migrationHealthEnabled = true;
+
 		// Corpse-borne disease (default OFF - opt in). Rotting unburied corpses in a
 		// settlement sicken the living present, scaled by corpse count. Requires
 		// corpseDecayEnabled (it reads the decay stage).
