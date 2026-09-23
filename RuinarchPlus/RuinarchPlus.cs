@@ -27,6 +27,7 @@ namespace RuinarchPlus
 			Phase2.MassGraveFeature.Register();
 			// Per-save data kept inside the player's save file (ModContent's ModSave).
 			Phase3.Knowledge.Register();
+			Phase3.MissingPersons.Register();
 
 			var patched = Harmony.GetAllPatchedMethods()
 				.Select(m => (m.DeclaringType != null ? m.DeclaringType.Name : "?") + "." + m.Name)

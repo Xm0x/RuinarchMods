@@ -56,19 +56,22 @@ namespace RuinarchPlus.Phase2
 
 		// A notification in the game's event log, like the plague event's own announcements.
 		// (Log fillers, which make names clickable, are internal to the game assembly; the
-		// text is plain.)
-		internal static void Announce(string text)
+		// text is plain.) With notify false it goes to the log only, not the feed.
+		internal static void Announce(string text, bool notify = true)
 		{
 			try
 			{
 				global::Log log = GameManager.CreateNewLogUsingNewLocalization(GameManager.Instance.Today(), "Settlement Event", "EventAlerts_Table", "Plagued started", LOG_TAG.Major);
 				log.SetLogText(text);
 				log.AddLogToDatabase();
-				PlayerManager.Instance.player.ShowNotificationFromPlayer(log, releaseLogAfter: true);
+				if (notify)
+				{
+					PlayerManager.Instance.player.ShowNotificationFromPlayer(log, releaseLogAfter: true);
+				}
 			}
 			catch (Exception e)
 			{
-				RuinarchPlus.Log?.Warning("Curfew notification failed: " + e.Message);
+				RuinarchPlus.Log?.Warning("Notification failed: " + e.Message);
 			}
 			RuinarchPlus.Log?.Info(text);
 		}

@@ -38,6 +38,17 @@ namespace RuinarchPlus
 		// Factions only attack demonic structures they know about (reported, seen, or next
 		// door); counterattacks no longer march on a portal nobody has seen.
 		public bool knowledgeEnabled = true;
+		// A village only knows where its people are if it has seen them. A resident none of
+		// their people has seen for missingAfterHours is reported missing, and the village
+		// sends a search party to where they were last seen. A failed search is retried after
+		// searchRetryHours, doubling each time; after searchMaxAttempts failures the village
+		// gives them up. Replaces the base game's rescue of captives nobody saw.
+		public bool missingPersonsEnabled = true;
+		public int missingAfterHours = 24;
+		// Hours a search party sweeps around the last-seen spot before giving up.
+		public int searchSweepHours = 6;
+		public int searchRetryHours = 24;
+		public int searchMaxAttempts = 3;
 
 		// Phase 4 - Living Population.
 		// Migration follows the village's fortunes: no settlers during plague or siege, fewer
