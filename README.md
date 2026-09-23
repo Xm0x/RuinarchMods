@@ -1,5 +1,5 @@
 # RuinarchMods
-DISCLAIMER: For %100 honesty, help of AI was used in this project.
+DISCLAIMER: For 100% honesty, help of AI was used in this project.
 
 Gameplay mods for [Ruinarch](https://store.steampowered.com/app/909320/Ruinarch/),
 loaded by the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) and written
@@ -12,8 +12,16 @@ replaced or recompiled.
 
 | Mod | What it does |
 |---|---|
-| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, and migration that follows a village's fortunes. Risky features are opt-in, and every feature can be switched off in `config.json`. The Mass Grave art is a placeholder; real art is welcome. |
+| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, and migration that follows a village's fortunes. Risky features are opt-in, and every feature can be switched off in `config.json`. |
 | **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
+
+## Art
+
+I don't make sprites or art myself. Until someone offers to handle the art side of the
+mods, buildings and anything else that needs a sprite use generic placeholders, which
+also help with debugging.
+
+## New content
 
 New buildings such as the Mass Grave need a new `STRUCTURE_TYPE`, which Harmony alone
 cannot add. That part comes from the `Ruinarch.ModContent` framework in the
