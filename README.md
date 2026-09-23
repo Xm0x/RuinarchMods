@@ -1,6 +1,6 @@
 # RuinarchMods
 
-Gameplay mods for [Ruinarch](https://store.steampowered.com/app/1268820/Ruinarch/),
+Gameplay mods for [Ruinarch](https://store.steampowered.com/app/909320/Ruinarch/),
 loaded by the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) and built
 against the decompiled reference in [RuinarchRE](https://github.com/Xm0x/RuinarchRE).
 
@@ -11,8 +11,8 @@ These mods patch the **stock** game DLL at runtime via Harmony. There is no fork
 
 | Mod | What it does |
 |---|---|
-| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes plus new content (corpse decay, corpse-borne disease, opt-in starvation death, and **Mass Grave**, a new buildable *village* structure added via the content-injection framework). Every feature is source-verified against `RuinarchRE`, and defaults are conservative or opt-in where risky. AI-Generated sprites will be used for placeholder for now. I want to remove them as soon as someone that knows how to do art would offer to replace them with their authentic ones. |
-| **RuinarchDebug** | A separate dev-only overlay mod (tile/entity debug helpers). Kept out of `RuinarchPlus` on purpose so it never ships in a normal play session. |
+| **RuinarchPlus** | The umbrella gameplay mod. Bugfixes plus new content: corpse decay, corpse-borne disease, and the **Mass Grave**, a new *village* building (added via the content-injection framework) that villagers build from materials and carry their dead (and creature carcasses) into, instead of scattering graves. Every feature is source-verified against `RuinarchRE`, and defaults are conservative or opt-in where risky. AI-Generated sprites will be used for placeholder for now. I want to remove them as soon as someone that knows how to do art would offer to replace them with their authentic ones. |
+| **RuinarchDebug** | A separate dev-only mod: an in-game debug overlay (spawn, kill, time, place buildings, dev console) plus an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. Kept out of `RuinarchPlus` on purpose so it never ships in a normal play session. |
 
 New enum-backed content (new `STRUCTURE_TYPE`, new build skill) is made possible by the
 `Ruinarch.ModContent` framework that lives in the **RuinarchModLoader** repo. It allocates
@@ -28,14 +28,19 @@ RuinarchPlus/              # the one umbrella gameplay mod
   Fixes/                   #   individual bugfix Harmony patches
   Phase2/                  #   new-content features
     MassGrave.cs           #     the Mass Grave village structure
-    MassGraveFeature.cs    #     registers it via Ruinarch.ModContent
-    CorpseDecay.cs         #     corpse decomposition
+    MassGraveFeature.cs    #     registers it via Ruinarch.ModContent; hourly driver
+    MassGraveBurial.cs     #     burial reroute (no scattered graves; bodies to the pit)
+    MassGraveConstruction.cs #   villagers decide on, place and build a Mass Grave
+    CorpseDecay.cs         #     unburied bodies rot and disappear
     CorpseDisease.cs       #     corpse-borne disease
+  art/mass_grave/          #   Mass Grave fill-stage sprites (loaded via ModArt)
   README.md                #   mod overview
   RuinarchPlus-DESIGN.md   #   design & roadmap
   mod.json                 #   loader manifest
-RuinarchDebug/             # separate dev-only overlay mod
+RuinarchDebug/             # separate dev-only mod
   DebugMenu.cs             #   IMGUI overlay: spawn / kill / place / dev-console helpers
+  AutoTest.cs              #   unattended in-game test harness (autotest.flag -> autotest.log)
+  PlusBridge.cs            #   reflection bridge to Ruinarch+ (no hard dependency)
   RuinarchDebug.cs         #   entry point (OnLoad)
   mod.json                 #   loader manifest
 ARCHITECTURE.md            # layout + the hard rules (read this first)

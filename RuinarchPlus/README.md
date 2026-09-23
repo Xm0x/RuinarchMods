@@ -1,12 +1,13 @@
 # Ruinarch+
 
-A bugfix and quality-of-life mod for **Ruinarch**, built on the
+A bugfix, quality-of-life and gameplay mod for **Ruinarch**, built on the
 [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) (Harmony). Every
-fix is verified against the decompiled game source, not guessed.
+change is verified against the decompiled game source, not guessed.
 
-Phase 1 of the [Ruinarch+ roadmap](RuinarchPlus-DESIGN.md):
-confirmed bug fixes plus opt-in QOL. No new content, no balance changes you
-didn't ask for.
+It follows the [Ruinarch+ roadmap](RuinarchPlus-DESIGN.md): Phase 1 (confirmed bug
+fixes plus opt-in QOL) and the first part of Phase 2 (Death, Decay & Disease). Phase 2
+changes how the dead are handled by default; every Phase 2 feature can be switched off
+in `config.json`.
 
 ## What it fixes
 
@@ -22,10 +23,12 @@ didn't ask for.
 
 | Feature | What you'll notice |
 |---------|--------------------|
-| **Corpse decomposition** | Unburied corpses left lying in the open now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Buried graves in a cemetery, and corpses being carried, are left alone. Tunable via `corpseDecayDays`. On by default. |
-| **Corpse-borne plague** *(opt-in)* | Rotting/skeletal unburied corpses inside a settlement sicken the living present, scaled by corpse count: "bodies rotting in a house, outbreak." Uses the game's own plague (Quarantined resistance applies). Enable with `corpseDiseaseEnabled`. |
+| **Corpse decomposition** | Bodies left lying unburied now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Anything buried (a grave in a Cemetery, a Mass Grave, or anywhere else) never rots, and a body being carried pauses. Tunable via `corpseDecayDays`. On by default. |
+| **Corpse-borne plague** *(opt-in)* | Rotting/skeletal unburied bodies inside a settlement sicken the living present, scaled by corpse count: "bodies rotting in a house, outbreak." Uses the game's own plague (Quarantined resistance applies). Buried bodies are never infectious. Enable with `corpseDiseaseEnabled`. |
+| **No more scattered graves** | A village with no Cemetery or Cult Temple no longer buries its dead in random spots around the wilderness. Bodies lie where they fell until the village has a Mass Grave. Villages with a Cemetery bury their people exactly as before. |
+| **Mass Grave** | A new village building. When a village has unburied dead and no graveyard, its villagers place a Mass Grave blueprint, gather the wood or stone, and build it themselves, like any other building (it can be damaged and destroyed like one too). Once it stands, villagers carry every body in the village into it: residents, strangers, and creature carcasses. Nobody left alive to carry them? After `massGraveFallbackHours` the pit takes nearby bodies itself. |
 
-*The plague wire defaults OFF, so your game is unchanged until you enable it. (Note: starvation-to-death is already in the base game via the Malnourished status, no mod needed.) Mass graves and settlement curfews are the next Phase 2 pass.*
+*The plague wire defaults OFF, so disease only appears if you enable it. Starvation-to-death is already in the base game via the Malnourished status, no mod needed. Settlement curfews are the next Phase 2 pass.*
 
 ## Optional QOL (config)
 
@@ -37,6 +40,8 @@ your `Mods/RuinarchPlus/` folder:
     "disableTutorial": false,
     "corpseDecayEnabled": true,
     "corpseDecayDays": 3,
+    "massGraveBurialEnabled": true,
+    "massGraveFallbackHours": 12,
     "corpseDiseaseEnabled": false,
     "corpseDiseaseChancePerCorpse": 3
 }
@@ -47,6 +52,8 @@ your `Mods/RuinarchPlus/` folder:
 | `disableTutorial` | `false` | Set to `true` to skip the tutorial/alert bootstrap (`TutorialManager.Initialize`). Veterans get no tutorial alert hand-holding. Off = base game unchanged. |
 | `corpseDecayEnabled` | `true` | Unburied corpses rot and eventually decompose away. Set `false` for vanilla (corpses persist forever). |
 | `corpseDecayDays` | `3` | In-game days an unburied corpse takes to fully decompose (480 ticks/day; floor 1/4 day). |
+| `massGraveBurialEnabled` | `true` | Villages without a Cemetery/Cult Temple stop scattering graves, build a Mass Grave when they have unburied dead, and carry all bodies (including creatures) into it. Set `false` for vanilla burial. |
+| `massGraveFallbackHours` | `12` | In-game hours a body near a Mass Grave may go un-carried before the pit takes it directly. |
 | `corpseDiseaseEnabled` | `false` | Opt-in. Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
 | `corpseDiseaseChancePerCorpse` | `3` | Percent infection chance, per rotting corpse, per in-game hour, per nearby villager. |
 
@@ -56,11 +63,9 @@ Edit the file and relaunch for changes to take effect.
 
 1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) into your game (its installer patches your `Assembly-CSharp.dll` and drops `0Harmony.dll` in `Mods/`).
 2. Copy the `RuinarchPlus/` folder into your game's `Mods/` folder.
-3. Launch. Check `Mods/mods.log`, you should see:
+3. Launch. Check `Mods/mods.log`; you should see a line like:
    ```
-   [ruinarch.plus] Applied 9 patch(es): TraitItem.OnHover, PrisonCell.IsValidBrainwashTarget,
-   SchemeData.CanPerformAbilityTowards, BeingDrained.DrainPerTick, MovementComponent.LetGo,
-   TutorialManager.Initialize, Tombstone.OnPlacePOI, Tombstone.OnDestroyPOI, GameManager.TickEnded
+   [ruinarch.plus] Applied 19 patch class(es) over 30 method(s): ...
    ```
 
 ## Build from source
