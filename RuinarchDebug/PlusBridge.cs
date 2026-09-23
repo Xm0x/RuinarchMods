@@ -73,6 +73,12 @@ namespace RuinarchDebug
 			return v?.ToString();
 		}
 
+		internal static bool IsUnderCurfew(NPCSettlement settlement)
+		{
+			object v = Plus?.GetType("RuinarchPlus.Phase2.Curfew")?.GetMethod("IsUnderCurfew", Any)?.Invoke(null, new object[] { settlement });
+			return v is bool b && b;
+		}
+
 		private static int GetStaticInt(Type t, string property)
 		{
 			object v = t?.GetProperty(property, Any)?.GetValue(null);

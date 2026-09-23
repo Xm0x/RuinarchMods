@@ -6,6 +6,7 @@ using System.Linq;
 using HarmonyLib;
 using Inner_Maps;
 using Inner_Maps.Location_Structures;
+using Locations.Settlements.Settlement_Events;
 using Locations.Settlements;
 using Player_Input;
 using UnityEngine;
@@ -183,6 +184,16 @@ namespace RuinarchDebug
 			NPCSettlement bare = villages.FirstOrDefault(v => !v.HasStructure(STRUCTURE_TYPE.CEMETERY) && !v.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE));
 			NPCSettlement withCemetery = villages.FirstOrDefault(v => v.HasStructure(STRUCTURE_TYPE.CEMETERY));
 
+			NPCSettlement curfewVillage = bare ?? villages.FirstOrDefault();
+			if (curfewVillage == null)
+			{
+				Skip("curfew", "no village");
+			}
+			else
+			{
+				yield return CurfewTest(curfewVillage);
+			}
+
 			if (bare == null)
 			{
 				Skip("no-graveyard village tests", "every village has a Cemetery or Cult Temple");
@@ -199,6 +210,11 @@ namespace RuinarchDebug
 				// creatures -> Mass Grave).
 				LocationStructure cemetery = Guard("build a vanilla Cemetery", () => InstantBuildVanilla(bare, STRUCTURE_TYPE.CEMETERY));
 				Log(cemetery != null ? $"  built a Cemetery in {bare.name} for the precedence test" : "  could not build a Cemetery");
+				if (cemetery != null)
+				{
+					Check("a real Cemetery never carries the Mass Grave art", () => (Overlay(cemetery) == null, Overlay(cemetery) == null ? "no overlay" : "overlay present"));
+					yield return Snapshot(cemetery, "cemetery");
+				}
 				withCemetery = cemetery != null ? bare : null;
 			}
 			if (withCemetery == null)
@@ -280,6 +296,13 @@ namespace RuinarchDebug
 			Check("mass grave is a village structure of the settlement", () =>
 				(pit.settlementLocation == village && pit.structureType.IsVillageStructure() && !pit.structureType.IsPlayerStructure(),
 				$"settlement={pit.settlementLocation?.name} village={pit.structureType.IsVillageStructure()} player={pit.structureType.IsPlayerStructure()} tiles={pit.tiles.Count}"));
+			Check("mass grave wears its own pit art (not the Cemetery look)", () =>
+			{
+				SpriteRenderer overlay = Overlay(pit);
+				return (overlay != null && overlay.enabled && overlay.sprite != null,
+					overlay == null ? "no overlay" : $"sprite={overlay.sprite?.name} {overlay.sprite?.rect.width}px layer={overlay.sortingLayerName}/{overlay.sortingOrder} scale={overlay.transform.lossyScale.x:F3}");
+			});
+			yield return Snapshot(pit, "massgrave");
 
 			// 3. Villagers carry a fresh corpse into the pit.
 			int hauledBefore = PlusBridge.HauledTotal;
@@ -327,6 +350,65 @@ namespace RuinarchDebug
 					$"hasMarker={beast.hasMarker} hauledDelta={PlusBridge.HauledTotal - hauledBeforeCreature} absorbedDelta={PlusBridge.AbsorbedTotal - absorbedBeforeCreature}"));
 			}
 			Log($"  pit bodyCount={PlusBridge.BodyCount(pit)} hauledTotal={PlusBridge.HauledTotal} absorbedTotal={PlusBridge.AbsorbedTotal}");
+		}
+
+		private IEnumerator CurfewTest(NPCSettlement village)
+		{
+			Log($"curfew test village: {Describe(village)}");
+			Character decider = village.owner?.leader is Character leader && leader.homeSettlement == village ? leader : village.ruler;
+			if (decider == null)
+			{
+				Skip("curfew", "village has no ruler to decide");
+				yield break;
+			}
+			// Make the decision a measured one: drop the traits that pick Slay or Do_Nothing.
+			foreach (string trait in new[] { "Evil", "Psychopath", "Ruthless", "Demon Cultist", "Coward", "Lazy" })
+			{
+				if (decider.traitContainer.HasTrait(trait))
+				{
+					decider.traitContainer.RemoveTrait(decider, trait);
+				}
+			}
+			yield return WaitForHour(20);
+			float baseline = HomeShare(village, out int baselineCount);
+			Log($"  free-time home share before plague: {baseline:P0} of {baselineCount}");
+
+			if (Guard("start plague event", () => { village.eventManager.AddNewActiveEvent(SETTLEMENT_EVENT.Plagued_Event); return village.eventManager.GetActiveEvent<PlaguedEvent>(); }) is PlaguedEvent plague)
+			{
+				yield return WaitGameHours(12f, () => plague.hasLeaderMadeADecision);
+				Check("ruler's measured plague response imposes a curfew", () =>
+					(PlusBridge.IsUnderCurfew(village), $"decider={decider.name} decided={plague.hasLeaderMadeADecision} response={plague.rulerDecision}"));
+				Check("curfew is announced", () =>
+				{
+					string mods = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(_logPath)), "mods.log");
+					bool announced = File.Exists(mods) && File.ReadAllText(mods).Contains($"has placed {village.name} under curfew");
+					return (announced, announced ? "mods.log has the announcement" : "no announcement in mods.log");
+				});
+				yield return WaitForHour(20);
+				yield return WaitGameHours(1f, null);
+				float under = HomeShare(village, out int count);
+				Check("under curfew, residents stay home in their free time", () =>
+					(count > 0 && under >= 0.6f && under > baseline, $"home share {under:P0} of {count} (before plague {baseline:P0})"));
+				Guard("end plague event", () => { village.eventManager.DeactivateEvent(plague); return plague; });
+				Check("curfew lifts when the plague event ends", () =>
+					(!PlusBridge.IsUnderCurfew(village), $"underCurfew={PlusBridge.IsUnderCurfew(village)}"));
+			}
+		}
+
+		// Share of the village's curfew-bound residents (alive, not ruler/leader, with a home)
+		// currently in their home structure.
+		private static float HomeShare(NPCSettlement village, out int count)
+		{
+			List<Character> bound = village.residents.Where(r => r != null && !r.isDead && r.isNormalCharacter && !r.isSettlementRuler
+				&& !r.isFactionLeader && r.homeStructure != null && !r.homeStructure.hasBeenDestroyed).ToList();
+			count = bound.Count;
+			return count == 0 ? 0f : bound.Count(r => r.isAtHomeStructure) / (float)count;
+		}
+
+		// Waits until the in-game clock reaches the given hour (the next time it comes round).
+		private IEnumerator WaitForHour(int hour)
+		{
+			yield return WaitGameHours(25f, () => GameManager.Instance.Today().tick / GameManager.ticksPerHour == hour);
 		}
 
 		private IEnumerator CemeteryVillageTest(NPCSettlement village)
@@ -473,6 +555,70 @@ namespace RuinarchDebug
 			s.Death("autotest");
 			Log($"  spawned and killed {type} {s.name} at {tile} (skinnable={s.race.IsSkinnable()})");
 			return s;
+		}
+
+		private const string OverlayName = "RuinarchPlus.MassGraveOverlay";
+
+		private static SpriteRenderer Overlay(LocationStructure structure)
+		{
+			Transform t = (structure as ManMadeStructure)?.structureObj?.transform.Find(OverlayName);
+			return t != null ? t.GetComponent<SpriteRenderer>() : null;
+		}
+
+		// Render a structure with a temporary orthographic camera (a copy of the game camera:
+		// same culling mask, background and lighting) into an offscreen texture, and save it
+		// next to the log. Screen-space UI and popups are not part of a camera render, and the
+		// game camera's map-edge clamping does not apply.
+		private IEnumerator Snapshot(LocationStructure structure, string name)
+		{
+			Camera main = InnerMapCameraMove.Instance != null ? InnerMapCameraMove.Instance.camera : null;
+			if (structure?.tiles == null || structure.tiles.Count == 0 || main == null)
+			{
+				Log($"  screenshot {name} skipped (no tiles/camera)");
+				yield break;
+			}
+			yield return new WaitForEndOfFrame();
+			const int Size = 768;
+			GameObject go = null;
+			RenderTexture rt = null;
+			Texture2D tex = null;
+			try
+			{
+				Vector3 c = Vector3.zero;
+				foreach (LocationGridTile t in structure.tiles)
+				{
+					c += t.centeredWorldLocation;
+				}
+				c /= structure.tiles.Count;
+				go = new GameObject("AutotestCaptureCamera");
+				Camera cam = go.AddComponent<Camera>();
+				cam.CopyFrom(main);
+				cam.orthographic = true;
+				cam.orthographicSize = 4.5f;
+				cam.aspect = 1f;
+				cam.transform.position = new Vector3(c.x, c.y, main.transform.position.z);
+				rt = new RenderTexture(Size, Size, 24);
+				cam.targetTexture = rt;
+				cam.Render();
+				RenderTexture.active = rt;
+				tex = new Texture2D(Size, Size, TextureFormat.RGB24, false);
+				tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0);
+				tex.Apply();
+				RenderTexture.active = null;
+				cam.targetTexture = null;
+				File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(_logPath), name + ".png"), tex.EncodeToPNG());
+				Log($"  screenshot saved: {name}.png (centre {c.x:F1},{c.y:F1})");
+			}
+			catch (Exception e)
+			{
+				Log($"  screenshot {name} failed: {e.Message}");
+			}
+			finally
+			{
+				if (go != null) Destroy(go);
+				if (rt != null) Destroy(rt);
+				if (tex != null) Destroy(tex);
+			}
 		}
 
 		// Build a vanilla structure instantly at a spot the game's own placement approves.
