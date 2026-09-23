@@ -19,7 +19,9 @@ namespace RuinarchPlus.Phase3
 	/// walks to where the captive is now. Here a village knows only what its people have
 	/// seen. Every in-game hour each resident of a village counts as seen if they are in
 	/// their home village or someone of their faction (free, sapient, able to witness) has
-	/// them or their grave in sight, and the place and time are remembered. A resident unseen
+	/// them or their grave in sight, and the place and time are remembered. Someone away at
+	/// work (a job, a party's quest) told their village where they went and counts as seen
+	/// where they are, until they are missed. A resident unseen
 	/// for missingAfterHours is reported missing, and the village posts a search: the game's
 	/// own rescue quest, pointed at the last-seen spot (see MissingPersonsSearch.cs). A failed
 	/// search is retried after searchRetryHours, doubling, and after searchMaxAttempts the
@@ -116,6 +118,13 @@ namespace RuinarchPlus.Phase3
 			return c.traitContainer.HasTrait("Restrained", "Unconscious", "Frozen", "Ensnared", "Enslaved");
 		}
 
+		private static bool IsAwayAtWork(Character c)
+		{
+			return !c.isDead && c.gridTileLocation != null && !IsHeld(c)
+				&& (c.currentJob != null || c.currentActionNode != null
+					|| (c.partyComponent.hasParty && c.partyComponent.currentParty.isActive));
+		}
+
 		private static bool IsOpen(RescuePartyQuest quest)
 		{
 			return quest != null && quest.postedFaction != null && quest.postedFaction.partyQuestBoard.availablePartyQuests.Contains(quest);
@@ -129,19 +138,21 @@ namespace RuinarchPlus.Phase3
 			}
 		}
 
-		/// <summary>"at the Tavern", "near Iri", or "in the wilderness".</summary>
-		internal static string Place(LocationGridTile t)
+		/// <summary>"at {2}" (a building), "near {2}" (a village), or a plain phrase; <paramref name="where"/> fills {2}.</summary>
+		private static string Place(LocationGridTile t, out object where)
 		{
+			where = null;
 			if (t == null)
 			{
 				return "nowhere anyone remembers";
 			}
 			if (t.structure != null && t.structure.structureType != STRUCTURE_TYPE.WILDERNESS)
 			{
-				return "at " + t.structure.name;
+				where = t.structure;
+				return "at {2}";
 			}
-			NPCSettlement near = t.area?.GetFirstNPCSettlementOnArea();
-			return near != null ? "near " + near.name : "in the wilderness";
+			where = t.area?.GetFirstNPCSettlementOnArea();
+			return where != null ? "near {2}" : "in the wilderness";
 		}
 
 		// ---- hourly ------------------------------------------------------------------------
@@ -193,11 +204,21 @@ namespace RuinarchPlus.Phase3
 				Seen(r, at, now);
 				return;
 			}
+			// Away at work (mining, hunting, a party's quest): they told someone where they were
+			// going, so nobody worries, and the place they went counts as where they were last
+			// seen. Only before they are missed: someone already missing who is out doing
+			// something has told no one, and is found only by being seen.
+			if (r.State == MissingState.Seen && IsAwayAtWork(c))
+			{
+				Seen(r, c.gridTileLocation, now);
+				return;
+			}
 			if (r.State == MissingState.Seen && now - r.LastSeenTick >= (long)Config.missingAfterHours * TicksPerHour)
 			{
 				r.State = MissingState.Missing;
 				r.NextSearchTick = now;
-				Curfew.Announce($"{c.name} of {r.Village.name} has gone missing. They were last seen {Place(r.LastSeenTile)}.");
+				string place = Place(r.LastSeenTile, out object where);
+				Curfew.Announce("{0} of {1} has gone missing. They were last seen " + place + ".", c, r.Village, where);
 			}
 			if (r.State == MissingState.Searching && !IsOpen(r.Search))
 			{
@@ -263,14 +284,14 @@ namespace RuinarchPlus.Phase3
 				Records.Remove(c);
 				if (wasMissing)
 				{
-					Curfew.Announce($"{c.name} of {r.Village.name} has been found dead.");
+					Curfew.Announce("{0} of {1} has been found dead.", c, r.Village);
 				}
 				End(search, "Target_Dead");
 				return;
 			}
 			if (wasMissing)
 			{
-				Curfew.Announce($"{c.name} of {r.Village.name} has been found.");
+				Curfew.Announce("{0} of {1} has been found.", c, r.Village);
 			}
 			if (!IsHeld(c))
 			{
@@ -319,7 +340,7 @@ namespace RuinarchPlus.Phase3
 			{
 				f.partyQuestBoard.AddPartyQuest(quest, null);
 			}
-			Curfew.Announce($"{r.Village.name} is organising a search for {r.Person.name}.", notify: false);
+			Curfew.Note("{0} is organising a search for {1}.", r.Village, r.Person);
 		}
 
 		private static void FailSearch(Record r, long now)
@@ -331,17 +352,17 @@ namespace RuinarchPlus.Phase3
 			if (r.FailedSearches >= Config.searchMaxAttempts)
 			{
 				r.State = MissingState.Lost;
-				Curfew.Announce($"{r.Village.name} has given up the search for {r.Person.name}.");
+				Curfew.Announce("{0} has given up the search for {1}.", r.Village, r.Person);
 				return;
 			}
 			int wait = Config.searchRetryHours << (r.FailedSearches - 1);
 			r.State = MissingState.Missing;
 			r.NextSearchTick = now + (long)wait * TicksPerHour;
-			Curfew.Announce($"The search for {r.Person.name} found nothing. {r.Village.name} will look again in {wait} hours.", notify: false);
+			Curfew.Note("The search for {0} found nothing. {1} will look again in {2} hours.", r.Person, r.Village, wait);
 		}
 
 		/// <summary>Every end of a search passes here, while the party is still assigned.</summary>
-		internal static void OnSearchEnded(RescuePartyQuest quest)
+		internal static void OnSearchEnded(RescuePartyQuest quest, string reason)
 		{
 			Record r = Get(quest.targetCharacter);
 			if (r == null || r.Search != quest)
@@ -359,6 +380,11 @@ namespace RuinarchPlus.Phase3
 			}
 			if (r.State == MissingState.Searching)
 			{
+				// For bug reports: why the game ended it and how close the searchers got.
+				string members = party == null ? "no party" : string.Join(", ", party.members.Where(m => m != null).Select(m =>
+					$"{m.name} {(m.gridTileLocation != null && r.LastSeenTile != null ? m.gridTileLocation.GetDistanceTo(r.LastSeenTile).ToString("F0") + " tiles from the spot" : "off map")}"
+					+ (m.hasMarker && r.Person.hasMarker && m.marker.IsPOIInVision(r.Person) ? ", sees them" : "")));
+				RuinarchPlus.Log?.Info($"Search for {r.Person.name} ended ({reason}); party {party?.partyState.ToString() ?? "-"}: {members}; target {(r.Person.isDead ? "dead" : "alive")}{(r.Person.gridTileLocation != null && r.LastSeenTile != null ? $", {r.Person.gridTileLocation.GetDistanceTo(r.LastSeenTile):F0} tiles from the spot" : ", off map")}.");
 				FailSearch(r, now);
 			}
 		}
@@ -442,6 +468,12 @@ namespace RuinarchPlus.Phase3
 		{
 			Record r = Get(c);
 			return r == null ? -1f : (r.NextSearchTick - Now) / (float)TicksPerHour;
+		}
+
+		internal static string LastSeenOf(Character c)
+		{
+			Record r = Get(c);
+			return r == null ? null : $"{r.LastSeenTile?.ToString() ?? "nowhere"} {(Now - r.LastSeenTick) / (float)TicksPerHour:F1}h ago";
 		}
 
 		internal static PartyQuest SearchFor(Character c)

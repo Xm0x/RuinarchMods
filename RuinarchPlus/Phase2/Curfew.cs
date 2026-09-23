@@ -1,5 +1,8 @@
 using System;
+using System.Linq;
 using HarmonyLib;
+using Inner_Maps.Location_Structures;
+using Locations.Settlements;
 using Locations.Settlements.Settlement_Events;
 
 namespace RuinarchPlus.Phase2
@@ -55,14 +58,21 @@ namespace RuinarchPlus.Phase2
 		}
 
 		// A notification in the game's event log, like the plague event's own announcements.
-		// (Log fillers, which make names clickable, are internal to the game assembly; the
-		// text is plain.) With notify false it goes to the log only, not the feed.
-		internal static void Announce(string text, bool notify = true)
+		// {0}, {1}... in the format are filled from names: a character, village or building
+		// becomes the game's own clickable link (its uiString, resolved through the game
+		// database, so it survives save and load); anything else is plain text. mods.log gets
+		// the plain names. Note goes to the event log only, not the notification feed.
+		internal static void Announce(string format, params object[] names) => Post(true, format, names);
+
+		internal static void Note(string format, params object[] names) => Post(false, format, names);
+
+		private static void Post(bool notify, string format, object[] names)
 		{
+			string plain = string.Format(format, names.Select(n => Name(n, false)).ToArray());
 			try
 			{
 				global::Log log = GameManager.CreateNewLogUsingNewLocalization(GameManager.Instance.Today(), "Settlement Event", "EventAlerts_Table", "Plagued started", LOG_TAG.Major);
-				log.SetLogText(text);
+				log.SetLogText(string.Format(format, names.Select(n => Name(n, true)).ToArray()));
 				log.AddLogToDatabase();
 				if (notify)
 				{
@@ -73,7 +83,18 @@ namespace RuinarchPlus.Phase2
 			{
 				RuinarchPlus.Log?.Warning("Notification failed: " + e.Message);
 			}
-			RuinarchPlus.Log?.Info(text);
+			RuinarchPlus.Log?.Info(plain);
+		}
+
+		private static object Name(object o, bool link)
+		{
+			switch (o)
+			{
+				case Character c: return link ? c.uiString : c.name;
+				case BaseSettlement s: return link ? s.uiString : s.name;
+				case LocationStructure s: return link ? s.uiString : s.name;
+				default: return o;
+			}
 		}
 	}
 
@@ -117,7 +138,7 @@ namespace RuinarchPlus.Phase2
 		{
 			if (Curfew.Enabled && Curfew.IsCurfewResponse(p_response) && p_settlement != null)
 			{
-				Curfew.Announce($"{p_settlement.ruler?.name ?? "The ruler"} has placed {p_settlement.name} under curfew: residents must stay home in their free time until the plague has passed.");
+				Curfew.Announce("{0} has placed {1} under curfew: residents must stay home in their free time until the plague has passed.", (object)p_settlement.ruler ?? "The ruler", p_settlement);
 			}
 		}
 	}
@@ -130,7 +151,7 @@ namespace RuinarchPlus.Phase2
 		{
 			if (Curfew.Enabled && Curfew.IsCurfewResponse(p_response) && p_settlement != null)
 			{
-				Curfew.Announce($"The curfew in {p_settlement.name} has been lifted.");
+				Curfew.Announce("The curfew in {0} has been lifted.", p_settlement);
 			}
 		}
 	}
@@ -143,7 +164,7 @@ namespace RuinarchPlus.Phase2
 		{
 			if (Curfew.Enabled && __instance.hasLeaderMadeADecision && Curfew.IsCurfewResponse(__instance.rulerDecision) && p_settlement != null)
 			{
-				Curfew.Announce($"The plague in {p_settlement.name} has passed; the curfew is over.");
+				Curfew.Announce("The plague in {0} has passed; the curfew is over.", p_settlement);
 			}
 		}
 	}

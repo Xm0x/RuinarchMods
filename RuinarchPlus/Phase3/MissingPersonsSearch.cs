@@ -97,7 +97,7 @@ namespace RuinarchPlus.Phase3
 	[HarmonyPatch(typeof(PartyQuest), nameof(PartyQuest.EndQuest))]
 	internal static class Missing_SearchEnded
 	{
-		private static void Prefix(PartyQuest __instance)
+		private static void Prefix(PartyQuest __instance, string reason)
 		{
 			if (!MissingPersons.Enabled || !(__instance is RescuePartyQuest quest) || !MissingPersons.IsSearch(quest))
 			{
@@ -105,7 +105,7 @@ namespace RuinarchPlus.Phase3
 			}
 			try
 			{
-				MissingPersons.OnSearchEnded(quest);
+				MissingPersons.OnSearchEnded(quest, reason);
 			}
 			catch (Exception e)
 			{
@@ -149,16 +149,18 @@ namespace RuinarchPlus.Phase3
 				}
 				MissingPersons.Record r = MissingPersons.Get(target);
 				long now = MissingPersons.Now;
-				if (r.SweepStartedTick < 0)
+				LocationGridTile next = MissingPersons.NextSweepTile(character, r);
+				// The sweep's clock starts once a searcher reaches the last-seen spot (or finds
+				// no way to it), not on entering its area: the walk there is not the search.
+				if (r.SweepStartedTick < 0 && r.ReachedLastSeen.Count > 0)
 				{
 					r.SweepStartedTick = now;
 				}
-				if (now - r.SweepStartedTick >= (long)RuinarchPlusConfig.Current.searchSweepHours * GameManager.ticksPerHour)
+				if (r.SweepStartedTick >= 0 && now - r.SweepStartedTick >= (long)RuinarchPlusConfig.Current.searchSweepHours * GameManager.ticksPerHour)
 				{
 					quest.EndQuest(PartyQuest.GetLocalizedEndQuestReason("Target_Nowhere"));
 					return false;
 				}
-				LocationGridTile next = MissingPersons.NextSweepTile(character, r);
 				__result = next != null && character.jobComponent.CreateGoToSpecificTileJob(next, out producedJob);
 				return false;
 			}

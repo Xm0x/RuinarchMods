@@ -39,7 +39,8 @@ namespace RuinarchPlus
 		// door); counterattacks no longer march on a portal nobody has seen.
 		public bool knowledgeEnabled = true;
 		// A village only knows where its people are if it has seen them. A resident none of
-		// their people has seen for missingAfterHours is reported missing, and the village
+		// their people has seen for missingAfterHours is reported missing (someone away at
+		// work told the village where they went and is not), and the village
 		// sends a search party to where they were last seen. A failed search is retried after
 		// searchRetryHours, doubling each time; after searchMaxAttempts failures the village
 		// gives them up. Replaces the base game's rescue of captives nobody saw.
