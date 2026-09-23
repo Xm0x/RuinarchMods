@@ -30,6 +30,10 @@ namespace RuinarchPlus
 		// carry it) before the pit absorbs it directly.
 		public int massGraveFallbackHours = 12;
 
+		// Settlement curfew: a ruler who answers a plague outbreak with Quarantine or Exile also
+		// orders residents home in their free time until the plague event ends.
+		public bool curfewEnabled = true;
+
 		// Corpse-borne disease (default OFF - opt in). Rotting unburied corpses in a
 		// settlement sicken the living present, scaled by corpse count. Requires
 		// corpseDecayEnabled (it reads the decay stage).
