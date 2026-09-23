@@ -234,11 +234,25 @@ witnessed or been told.** It also addresses why the portal keeps getting found.
   prefix on `AttackDemonicStructureBehaviour.TryDoBehaviour` attacks known structures instead
   of the hard-coded portal; with nothing known left standing, the quest ends as a success. A
   faction that is aware but knows nothing (older saves) keeps vanilla behaviour.
-- **Rescue by last-known location:** the settlement roll only picks residents someone
-  reported missing, and the destination is the last place they were seen, not their live
-  position. The party searches there and learns more only by seeing it.
-- **Missing persons:** a resident who does not come home becomes "missing" to their
-  village, which is what triggers the search.
+- **Shipped: rescues and bounty hunts ask the ledger too** (`Phase3/KnowledgeTargets.cs`).
+  The game decides three more things about one player building with the faction-wide
+  `isAwareOfPlayer`: a Demon Rescue for a villager held inside it
+  (`PartyQuestBoard.CreateRescuePartyQuest`), a bounty hunt on a criminal hiding in it
+  (`CreateBountyHuntPartyQuest`, reached from `TryCreateBountyHuntQuest`), and attacking it on
+  arrival (`RescueBehaviour` / `BountyHuntBehaviour.TryDoBehaviour`). Each now requires the
+  faction to know that building; unknown, the village searches for the demonic area (the
+  unaware branch). A party that sees its target inside learns the building. Not faction
+  knowledge, left as is: a dragon picks any player building (`Dragon.SetPlayerTargetStructure`)
+  and Divine Intervention targets the Portal.
+- **Shipped: missing persons and searches by last-known location**
+  (`Phase3/MissingPersons.cs`, `Phase3/MissingPersonsSearch.cs`, config
+  `missingPersonsEnabled`). Each resident's last sighting by their own people (home village,
+  or in sight of a free faction member) is kept hourly; unseen for a day, they are reported
+  missing and the village posts the game's own rescue quest, pointed at the last-seen spot,
+  where the party sweeps until it sees them or gives up (retried after 24 then 48 hours,
+  three attempts). The omniscient settlement rescue roll is off. Records ride in the save
+  through `ModSave` (`ModData/ruinarch.plus.missing.json`). Spec:
+  `docs/specs/2026-09-23-missing-persons-design.md`.
 - **Gossip carries places:** reuse `SHARE_INFORMATION` to pass ledger facts between
   villagers, lossily, so a report can spread faster than a messenger walks.
 

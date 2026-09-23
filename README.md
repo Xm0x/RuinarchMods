@@ -12,7 +12,7 @@ replaced or recompiled.
 
 | Mod | What it does |
 |---|---|
-| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, and migration that follows a village's fortunes. Risky features are opt-in, and every feature can be switched off in `config.json`. |
+| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, villages that search for their missing, and migration that follows a village's fortunes. Risky features are opt-in, and every feature can be switched off in `config.json`. |
 | **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
 
 ## Art
@@ -36,11 +36,12 @@ RuinarchPlus/
   Config.cs                  config.json options
   Fixes/                     one Harmony patch class per bug fix
   Phase2/                    death, decay and disease
-    CorpseDecay.cs           unburied bodies rot and disappear
+    CorpseDecay*.cs          unburied bodies rot and disappear; the decay bar
     CorpseDisease.cs         rotting bodies spread plague (opt-in)
     Curfew.cs                plague curfew
     MassGrave*.cs            the Mass Grave: structure, burial, construction, look
-  Phase3/Knowledge.cs        per-faction list of known demonic structures
+  Phase3/Knowledge*.cs       per-faction list of known demonic structures; what it gates
+  Phase3/MissingPersons*.cs  missing residents and search parties
   Phase4/MigrationHealth.cs  migration follows village health
   art/mass_grave/            Mass Grave sprite
   RuinarchPlus-DESIGN.md     design notes and roadmap

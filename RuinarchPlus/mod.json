@@ -1,7 +1,7 @@
 {
   "id": "ruinarch.plus",
   "name": "Ruinarch+",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "Xm0x",
-  "description": "Bug fixes, rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, and migration that follows a village's fortunes. Each change is checked against the decompiled game source."
+  "description": "Bug fixes, rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, villages that search for their missing, and migration that follows a village's fortunes. Each change is checked against the decompiled game source."
 }
