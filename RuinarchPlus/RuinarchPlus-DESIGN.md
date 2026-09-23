@@ -174,23 +174,57 @@ starts a real world and plays the scenario out at speed.
 This is the conceptual keystone of the whole vision: **villagers should only know what they've
 witnessed or been told.** It also addresses why the portal keeps getting found.
 
-**Model (net-new, [L]):**
-- A per-character/per-faction **knowledge ledger**: facts (a death, a missing person,
-  the player's portal location, a blueprint, a trade price) each with a *source* and
-  *confidence*.
-- **Witnessing** writes facts (already partially there via the game's "aware
-  characters"/investigation hooks; needs a focused recon of the existing
-  awareness/`Rumor`/investigation code before building, to avoid duplicating it).
-- **Gossip & messengers** propagate facts between characters and settlements, lossily;
-  the player can *stir* or poison gossip.
-- **Search parties** (today they beeline to the portal when someone's captured) instead
-  search *last-known locations* and spread out; they only learn the portal by actually
-  seeing it. This fixes the "they magically know where the portal is" problem
-  at the design level, and makes the Phase-2 released-prisoner fix consistent.
+**What EXISTS (recon, cited against `RuinarchRE`):**
+- **Gossip about deeds, not places.** Each character keeps a pool of up to 40 witnessed or
+  informed actions (`RumorComponent.AddAssumedWitnessedOrInformedNegativeInfo`,
+  `RumorComponent.cs:57-79`, fed by `ReactionComponent.cs:120,150`). The transport is the
+  `SHARE_INFORMATION` GOAP action (`ShareInformation.cs`), queued as share-negative-info,
+  spread-rumor and confirm-rumor jobs (`CharacterJobTriggerComponent.cs:2001-2051`). Rumors
+  are made up by characters who hate someone (`BaseRelationshipContainer.cs:1421`) and by the
+  player's Spread Rumor skill (`SpreadRumorData.cs:145`); `Assumption`/`AssumptionComponent`
+  hold guesses. All of it is about *what a character did* (crimes, affairs), never *where
+  something is*.
+- `LocationAwareness` (`Area.cs:81`, `LocationStructure.cs:157`) is a per-location index of
+  objects by action type used by the planner. It is not character memory.
+- **Portal discovery is one faction-wide switch.** A villager who sees a demonic structure
+  (`CharacterTrait.cs:202-223`) queues a report if their faction is not yet aware; the report
+  (`ReportCorruptedStructure.AfterReportSuccess`, `ReportCorruptedStructure.cs:81-93`) adds the
+  structure to `InnerMapManager.worldKnownDemonicStructures`, raises threat, and calls
+  `Faction.SetIsAwareOfPlayer(true)` (a saved bool, `SaveDataFaction.cs:79`). If already
+  aware, the sighting rolls `CHANCE_TYPE.Counterattack` instead. A village whose area borders
+  the player's also becomes aware and counterattacks with no sighting at all
+  (`SettlementPartyComponent.cs:349-379`).
+- **The leak:** `worldKnownDemonicStructures` is written but never read, and not saved. The
+  counterattack's destination is the **whole player settlement**
+  (`CounterattackPartyQuest.cs:10,57-60`), so seeing one structure reveals all of them,
+  the portal included.
+- **Rescue is omniscient.** Every party-processing pass rolls 50% (100% with 2+ parties) to
+  rescue any resident who is Restrained/Paralyzed outside the village
+  (`SettlementPartyComponent.cs:236-251`, `BaseSettlement.GetRandomResidentForRescue`
+  `BaseSettlement.cs:397-415`), with no witness needed, and the party goes to the captive's
+  **live** location (`RescuePartyQuest.GetTargetDestination`, `RescuePartyQuest.cs:31-42`).
+  Witness-driven rescues also exist (`Abduct.cs:124-126`, `Distraught.cs:27-29`,
+  `IsCaptive.cs:301-303`).
+- There is **no missing-person state** anywhere in the game.
+
+**Model ([L], extends the above rather than replacing it):**
+- A per-faction **known-locations ledger**: which demonic structures (and later, captives'
+  last-seen spots) the faction knows, each with its source. Fed by the existing report
+  (`AfterReportSuccess`) and by sightings; saved by the mod.
+- **Counterattacks go only where the faction knows:** postfix
+  `CounterattackPartyQuest.GetTargetDestination` to return a known structure
+  (`LocationStructure` is an `IPartyTargetDestination`) instead of the whole player
+  settlement. The portal is attacked only once someone has actually seen it.
+- **Rescue by last-known location:** the settlement roll only picks residents someone
+  reported missing, and the destination is the last place they were seen, not their live
+  position. The party searches there and learns more only by seeing it.
+- **Missing persons:** a resident who does not come home becomes "missing" to their
+  village, which is what triggers the search.
+- **Gossip carries places:** reuse `SHARE_INFORMATION` to pass ledger facts between
+  villagers, lossily, so a report can spread faster than a messenger walks.
 
 *Dependency:* feeds Trade (info = prices), War (scouting), and TruePlanet (inter-nation
-knowledge). **Recon task before building: map the game's existing awareness/investigation
-system so it is extended rather than reinvented.**
+knowledge).
 
 ---
 
@@ -205,8 +239,13 @@ system so it is extended rather than reinvented.**
 **What's NEW:**
 1. **Migration rework [M]:** gate the migration meter on settlement health (population,
    recent deaths, active war, food). A village crashing from 10 to 1 should *not* pull
-   immigrants. Hook: Harmony the meter's hourly increment. *Shippable early, even before
-   the rest of Phase 4.*
+   immigrants. Recon: the meter (`SettlementVillageMigrationComponent.cs`) fills by
+   `perHourIncrement` (3 to 8) + faction bonus + a long-term modifier each hour, plus 20 to 30
+   per dwelling built, 30 to 40 per other building, and 20 to 30 per successful party quest
+   (`:94-115,151-164`). The only health gate is `residents.Count > 0` (`:263-274`), so a
+   village of one still pulls migrants. Each wave's size grows with the **player's portal
+   level** (`:337-355`). Hooks: `GetPerHourMigrationRate` and `OnStructureBuilt`.
+   *Shippable early, even before the rest of Phase 4.*
 2. **Natural birth [L]:** couples procreate at a slow rate scaled by food/housing; babies
    become children then adults over game-years.
 3. **Aging & natural death [L]:** age advances; elders sicken (dementia/alzheimer's as
@@ -222,19 +261,49 @@ system so it is extended rather than reinvented.**
 
 ## 6. PHASE 5: Settlements & Economy
 
-**What EXISTS:** `LOCATION_TYPE` is **static** (`VILLAGE`, etc.), with *no tiers*. Farming is
-real: `Farm.cs`, `Crops.cs`, `FoodPile.cs`, `CharacterNeedsComponent` hunger.
+**What EXISTS (recon, cited against `RuinarchRE`):**
+- **No size tiers.** `SettlementType` (`Settlement_Types/SettlementType.cs`) is a culture
+  flavour (`Human_Village`, `Elven_Hamlet`, `Capital`, `Cult_Town`...), set at founding
+  (`NPCSettlement.SetSettlementType`, `NPCSettlement.cs:2339-2346`) and never changed by growth.
+  Its caps are hard-coded constants, re-set on load rather than saved: `maxDwellings` 16 / 24
+  (Capital) / 10 (Cult Town), `maxFacilities` 12 to 16 (`HumanVillage.cs:10-18` etc.). They
+  are read in exactly two places: the build planner (`SettlementJobTriggerComponent.cs:1032,
+  1041,1065`) and per-facility caps (`NPCSettlement.cs:1198`). `VILLAGE_SIZE`
+  (Small/Medium/Large, `VillageSetting.cs`) only shapes world generation. `LOCATION_TYPE` is
+  static.
+- **Food is piles, not a stockpile.** There is no settlement food counter; totals are summed
+  from `FoodPile`s on demand (`BaseSettlement.GetNumberOfFoodInWholeSettlement`,
+  `BaseSettlement.cs:1328`). Producers are Farmer, Fisher and Butcher
+  (`Extensions.IsFoodProducerClassName`, `Extensions.cs:1700-1707`). `PRODUCE_FOOD` jobs fire
+  below a minimum (`ProduceResourceApplicabilityChecker.cs:23,43`). The build planner already
+  compares residents with potential food capacity and builds a Butcher's Shop, Fishery or Farm
+  when short (`SettlementJobTriggerComponent.cs:1098-1104`,
+  `SettlementResourcesComponent.cs:14-38`). Hunger is per character: Hungry -> Starving, plus
+  Malnourished (`CharacterNeedsComponent.cs:1236-1355`). There is **no settlement-level
+  shortage signal**.
+- **Hunting:** "Hunter" is a *combatant* class (`HumanEmpire.cs` and the other faction
+  types), not a food producer. The Hunter Lodge employs a Skinner
+  (`SettlementClassComponent.cs:605-608`); `HuntBeastPartyQuest` exists (bandits use it,
+  `SettlementPartyComponent.cs:314`).
+- **No trade.** "Merchant" is just the Tavern's worker class
+  (`SettlementClassComponent.cs:611-614`). Nothing moves goods between settlements; there
+  are no caravans or trade routes.
 
 **What's NEW:**
 1. **Settlement progression [L]:** `Outpost -> Village -> Town -> City` driven by
    population + buildings-in-use, with demotion when they collapse (hysteresis so one bad
-   week doesn't flip it). Capital is defined in TruePlanet.
-2. **Food economy & famine [M to L]:** add **hunters** (the game lacks them), tie food
-   supply -> the existing hunger need -> (Phase 2) starvation -> **famine, unrest, political
-   unrest** events. Sabotaging a food source becomes a real lever for the player.
-3. **Traders & messengers [L]:** caravans run between settlements; carry goods *and*
-   facts (Phase 3). No trade between factions at war (Phase 6). This is the seed of the
-   "TruePlanet kingdoms" economy.
+   week doesn't flip it). Capital is defined in TruePlanet. Implement the tier as mod state
+   that scales the two existing caps (postfix the `maxDwellings`/`maxFacilities` getters, or
+   set them through reflection on tier change), so the game's own planner builds the town
+   out. No new `SETTLEMENT_TYPE`: it is saved and drives culture-specific facility weights.
+2. **Food economy & famine [M to L]:** add a settlement food-shortage signal (food on hand
+   vs residents, from the existing pile totals), then shortage -> the existing hunger need
+   -> (Phase 2) starvation -> **famine, unrest, political unrest** events. Food-producing
+   hunters are optional (Butchers already turn carcasses into food). Sabotaging a food
+   source becomes a real lever for the player.
+3. **Traders & messengers [L]:** entirely new. Caravans run between settlements, moving
+   piles and carrying facts (Phase 3). No trade between factions at war (Phase 6). This is
+   the seed of the "TruePlanet kingdoms" economy.
 
 ---
 
@@ -279,13 +348,13 @@ TruePlanet depends on Ruinarch+ Phases 3 to 6 being in place to feel alive; it s
 
 ## 9. Open recon before committing to a phase
 
-- **Phase 3:** map the existing awareness / investigation / rumor system (do villagers
-  already have any "known info" model?). Decides whether fog-of-war is an *extension* or a
-  *from-scratch* build.
+- **Phase 3:** *done* (see section 4). Villagers remember deeds, not places; portal
+  knowledge is one faction-wide flag and the known-structure list is never read. Fog of war
+  is an *extension*: a known-locations ledger plus retargeted counterattack and rescue.
 - **Phase 2 portal bug & released-prisoner:** one live repro each to confirm the exact
   branch/tint before patching.
-- **Phase 5 settlement tiers:** confirm nothing in `NPCSettlement` already tracks a
-  soft "size" to lean on.
+- **Phase 5 settlement tiers:** *done* (see section 6). Nothing tracks a soft size;
+  `maxDwellings`/`maxFacilities` are the two levers the build planner already obeys.
 
 ---
 
