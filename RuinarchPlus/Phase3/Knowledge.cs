@@ -25,7 +25,8 @@ namespace RuinarchPlus.Phase3
 	/// - a village that borders the player's land learns what stands next door.
 	/// Counterattacks go to the nearest structure the faction knows and attack only known
 	/// structures; the portal is a target once someone has seen it. When nothing they know
-	/// of is left standing, the party considers the job done and goes home.
+	/// of is left standing, the party considers the job done and goes home. Rescues and
+	/// bounty hunts into a player building ask the same ledger (KnowledgeTargets.cs).
 	///
 	/// The ledger is stored inside the player's save (Ruinarch.ModContent's ModSave). A
 	/// faction that is aware but knows nothing (a save made before this feature) keeps the
@@ -70,6 +71,17 @@ namespace RuinarchPlus.Phase3
 		internal static bool KnowsAnything(Faction faction)
 		{
 			return faction != null && Known.TryGetValue(faction, out HashSet<LocationStructure> set) && set.Count > 0;
+		}
+
+		/// <summary>
+		/// Stands in for the game's faction-wide <c>isAwareOfPlayer</c> wherever it decides
+		/// about one particular building: the faction must know that building. A faction that
+		/// is aware but knows nothing (a save made before this feature), or the feature off,
+		/// keeps the vanilla answer.
+		/// </summary>
+		internal static bool KnowsOf(Faction faction, LocationStructure structure)
+		{
+			return faction != null && faction.isAwareOfPlayer && (!Enabled || !KnowsAnything(faction) || Knows(faction, structure));
 		}
 
 		internal static void Forget(Faction faction)
