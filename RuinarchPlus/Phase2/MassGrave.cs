@@ -87,6 +87,12 @@ namespace Inner_Maps.Location_Structures
 			return true;
 		}
 
+		public override void SetStructureObject(LocationStructureObject structureObj)
+		{
+			base.SetStructureObject(structureObj);
+			global::RuinarchPlus.Phase2.MassGraveLook.Refresh(this);
+		}
+
 		public override void OnBuiltNewStructure()
 		{
 			base.OnBuiltNewStructure();
@@ -98,6 +104,7 @@ namespace Inner_Maps.Location_Structures
 		protected override void AfterStructureDestruction(Character p_responsibleCharacter = null)
 		{
 			Active.Remove(this);
+			global::RuinarchPlus.Phase2.MassGraveLook.Strip(structureObj);
 			_waitingHours.Clear();
 			base.AfterStructureDestruction(p_responsibleCharacter);
 		}
@@ -117,6 +124,7 @@ namespace Inner_Maps.Location_Structures
 		{
 			bodyCount++;
 			HauledTotal++;
+			global::RuinarchPlus.Phase2.MassGraveLook.Refresh(this);
 			if (corpse != null)
 			{
 				_waitingHours.Remove(corpse);
@@ -297,6 +305,7 @@ namespace Inner_Maps.Location_Structures
 			_waitingHours.Remove(corpse);
 			bodyCount++;
 			AbsorbedTotal++;
+			global::RuinarchPlus.Phase2.MassGraveLook.Refresh(this);
 			global::RuinarchPlus.RuinarchPlus.Log?.Info($"Mass Grave: Absorbed un-hauled {corpse.name} into the pit (bodyCount={bodyCount}).");
 		}
 	}
