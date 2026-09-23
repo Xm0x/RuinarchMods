@@ -18,7 +18,9 @@ namespace Inner_Maps.Location_Structures
 	///
 	/// Villagers do the work: the burial reroute (MassGraveBurial) turns every corpse in the
 	/// settlement - residents, strangers and creatures - into a normal BURY job that carries
-	/// the body here. Hourly, the pit re-issues those jobs for any corpse still lying around,
+	/// the body here; creature carcasses are also fetched from the ring of map areas around
+	/// the village. A body laid in the pit leaves no tombstone: it is gone, like a body that
+	/// has fully decomposed, and the pit only keeps the count. Hourly, the pit re-issues those jobs for any corpse still lying around,
 	/// and only absorbs a nearby corpse directly when nobody has hauled it for
 	/// <c>massGraveFallbackHours</c> (e.g. the whole village is dead).
 	/// </summary>
@@ -128,6 +130,7 @@ namespace Inner_Maps.Location_Structures
 			if (corpse != null)
 			{
 				_waitingHours.Remove(corpse);
+				RemoveTombstone(corpse.grave);
 			}
 			global::RuinarchPlus.RuinarchPlus.Log?.Info($"Mass Grave: {corpse?.name ?? "a body"} laid in the pit by a villager (bodyCount={bodyCount}).");
 		}
@@ -141,6 +144,7 @@ namespace Inner_Maps.Location_Structures
 				{
 					return;
 				}
+				StripCemeteryPropsOnce();
 				IssueBuryJobs();
 				AbsorbAbandonedCorpses();
 			}
@@ -149,42 +153,124 @@ namespace Inner_Maps.Location_Structures
 			}
 		}
 
-		// Mirror of the game's private SettlementJobTriggerComponent.TryCreateBuryJobs: ask
-		// every dead character in the settlement to request burial. The reroute turns each
-		// request into a BURY job that targets this pit.
-		private void IssueBuryJobs()
+		// A mass burial is anonymous: no gravestone. Removing the tombstone without a corpse
+		// respawn clears the character's grave and marker for good (Tombstone.OnDestroyPOI),
+		// exactly what a fully decomposed body gets.
+		private void RemoveTombstone(Tombstone tombstone)
 		{
-			if (!(settlementLocation is NPCSettlement settlement) || settlement.areas == null)
+			if (tombstone == null)
 			{
 				return;
 			}
-			List<Character> dead = RuinarchListPool<Character>.Claim();
-			for (int i = 0; i < settlement.areas.Count; i++)
+			tombstone.SetRespawnCorpseOnDestroy(false);
+			LocationStructure at = tombstone.gridTileLocation?.structure;
+			(at ?? this).RemovePOI(tombstone);
+		}
+
+		private bool _propsStripped;
+
+		// Pits built before props were skipped (MassGrave_NoCemeteryProps) still carry the
+		// Cemetery's pre-placed objects, restored from the save. Remove them once per session.
+		// Tombstones are never pre-placed: they are the graves of the bodies laid here.
+		private void StripCemeteryPropsOnce()
+		{
+			if (_propsStripped)
 			{
-				List<Character> here = settlement.areas[i].locationCharacterTracker?.charactersAtLocation;
-				if (here == null)
+				return;
+			}
+			_propsStripped = true;
+			int removed = 0;
+			foreach (LocationGridTile tile in tiles)
+			{
+				TileObject obj = tile.tileObjectComponent.objHere;
+				if (obj is Tombstone oldGrave)
 				{
-					continue;
+					// Laid here before burials stopped leaving gravestones.
+					RemoveTombstone(oldGrave);
+					removed++;
 				}
-				for (int j = 0; j < here.Count; j++)
+				else if (obj != null && obj.isPreplaced && !(obj is Tombstone) && obj.tileObjectType != TILE_OBJECT_TYPE.STRUCTURE_TILE_OBJECT && RemovePOI(obj))
 				{
-					if (here[j] != null && here[j].isDead)
-					{
-						dead.Add(here[j]);
-					}
+					removed++;
+				}
+			}
+			if (removed > 0)
+			{
+				global::RuinarchPlus.RuinarchPlus.Log?.Info($"Mass Grave in {settlementLocation?.name}: cleared {removed} leftover prop(s) and gravestone(s).");
+			}
+		}
+
+		// Mirror of the game's private SettlementJobTriggerComponent.TryCreateBuryJobs: ask
+		// every dead character in the settlement and its surroundings to request burial. The
+		// reroute turns each request into a BURY job that targets this pit. Reads the
+		// region-wide list: an area's own list only gains a character when its marker moves
+		// between areas, so a body that never moved there is missing from it.
+		private void IssueBuryJobs()
+		{
+			if (!(settlementLocation is NPCSettlement settlement) || settlement.areas == null || region?.charactersAtLocation == null)
+			{
+				return;
+			}
+			HashSet<Area> catchment = new HashSet<Area>(CatchmentAreas(settlement));
+			List<Character> dead = RuinarchListPool<Character>.Claim();
+			List<Character> all = region.charactersAtLocation;
+			for (int j = 0; j < all.Count; j++)
+			{
+				Character c = all[j];
+				if (c != null && c.isDead && c.hasMarker && c.gridTileLocation != null && catchment.Contains(c.gridTileLocation.area))
+				{
+					dead.Add(c);
 				}
 			}
 			for (int i = 0; i < dead.Count; i++)
 			{
 				try
 				{
-					dead[i].jobComponent.TriggerBuryMe();
+					Character corpse = dead[i];
+					if (corpse.gridTileLocation != null && corpse.gridTileLocation.IsNextToOrPartOfSettlement(settlement))
+					{
+						// In the village: the game's own burial request, rerouted here.
+						corpse.jobComponent.TriggerBuryMe();
+					}
+					else if (!global::RuinarchPlus.Phase2.MassGraveBurial.HasProperGraveFor(settlement, corpse))
+					{
+						// A carcass or an outsider out in the surroundings: vanilla leaves these.
+						global::RuinarchPlus.Phase2.MassGraveBurial.QueuePitJob(settlement, corpse, this);
+					}
 				}
 				catch
 				{
 				}
 			}
 			RuinarchListPool<Character>.Release(dead);
+		}
+
+		/// <summary>The village's own areas plus the ring of areas around them.</summary>
+		internal static List<Area> CatchmentAreas(NPCSettlement settlement)
+		{
+			List<Area> areas = new List<Area>(settlement.areas);
+			for (int i = 0; i < settlement.areas.Count; i++)
+			{
+				List<Area> neighbours = settlement.areas[i].neighbourComponent?.neighbours;
+				if (neighbours == null)
+				{
+					continue;
+				}
+				for (int j = 0; j < neighbours.Count; j++)
+				{
+					if (!areas.Contains(neighbours[j]))
+					{
+						areas.Add(neighbours[j]);
+					}
+				}
+			}
+			return areas;
+		}
+
+		/// <summary>Is a body lying where this village's pit collects from?</summary>
+		internal static bool InCatchment(NPCSettlement settlement, LocationGridTile tile)
+		{
+			return tile != null && (tile.IsNextToOrPartOfSettlement(settlement) || CatchmentAreas(settlement).Contains(tile.area));
 		}
 
 		// Fallback only: absorb corpses near the pit that no villager has hauled for
@@ -274,30 +360,19 @@ namespace Inner_Maps.Location_Structures
 			{
 				return false;
 			}
-			// A settlement with its own Cemetery buries its people individually.
-			if (c.race.IsSapient() && c.gridTileLocation.IsNextToOrPartOfSettlement(out BaseSettlement settlement)
-				&& settlement is NPCSettlement npcSettlement && npcSettlement.HasStructure(STRUCTURE_TYPE.CEMETERY))
+			// A settlement with its own Cemetery buries its own people individually.
+			if (c.gridTileLocation.IsNextToOrPartOfSettlement(out BaseSettlement settlement)
+				&& settlement is NPCSettlement npcSettlement && global::RuinarchPlus.Phase2.MassGraveBurial.HasProperGraveFor(npcSettlement, c))
 			{
 				return false;
 			}
 			return c.gridTileLocation.GetDistanceTo(pitReference) <= FallbackRadius;
 		}
 
-		// Mirrors the game's own BuryCharacter.AfterBurySuccess disposal: sapient dead get a
-		// tombstone inside the pit; animals/monsters are cleared. The litter leaves the map.
+		// The body goes into the pit and leaves the map; like a villager burial, no gravestone.
 		private void Absorb(Character corpse)
 		{
-			if (corpse.race.IsSapient())
-			{
-				LocationGridTile pitTile = GetBurialTile();
-				if (pitTile != null)
-				{
-					Tombstone tombstone = new Tombstone();
-					tombstone.SetCharacter(corpse);
-					AddPOI(tombstone, pitTile);
-					corpse.SetGrave(tombstone);
-				}
-			}
+			corpse.ForceCancelAllJobsTargetingThisCharacter(JOB_TYPE.BURY);
 			if (corpse.hasMarker)
 			{
 				corpse.DestroyMarker();

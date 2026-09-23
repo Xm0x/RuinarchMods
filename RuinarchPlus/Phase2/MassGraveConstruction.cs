@@ -134,10 +134,16 @@ namespace RuinarchPlus.Phase2
 
 		/// <summary>Build a Mass Grave instantly (no villagers, no materials) at a spot the
 		/// game's own placement approves, using the real prefab so it renders like any built
-		/// structure. For the debug menu and the automated test harness; returns the new
-		/// MassGrave or null if the settlement has no valid spot.</summary>
+		/// structure. For the debug menu and the automated test harness. A village has at most
+		/// one Mass Grave: if it already has one (or one is being built), that one is returned
+		/// and nothing new is placed. Returns null if the settlement has no valid spot.</summary>
 		public static MassGrave InstantBuild(NPCSettlement settlement)
 		{
+			MassGrave existing = MassGrave.FindFor(settlement);
+			if (existing != null || HasPendingFor(settlement))
+			{
+				return existing;
+			}
 			StructureSetting cemetery = settlement.owner.factionType.CreateStructureSettingForStructure(STRUCTURE_TYPE.CEMETERY, settlement);
 			StructureSetting setting = new StructureSetting(MassGraveType, cemetery.hasValue ? cemetery.resource : RESOURCE.WOOD);
 			if (!LandmarkManager.Instance.CanPlaceStructureBlueprint(settlement.owner.factionType.type, settlement, setting,
@@ -274,6 +280,60 @@ namespace RuinarchPlus.Phase2
 				MassGraveConstruction.SwapArmed = false;
 				structureType = MassGraveConstruction.MassGraveType;
 				RuinarchPlus.Log?.Info($"A Mass Grave was built in {settlement?.name ?? "a village"}.");
+			}
+		}
+	}
+
+	// The builder's action text ("... is building X") names the blueprint prefab's type,
+	// which for our borrowed Cemetery prefab is CEMETERY. While BuildBlueprint writes that
+	// text for a Mass Grave blueprint tile, the name lookup gets the Mass Grave type instead
+	// (the content framework names it). Same shape as the build swap: no prefab is mutated.
+	internal static class MassGrave_BuildLabel
+	{
+		[ThreadStatic]
+		internal static bool Armed;
+
+		internal static void Arm(ActualGoapNode goapNode)
+		{
+			Armed = goapNode?.poiTarget is GenericTileObject tile && MassGraveConstruction.IsMassGraveBlueprint(tile);
+		}
+	}
+
+	[HarmonyPatch(typeof(BuildBlueprint), nameof(BuildBlueprint.AddFillersToLog))]
+	internal static class MassGrave_BuildLabel_Fillers
+	{
+		private static void Prefix(ActualGoapNode goapNode) => MassGrave_BuildLabel.Arm(goapNode);
+
+		private static Exception Finalizer(Exception __exception)
+		{
+			MassGrave_BuildLabel.Armed = false;
+			return __exception;
+		}
+	}
+
+	[HarmonyPatch(typeof(BuildBlueprint), nameof(BuildBlueprint.PreBuildSuccess))]
+	internal static class MassGrave_BuildLabel_Start
+	{
+		private static void Prefix(ActualGoapNode goapNode) => MassGrave_BuildLabel.Arm(goapNode);
+
+		private static Exception Finalizer(Exception __exception)
+		{
+			MassGrave_BuildLabel.Armed = false;
+			return __exception;
+		}
+	}
+
+	// Runs before the content framework's LocalizedStructureName prefix, which then names
+	// the Mass Grave type.
+	[HarmonyPatch(typeof(Extensions), nameof(Extensions.LocalizedStructureName), new Type[] { typeof(STRUCTURE_TYPE) })]
+	internal static class MassGrave_BuildLabelName
+	{
+		[HarmonyPriority(Priority.First)]
+		private static void Prefix(ref STRUCTURE_TYPE structureType)
+		{
+			if (MassGrave_BuildLabel.Armed && structureType == STRUCTURE_TYPE.CEMETERY)
+			{
+				structureType = MassGraveConstruction.MassGraveType;
 			}
 		}
 	}

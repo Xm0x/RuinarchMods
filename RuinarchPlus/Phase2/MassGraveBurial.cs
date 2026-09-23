@@ -35,11 +35,38 @@ namespace RuinarchPlus.Phase2
 			return data != null && data.Length > 0 ? data[0]?.obj as MassGrave : null;
 		}
 
-		/// <summary>Would a vanilla graveyard (Cemetery / Cult Temple) take this corpse?</summary>
+		internal static bool HasGraveyard(NPCSettlement settlement)
+		{
+			return settlement.HasStructure(STRUCTURE_TYPE.CEMETERY) || settlement.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE);
+		}
+
+		/// <summary>Did this person live in <paramref name="settlement"/> (at death, or still)?</summary>
+		internal static bool IsResidentOf(Character corpse, NPCSettlement settlement)
+		{
+			return corpse.homeSettlement == settlement || corpse.previousCharacterDataComponent?.homeSettlementOnDeath == settlement;
+		}
+
+		/// <summary>Does the village's own graveyard (Cemetery / Cult Temple) take this corpse?
+		/// Only its own people: outsiders, monsters and creatures go to the Mass Grave.</summary>
 		internal static bool HasProperGraveFor(NPCSettlement settlement, Character corpse)
 		{
-			return corpse.race.IsSapient()
-				&& (settlement.HasStructure(STRUCTURE_TYPE.CEMETERY) || settlement.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE));
+			return corpse.race.IsSapient() && IsResidentOf(corpse, settlement) && HasGraveyard(settlement);
+		}
+
+		/// <summary>Queue a settlement BURY job that carries <paramref name="corpse"/> to the pit
+		/// (no-op if excluded, already queued, or a real graveyard should take it).</summary>
+		internal static void QueuePitJob(NPCSettlement settlement, Character corpse, MassGrave pit)
+		{
+			if (pit == null || corpse == null || HasProperGraveFor(settlement, corpse)
+				|| IsExcluded(corpse.jobComponent, corpse, settlement) || settlement.HasJob(JOB_TYPE.BURY, corpse))
+			{
+				return;
+			}
+			GoapPlanJob job = JobManager.Instance.CreateNewGoapPlanJob(JOB_TYPE.BURY, INTERACTION_TYPE.BURY_CHARACTER, corpse, settlement);
+			job.SetCanTakeThisJobChecker(JobManager.Can_Take_Bury_Job);
+			job.AddOtherData(INTERACTION_TYPE.BURY_CHARACTER, new object[1] { pit });
+			job.SetStillApplicableChecker(JobManager.Bury_Settlement_Applicability);
+			settlement.AddToAvailableJobs(job);
 		}
 
 		/// <summary>Corpses a Mass Grave must never take (mirrors vanilla's exclusions).</summary>
@@ -73,12 +100,17 @@ namespace RuinarchPlus.Phase2
 				{
 					return true;
 				}
-				// A real graveyard takes its sapient dead individually: vanilla path.
+				// The village's own people go to its Cemetery / Cult Temple: vanilla path.
 				if (MassGraveBurial.HasProperGraveFor(npcSettlement, corpse))
 				{
 					return true;
 				}
 				MassGrave pit = MassGrave.FindFor(npcSettlement);
+				if (pit == null && corpse.race.IsSapient() && MassGraveBurial.HasGraveyard(npcSettlement))
+				{
+					// An outsider, but no pit to put them in: the Cemetery takes them (vanilla).
+					return true;
+				}
 				if (pit == null)
 				{
 					// No graveyard and no pit. Vanilla would scatter a tombstone into the
@@ -91,11 +123,7 @@ namespace RuinarchPlus.Phase2
 				{
 					return false;
 				}
-				GoapPlanJob job = JobManager.Instance.CreateNewGoapPlanJob(JOB_TYPE.BURY, INTERACTION_TYPE.BURY_CHARACTER, corpse, npcSettlement);
-				job.SetCanTakeThisJobChecker(JobManager.Can_Take_Bury_Job);
-				job.AddOtherData(INTERACTION_TYPE.BURY_CHARACTER, new object[1] { pit });
-				job.SetStillApplicableChecker(JobManager.Bury_Settlement_Applicability);
-				npcSettlement.AddToAvailableJobs(job);
+				MassGraveBurial.QueuePitJob(npcSettlement, corpse, pit);
 				return false;
 			}
 			catch (Exception e)
@@ -110,7 +138,8 @@ namespace RuinarchPlus.Phase2
 	// (CharacterTrait reaction) queues a personal BURY job targeting their home's Cult Temple
 	// or Cemetery, else the wilderness. When the home village has neither, carry the body to
 	// the village's Mass Grave instead, or leave it lying (it rots) if there is no pit yet.
-	// Vagrants and villages with a real graveyard keep vanilla behaviour.
+	// With a real graveyard at home, the village's own dead go there (vanilla); an outsider
+	// goes to the Mass Grave if there is one. Vagrants keep vanilla behaviour.
 	[HarmonyPatch(typeof(CharacterJobTriggerComponent), nameof(CharacterJobTriggerComponent.TriggerPersonalOutsideVillageBuryJob))]
 	internal static class MassGrave_PersonalBury
 	{
@@ -123,8 +152,12 @@ namespace RuinarchPlus.Phase2
 					return true;
 				}
 				Character owner = __instance.owner;
-				if (!(owner?.homeSettlement is NPCSettlement home)
-					|| home.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE) || home.HasStructure(STRUCTURE_TYPE.CEMETERY))
+				if (!(owner?.homeSettlement is NPCSettlement home) || targetCharacter == null)
+				{
+					return true;
+				}
+				if (MassGraveBurial.HasGraveyard(home)
+					&& (MassGraveBurial.IsResidentOf(targetCharacter, home) || MassGrave.FindFor(home) == null))
 				{
 					return true;
 				}
@@ -176,8 +209,7 @@ namespace RuinarchPlus.Phase2
 				__result = !pit.hasBeenDestroyed
 					&& corpse != null && settlement != null
 					&& !MassGraveBurial.IsExcluded(corpse.jobComponent, corpse, settlement)
-					&& corpse.gridTileLocation != null
-					&& corpse.gridTileLocation.IsNextToOrPartOfSettlement(settlement);
+					&& MassGrave.InCatchment(settlement, corpse.gridTileLocation);
 				return false;
 			}
 			catch
