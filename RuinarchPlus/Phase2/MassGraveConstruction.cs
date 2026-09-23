@@ -13,8 +13,10 @@ namespace RuinarchPlus.Phase2
 	/// Villagers BUILD the Mass Grave themselves, through the game's own construction
 	/// pipeline (config: <c>massGraveBurialEnabled</c>).
 	///
-	/// Hourly, a village that has a corpse lying in it and no Cemetery, Cult Temple, Mass
-	/// Grave or pending Mass Grave blueprint queues a vanilla <c>PLACE_BLUEPRINT</c> job for a
+	/// Hourly, a village with a body lying in it that nothing else will take (any body when
+	/// it has no Cemetery or Cult Temple; a creature's carcass even when it has one, since
+	/// the game never buries animals there), and no Mass Grave or pending Mass Grave
+	/// blueprint, queues a vanilla <c>PLACE_BLUEPRINT</c> job for a
 	/// Mass Grave. From there it is the stock flow: a villager places the blueprint,
 	/// villagers haul the wood/stone its <c>craftCost</c> asks for, and a builder finishes it
 	/// (<c>BuildBlueprint</c>). Placement uses <c>LandmarkManager.CanPlaceStructureBlueprint</c>
@@ -72,8 +74,7 @@ namespace RuinarchPlus.Phase2
 			{
 				return false;
 			}
-			if (settlement.HasStructure(STRUCTURE_TYPE.CEMETERY) || settlement.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE)
-				|| MassGrave.FindFor(settlement) != null || HasPendingFor(settlement))
+			if (MassGrave.FindFor(settlement) != null || HasPendingFor(settlement))
 			{
 				return false;
 			}
@@ -85,22 +86,26 @@ namespace RuinarchPlus.Phase2
 			return HasLooseCorpse(settlement);
 		}
 
+		// A body in the village that only a Mass Grave would take. Scans the region's full
+		// list: an area's own list only gains a character that walked in from another area,
+		// so a creature killed where it spawned is missing from it.
 		private static bool HasLooseCorpse(NPCSettlement settlement)
 		{
-			for (int i = 0; i < settlement.areas.Count; i++)
+			List<Character> all = settlement.region?.charactersAtLocation;
+			if (all == null)
 			{
-				List<Character> here = settlement.areas[i].locationCharacterTracker?.charactersAtLocation;
-				if (here == null)
+				return false;
+			}
+			bool graveyard = MassGraveBurial.HasGraveyard(settlement);
+			for (int j = 0; j < all.Count; j++)
+			{
+				Character c = all[j];
+				if (c != null && c.isDead && c.hasMarker && c.gridTileLocation != null && settlement.areas.Contains(c.gridTileLocation.area)
+					&& !MassGraveBurial.IsExcluded(c.jobComponent, c, settlement)
+					// A Cemetery or Cult Temple takes sapient dead (outsiders too, while there is no pit).
+					&& (!graveyard || !c.race.IsSapient()))
 				{
-					continue;
-				}
-				for (int j = 0; j < here.Count; j++)
-				{
-					Character c = here[j];
-					if (c != null && c.isDead && c.hasMarker && c.grave == null && c.minion == null)
-					{
-						return true;
-					}
+					return true;
 				}
 			}
 			return false;
@@ -128,7 +133,7 @@ namespace RuinarchPlus.Phase2
 			job.SetDoNotRecalculate(state: true);
 			job.SetCanTakeThisJobChecker("CanTakePlaceBlueprintJob");
 			settlement.AddToAvailableJobs(job);
-			RuinarchPlus.Log?.Info($"{settlement.name} has unburied dead and no graveyard: queued a Mass Grave blueprint ({prefabName}).");
+			RuinarchPlus.Log?.Info($"{settlement.name} has dead nobody will bury: queued a Mass Grave blueprint ({prefabName}).");
 			return true;
 		}
 
