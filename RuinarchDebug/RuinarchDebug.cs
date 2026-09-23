@@ -25,6 +25,8 @@ namespace RuinarchDebug
 			}
 			Log.Info($"{context.Info.name} v{context.Info.version} loaded - click the 'RUIN DBG' button (top-left) in a world.");
 			DebugMenu.Bootstrap();
+			// Unattended test run, only when Mods/RuinarchDebug/autotest.flag exists.
+			AutoTest.TryStart(context.ModDirectory);
 		}
 	}
 }

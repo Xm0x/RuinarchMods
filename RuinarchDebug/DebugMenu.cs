@@ -275,17 +275,27 @@ namespace RuinarchDebug
 			RuinarchDebug.Log?.Info($"Placed {type} on {assigned} tile(s) in a village.");
 		}
 
-		// Places the mod's registered non-demonic Mass Grave (via its framework-allocated
-		// virtual STRUCTURE_TYPE). Requires RuinarchPlus (which registers it) to be enabled.
+		// Instantly builds a real, visible Mass Grave (Cemetery prefab, proper footprint) in
+		// the selected villager's settlement, at a spot the game's own placement approves.
+		// Requires RuinarchPlus (which registers the Mass Grave) to be enabled.
 		private void PlaceMassGrave()
 		{
-			var t = Ruinarch.ModContent.ModContent.StructureTypeFor("ruinarch.plus.mass_grave");
-			if ((int)t == 0)
+			if (!PlusBridge.Available)
 			{
-				RuinarchDebug.Log?.Info("Mass Grave not registered - is RuinarchPlus enabled?");
+				RuinarchDebug.Log?.Info("Mass Grave not available - is RuinarchPlus enabled?");
 				return;
 			}
-			PlaceBuilding(t);
+			var tile = SpawnTile(Selected());
+			var settlement = tile?.area?.GetFirstNPCSettlementOnArea();
+			if (settlement == null)
+			{
+				RuinarchDebug.Log?.Info("Place Mass Grave: select a villager inside a village first.");
+				return;
+			}
+			var pit = PlusBridge.InstantBuild(settlement);
+			RuinarchDebug.Log?.Info(pit != null
+				? $"Built a Mass Grave in {settlement.name}."
+				: $"No valid spot for a Mass Grave in {settlement.name}.");
 		}
 
 		private void SpawnVillager()
