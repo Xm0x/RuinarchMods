@@ -292,10 +292,11 @@ namespace RuinarchDebug
 				RuinarchDebug.Log?.Info("Place Mass Grave: select a villager inside a village first.");
 				return;
 			}
+			bool had = PlusBridge.FindFor(settlement) != null;
 			var pit = PlusBridge.InstantBuild(settlement);
-			RuinarchDebug.Log?.Info(pit != null
-				? $"Built a Mass Grave in {settlement.name}."
-				: $"No valid spot for a Mass Grave in {settlement.name}.");
+			RuinarchDebug.Log?.Info(pit == null
+				? $"No valid spot for a Mass Grave in {settlement.name}."
+				: had ? $"{settlement.name} already has a Mass Grave (one per village)." : $"Built a Mass Grave in {settlement.name}.");
 		}
 
 		private void SpawnVillager()

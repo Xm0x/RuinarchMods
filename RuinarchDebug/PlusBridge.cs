@@ -79,6 +79,40 @@ namespace RuinarchDebug
 			return v is bool b && b;
 		}
 
+		/// <summary>Ruinarch+ migration factor (0..1) and its reason; (-1, null) if unavailable.</summary>
+		internal static float MigrationMultiplier(NPCSettlement settlement, out string reason)
+		{
+			object[] args = { settlement, null };
+			object v = Plus?.GetType("RuinarchPlus.Phase4.MigrationHealth")?.GetMethod("Multiplier", Any)?.Invoke(null, args);
+			reason = args[1] as string;
+			return v is float f ? f : -1f;
+		}
+
+		/// <summary>Set a Ruinarch+ config field at runtime (tests compare against vanilla).</summary>
+		internal static void SetConfig(string field, object value)
+		{
+			Type t = Plus?.GetType("RuinarchPlus.RuinarchPlusConfig");
+			object current = t?.GetProperty("Current", Any)?.GetValue(null);
+			t?.GetField(field, Any)?.SetValue(current, value);
+		}
+
+		private static Type KnowledgeType => Plus?.GetType("RuinarchPlus.Phase3.Knowledge");
+
+		internal static void Learn(Faction faction, LocationStructure structure)
+		{
+			KnowledgeType?.GetMethod("Learn", Any)?.Invoke(null, new object[] { faction, structure, true });
+		}
+
+		internal static bool Knows(Faction faction, LocationStructure structure)
+		{
+			return KnowledgeType?.GetMethod("Knows", Any)?.Invoke(null, new object[] { faction, structure }) is bool b && b;
+		}
+
+		internal static void Forget(Faction faction)
+		{
+			KnowledgeType?.GetMethod("Forget", Any)?.Invoke(null, new object[] { faction });
+		}
+
 		private static int GetStaticInt(Type t, string property)
 		{
 			object v = t?.GetProperty(property, Any)?.GetValue(null);
