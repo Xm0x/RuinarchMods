@@ -1,4 +1,5 @@
 # RuinarchMods
+DISCLAIMER: For %100 honesty, help of AI was used in this project.
 
 Gameplay mods for [Ruinarch](https://store.steampowered.com/app/909320/Ruinarch/),
 loaded by the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) and built
