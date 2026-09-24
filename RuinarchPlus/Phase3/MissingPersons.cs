@@ -302,6 +302,20 @@ namespace RuinarchPlus.Phase3
 			// heading for where they were just seen.
 		}
 
+		/// <summary>
+		/// <paramref name="burier"/> buried <paramref name="corpse"/>. One of their own people
+		/// burying them is finding them dead, wherever the grave is: a Mass Grave leaves no
+		/// gravestone to be seen later.
+		/// </summary>
+		internal static void Buried(Character corpse, Character burier)
+		{
+			if (!Enabled || corpse == null || burier == null || !Records.TryGetValue(corpse, out Record r) || r.Village?.owner == null || burier.faction != r.Village.owner)
+			{
+				return;
+			}
+			Seen(r, burier.gridTileLocation ?? r.LastSeenTile, Now);
+		}
+
 		/// <summary>One of their people sees <paramref name="c"/> at <paramref name="at"/> (a witness posting a rescue; the test harness).</summary>
 		internal static void Saw(Character c, LocationGridTile at)
 		{
@@ -540,7 +554,8 @@ namespace RuinarchPlus.Phase3
 						State = (MissingState)int.Parse(f[5]),
 						FailedSearches = int.Parse(f[6]),
 						NextSearchTick = long.Parse(f[7]),
-						Search = string.IsNullOrEmpty(f[8]) ? null : DatabaseManager.Instance.partyQuestDatabase.GetPartyQuestByPersistentID(f[8]) as RescuePartyQuest
+						// The game's lookup throws for a quest that is gone (ended before the save).
+						Search = !string.IsNullOrEmpty(f[8]) && DatabaseManager.Instance.partyQuestDatabase.allPartyQuests.TryGetValue(f[8], out PartyQuest q) ? q as RescuePartyQuest : null
 					};
 					if (r.State == MissingState.Searching && r.Search == null)
 					{
@@ -583,6 +598,22 @@ namespace RuinarchPlus.Phase3
 			catch (Exception e)
 			{
 				RuinarchPlus.Log?.Warning("Missing persons hourly check failed: " + e.Message);
+			}
+		}
+	}
+
+	[HarmonyPatch(typeof(BuryCharacter), nameof(BuryCharacter.AfterBurySuccess))]
+	internal static class Missing_Buried
+	{
+		private static void Postfix(ActualGoapNode goapNode)
+		{
+			try
+			{
+				MissingPersons.Buried(goapNode?.poiTarget as Character, goapNode?.actor);
+			}
+			catch (Exception e)
+			{
+				RuinarchPlus.Log?.Warning("Missing persons (burial) failed: " + e.Message);
 			}
 		}
 	}

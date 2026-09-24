@@ -21,26 +21,28 @@ namespace RuinarchPlus.Phase3
 
 		/// <summary>
 		/// A party member looking at their target inside a player building now knows that
-		/// building. True if the faction may act on it.
+		/// building (their party acts on it; their faction learns it once they are home).
+		/// True if the party may act on it.
 		/// </summary>
 		internal static bool MayActOn(Character member, Character target, LocationStructure held)
 		{
 			Faction f = member.faction;
 			if (f != null && f.isAwareOfPlayer && member.hasMarker && target.hasMarker && member.marker.IsPOIInVision(target))
 			{
-				Knowledge.Learn(f, held);
+				Knowledge.Witness(member, held);
 			}
-			return Knowledge.KnowsOf(f, held);
+			return Knowledge.KnowsOf(f, held) || Knowledge.PartySightings(member).Contains(held);
 		}
 	}
 
 	// A captive held in a player building: an aware faction sends a Demon Rescue straight to
-	// that building (PartyQuestBoard.CreateRescuePartyQuest). Unless it knows the building,
-	// it does what an unaware faction does: villagers go looking for the demonic area.
+	// that building (PartyQuestBoard.CreateRescuePartyQuest). Unless it knows the building, no
+	// rescue: the captive is a missing person, searched for where they were last seen
+	// (MissingPersons), and a party that sees them inside the building learns it.
 	[HarmonyPatch(typeof(PartyQuestBoard), nameof(PartyQuestBoard.CreateRescuePartyQuest))]
 	internal static class Knowledge_RescueTarget
 	{
-		private static bool Prefix(PartyQuestBoard __instance, BaseSettlement madeInLocation, Character targetCharacter)
+		private static bool Prefix(PartyQuestBoard __instance, Character targetCharacter)
 		{
 			try
 			{
@@ -52,13 +54,36 @@ namespace RuinarchPlus.Phase3
 				{
 					return true;
 				}
-				(madeInLocation as NPCSettlement)?.settlementJobTriggerComponent.CreateSearchForDemonicAreaJob();
 				return false;
 			}
 			catch (Exception e)
 			{
 				RuinarchPlus.Log?.Warning("Knowledge (rescue target) failed, using vanilla: " + e.Message);
 				return true;
+			}
+		}
+	}
+
+	// The game's "search for the demonic area" (an unaware faction's answer to a captive held
+	// by the demons) is no search: the job's target is the Portal itself
+	// (SettlementJobTriggerComponent.CreateSearchForDemonicAreaJob), so the searcher walks
+	// straight to it. With the fog of war on it is never created; the captive is searched for
+	// as a missing person instead. Jobs already on a village's board (older saves) are left
+	// untaken.
+	[HarmonyPatch(typeof(SettlementJobTriggerComponent), nameof(SettlementJobTriggerComponent.CreateSearchForDemonicAreaJob))]
+	internal static class Knowledge_NoHomingSearch
+	{
+		private static bool Prefix() => !Knowledge.Enabled;
+	}
+
+	[HarmonyPatch(typeof(Goap.Job_Checkers.CanTakeSearchForDemonicArea), nameof(Goap.Job_Checkers.CanTakeSearchForDemonicArea.CanTakeJob))]
+	internal static class Knowledge_NoHomingSearchTaken
+	{
+		private static void Postfix(ref bool __result)
+		{
+			if (Knowledge.Enabled)
+			{
+				__result = false;
 			}
 		}
 	}

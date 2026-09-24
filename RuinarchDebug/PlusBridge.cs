@@ -127,6 +127,27 @@ namespace RuinarchDebug
 			return m == null ? (bool?)null : m.Invoke(null, new object[] { settlement }) is bool b && b;
 		}
 
+		private static Type HuntersType => Plus?.GetType("RuinarchPlus.Phase5.Hunters");
+		private static Type TradersType => Plus?.GetType("RuinarchPlus.Phase5.Traders");
+
+		/// <summary>Sends hunters from a hungry village now; how many went (-1 without Ruinarch+).</summary>
+		internal static int SendHunters(NPCSettlement village)
+		{
+			object v = HuntersType?.GetMethod("SendHunters", Any)?.Invoke(null, new object[] { village });
+			return v is int n ? n : -1;
+		}
+
+		internal static bool IsHunting(Character c)
+		{
+			return HuntersType?.GetMethod("IsHunting", Any)?.Invoke(null, new object[] { c }) is bool b && b;
+		}
+
+		/// <summary>Sends a trader with food from one village to another now; the trader, or null.</summary>
+		internal static Character SendTrader(NPCSettlement from, NPCSettlement to, int amount)
+		{
+			return TradersType?.GetMethod("Send", Any)?.Invoke(null, new object[] { from, to, amount }) as Character;
+		}
+
 		/// <summary>Decay stage name of an unburied corpse ("Fresh".."Skeletal"), or null if untracked.</summary>
 		internal static string DecayStage(Character corpse)
 		{
@@ -167,6 +188,12 @@ namespace RuinarchDebug
 		internal static bool Knows(Faction faction, LocationStructure structure)
 		{
 			return KnowledgeType?.GetMethod("Knows", Any)?.Invoke(null, new object[] { faction, structure }) is bool b && b;
+		}
+
+		/// <summary>True if <paramref name="c"/> saw the structure and has not yet brought the news home.</summary>
+		internal static bool Carries(Character c, LocationStructure structure)
+		{
+			return KnowledgeType?.GetMethod("Carries", Any)?.Invoke(null, new object[] { c, structure }) is bool b && b;
 		}
 
 		internal static void Forget(Faction faction)

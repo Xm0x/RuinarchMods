@@ -12,7 +12,7 @@ replaced or recompiled.
 
 | Mod | What it does |
 |---|---|
-| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, villages that search for their missing, migration that follows a village's fortunes, villages that grow into Towns and Cities around a Town Hall, and famine. Every feature can be switched off in `config.json`. |
+| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew that closes a village's borders, factions that only attack what they know about and news that travels on foot and by gossip, villages that search for their missing, migration that follows a village's fortunes, villages that grow into Towns and Cities around a Town Hall, famine and the unrest it brings, hunters and traders. Every feature can be switched off in `config.json`. |
 | **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
 
 ## Art

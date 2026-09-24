@@ -15,6 +15,9 @@ namespace RuinarchPlus
 	{
 		// Off by default: base game behaviour is unchanged until the player opts in.
 		public bool disableTutorial = false;
+		// Phase 1 exploit fixes (on by default; set false to keep the exploits): Sacrifice or
+		// Let It Go cast on a Kennel no longer takes a flying monster that is only passing over.
+		public bool closeExploits = true;
 
 		// Phase 2 - Death, Decay & Disease.
 		// Unburied corpses left in the open rot over time and eventually vanish,
@@ -33,11 +36,20 @@ namespace RuinarchPlus
 		// Settlement curfew: a ruler who answers a plague outbreak with Quarantine or Exile also
 		// orders residents home in their free time until the plague event ends.
 		public bool curfewEnabled = true;
+		// Closed borders: a village under curfew turns away visitors (free-time visits, visits
+		// to friends, traders). Raids, rescues and bounty hunts still come.
+		public bool closedBordersEnabled = true;
 
 		// Phase 3 - Knowledge & Fog of War.
-		// Factions only attack demonic structures they know about (reported, seen, or next
-		// door); counterattacks no longer march on a portal nobody has seen.
+		// Factions only attack demonic structures they know about. A villager who sees one
+		// carries the news home (killed on the way, it is lost); a village next door counts
+		// only once it knows something there. Counterattacks no longer march on a portal
+		// nobody has seen.
 		public bool knowledgeEnabled = true;
+		// Gossip: percent chance, per building, that a villager tells someone of another
+		// (non-hostile) faction about a demonic building they know of; kin always pass on news
+		// they carry. 0 turns gossip off.
+		public int gossipChance = 25;
 		// A village only knows where its people are if it has seen them. A resident none of
 		// their people has seen for missingAfterHours is reported missing (someone away at
 		// work told the village where they went and is not), and the village
@@ -72,6 +84,24 @@ namespace RuinarchPlus
 		public bool famineEnabled = true;
 		public int famineHours = 12;
 		public int famineLeaveChance = 25;
+		// Unrest: after unrestHours of famine the village is restless and thinks less of its
+		// ruler each day; after challengeHours the villager who thinks least of the ruler takes
+		// the rule of the village, and the faction's leadership too if the ruler led it (once
+		// per famine).
+		public bool unrestEnabled = true;
+		public int unrestHours = 24;
+		public int challengeHours = 72;
+		// Hunting: every 6 hours a hungry village (in famine, or a fifth of its villagers
+		// starving) sends up to huntersPerTrip fighters, Hunters first, after wild animals
+		// nearby; the meat is carried to the village's storage.
+		public bool huntingEnabled = true;
+		public int huntersPerTrip = 2;
+		// Traders: once a day a village with food to spare (over 20 per villager plus
+		// tradeAmount) sends a trader with tradeAmount food to the village that needs it most,
+		// if their factions are not hostile and neither is under curfew. Traders also carry
+		// news of the demons' buildings both ways.
+		public bool tradeEnabled = true;
+		public int tradeAmount = 40;
 
 		// Corpse-borne disease. Rotting unburied corpses in a settlement sicken the living
 		// present, scaled by corpse count. Requires corpseDecayEnabled (it reads the decay stage).

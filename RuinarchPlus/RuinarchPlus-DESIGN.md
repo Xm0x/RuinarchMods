@@ -49,7 +49,7 @@ mod; TruePlanet is the "replace the world" mod. They're designed to stack.
 | **2** | **Death, Decay & Disease** | corpses rot, mass grave, corpse-borne plague, curfews | **M to L** | wires existing systems |
 | **3** | **Knowledge & Fog of War** | villagers only know what they've seen; gossip; search parties; portal secrecy | **L** | new knowledge model |
 | **4** | **Living Population** | birth, aging, natural death, dementia/knowledge-loss, migration rework | **L to XL** | mostly net-new |
-| **5** | **Settlements & Economy** | growth tiers (shipped: Town Hall, Town, City), food/hunters, famine & unrest, traders/messengers | **L to XL** | new progression + economy |
+| **5** | **Settlements & Economy** | growth tiers, famine, unrest, hunters, traders (all shipped) | **L to XL** | new progression + economy |
 | **6** | **War & Diplomacy** | training grounds, standing armies, real wars, curfews/borders | **L** | extends warfare |
 | **7** | **TruePlanet** (sister mod) | planet-scale world, nations & capitals, religion + language, travel portals | **XL** | separate mod |
 
@@ -82,11 +82,19 @@ Self-contained. Each fix is independently verifiable in-game. All of Phase 1 bel
 |---|---|---|
 | **Disable-tutorials toggle** | Suppresses all tutorial alerts; shipped as the `disableTutorial` config flag rather than a settings row | `TutorialManager.cs:12-27` (14 alert types) + `SaveDataPlayer.cs:9-31` (no master flag in the game) |
 
-### 2d. Possible exploit fixes (not shipped)
-- **Flying-over-kennel Sacrifice/Let-Go:** `SacrificeData`/`LetGoData.ActivateAbility(LocationStructure)` bypasses the flying check in `IsValid`. Re-validate the target is actually *in* the kennel.
-- **Snatch dropoff list empty:** `SnatchObjectUIController.ConstructDropLocationChoices:444-460` only lists *bookmarked* structures; add a sane fallback.
-
-If these ship, they go behind a config flag so players who like the exploits can keep them.
+### 2d. Exploit fixes (shipped in 0.6.0)
+- **Flying-over-kennel Sacrifice/Let-Go** (`Fixes/Fix_KennelFlyingSacrifice.cs`, config
+  `closeExploits`): cast on a monster, `SacrificeData.IsValid` / `LetGoData.IsValid` refuse
+  one that is flying and not Restrained; cast on the Kennel, `SacrificeData.IsValid` only
+  asks for an `occupyingSummon` and `ActivateAbility(LocationStructure)` sacrifices it, and
+  `LetGoData.ActivateAbility` lets go of whoever passes `CanPerformAbilityTowards` (no flying
+  check). A monster that broke its restraints stays the Kennel's occupant. Postfix
+  `SacrificeData.IsValid`, prefix `SacrificeData.ActivateAbility(LocationStructure)`, postfix
+  `LetGoData.CanPerformAbilityTowards(Character)` apply the same rule. *(verified in game)*
+- **Snatch drop-off list empty** (`Fixes/Fix_SnatchDropLocations.cs`):
+  `SnatchObjectUIController.ConstructDropLocationChoices` only lists *bookmarked* structures,
+  so with none the Snatch button stays disabled. Postfix: for a character target with no
+  usable bookmark, list the player's demonic structures. *(verified in game)*
 
 ---
 
@@ -177,9 +185,13 @@ starts a real world and plays the scenario out at speed.
    unknown values and the decision is saved and localized. The curfew is derived (active
    event + measured decision), so nothing is saved. Announced in the event log.
 
-**What's NEXT for Phase 2:**
-5. **Closed borders [M]:** extend the curfew so a village under curfew turns away visitors
-   and traders (ties into Phase 5 traders and Phase 6 border closure).
+5. **Closed borders: shipped** (`Phase2/ClosedBorders.cs`, config `closedBordersEnabled`).
+   A village under curfew is dropped from `Region.PopulateValidVillagesToVisit` (free-time
+   visits of villagers and bandits), a visit under way is given up
+   (`VisitVillageBehaviour.TryDoBehaviour` prefix: `ClearOutVisitVillageBehaviour`), friends
+   living there are dropped from `CharacterBehaviour.GetCharacterToVisitWeights`, and
+   Ruinarch+ traders don't go there. Raids, rescues and bounty hunts are not visits.
+   *(verified in game)* Kingdom-level border closure stays Phase 6.
 
 *Dependency:* unlocks the disease pressure that makes Phase 5's famine/unrest meaningful.
 
@@ -225,36 +237,81 @@ witnessed or been told.** It also addresses why the portal keeps getting found.
 
 **Model ([L], extends the above rather than replacing it):**
 - **Shipped: per-faction known-structures ledger** (`Phase3/Knowledge.cs`, config
-  `knowledgeEnabled`). Fed by the game's own report (`AfterReportSuccess`), by sightings once
-  the faction is aware of the player (prefix `CharacterTrait.OnSeePOI`), and by adjacency
-  (postfix `SettlementPartyComponent.TryCreateCounterattackQuest`). Saved inside the player's
-  save through the loader's new `ModSave` (`ModData/ruinarch.plus.knowledge.json`).
+  `knowledgeEnabled`). Fed by the game's own report (`AfterReportSuccess`, which walks home
+  to the village's main storage) and by witnesses carrying news home. Saved inside the
+  player's save through the loader's new `ModSave` (`ModData/ruinarch.plus.knowledge.json`).
+- **Shipped (0.6.0): news travels on foot.** Once the faction is aware, a sighting (prefix
+  `CharacterTrait.OnSeePOI`) no longer teaches the faction at once: the witness *carries* it
+  (`Knowledge.Witness`), and an hourly check delivers it when they stand in a village of their
+  faction; a witness who dies first takes it with them. Their party acts on it meanwhile
+  (`Knowledge.PartySightings` feeds counterattack targeting and rescue/bounty on-site
+  checks). Carried news is saved with the ledger. The vanilla adjacency trigger
+  (`SettlementPartyComponent.TryCreateCounterattackQuest`, which also makes the faction aware
+  with no sighting) now runs only once the faction knows a structure standing next door.
+  *(verified in game)*
 - **Shipped: counterattacks go only where the faction knows:** postfix
   `CounterattackPartyQuest.GetTargetDestination` returns the nearest known structure, and a
   prefix on `AttackDemonicStructureBehaviour.TryDoBehaviour` attacks known structures instead
-  of the hard-coded portal; with nothing known left standing, the quest ends as a success. A
-  faction that is aware but knows nothing (older saves) keeps vanilla behaviour.
+  of the hard-coded portal; with nothing known left standing, the party goes home and the
+  quest ends as a success. This runs for every active party on that behaviour, whatever its
+  quest: 0.5.0 fell back to vanilla when the faction's ledger was empty, and vanilla marches
+  on the Portal (it destroyed the Portal twice in test runs, and would after any load where
+  everything a faction knew had been destroyed). A save from before the ledger (no
+  `ruinarch.plus.knowledge.json`; the file is now always written) is migrated at the first
+  in-game hour: every aware faction learns all standing player buildings, as the base game
+  treated it. *(verified in game)*
 - **Shipped: rescues and bounty hunts ask the ledger too** (`Phase3/KnowledgeTargets.cs`).
   The game decides three more things about one player building with the faction-wide
   `isAwareOfPlayer`: a Demon Rescue for a villager held inside it
   (`PartyQuestBoard.CreateRescuePartyQuest`), a bounty hunt on a criminal hiding in it
   (`CreateBountyHuntPartyQuest`, reached from `TryCreateBountyHuntQuest`), and attacking it on
   arrival (`RescueBehaviour` / `BountyHuntBehaviour.TryDoBehaviour`). Each now requires the
-  faction to know that building; unknown, the village searches for the demonic area (the
-  unaware branch). A party that sees its target inside learns the building. Not faction
+  faction to know that building; unknown, there is no rescue quest and the captive is
+  searched for as a missing person (see below). A party that sees its target inside learns the building. Not faction
   knowledge, left as is: a dragon picks any player building (`Dragon.SetPlayerTargetStructure`)
   and Divine Intervention targets the Portal.
+- **Shipped (0.6.0): no Portal-homing "search".** An unaware faction's answer to a captive
+  held by the demons is `SettlementJobTriggerComponent.CreateSearchForDemonicAreaJob`, a job
+  whose *target is the PortalTileObject*: the searcher walks straight to the Portal until
+  they step on corruption (`ACTION_LOCATION_TYPE.ON_REACH_CORRUPTION`), then report it or die
+  to its defenders (seen in play: "X is looking for your location", always killed near the
+  Portal). 0.5.0 also routed aware factions' rescues into unknown buildings there. With
+  `knowledgeEnabled` the job is never created (prefix) and existing ones are never taken
+  (`CanTakeSearchForDemonicArea` postfix); the captive is a missing person, searched for at
+  their last-seen spot. *(verified in game)*
 - **Shipped: missing persons and searches by last-known location**
   (`Phase3/MissingPersons.cs`, `Phase3/MissingPersonsSearch.cs`, config
   `missingPersonsEnabled`). Each resident's last sighting by their own people (home village,
   or in sight of a free faction member) is kept hourly; unseen for a day, they are reported
   missing and the village posts the game's own rescue quest, pointed at the last-seen spot,
   where the party sweeps until it sees them or gives up (retried after 24 then 48 hours,
-  three attempts). The omniscient settlement rescue roll is off. Records ride in the save
+  three attempts). One of their own people burying the body counts as finding them dead
+  (postfix `BuryCharacter.AfterBurySuccess`): a Mass Grave leaves no gravestone to spot, and
+  villages used to keep searching for a neighbour they had carried into it themselves.
+  The omniscient settlement rescue roll is off. Records ride in the save
   through `ModSave` (`ModData/ruinarch.plus.missing.json`). Spec:
   `docs/specs/2026-09-23-missing-persons-design.md`.
-- **Gossip carries places:** reuse `SHARE_INFORMATION` to pass ledger facts between
-  villagers, lossily, so a report can spread faster than a messenger walks.
+- **Shipped (0.6.0): gossip carries places** (`Phase3/Gossip.cs`, config `gossipChance` 25).
+  `SHARE_INFORMATION` is not reusable (its payload must be an `IReactable` and
+  `ProcessInformation` reads rumour fields), so a meeting is a character sighting (prefix
+  `CharacterTrait.OnSeePOI` with a `Character` target), at most once per pair per day. Kin pass
+  on news they carry; someone of another non-hostile faction hears each building the teller
+  knows with `gossipChance`. The listener carries it home like a witness; a faction that
+  learns of the player this way becomes aware. Traders (Phase 5) carry news both ways.
+  *(verified in game)*
+
+**Next for Phase 3 (from play feedback):**
+- **"Who knows of you" status [M]:** a section in the right-hand panel (under Win Condition /
+  Major Events) that reads the ledger the mod already keeps, e.g. "Your presence in the
+  region is not known", "Aurenad know of you but not where you are", "Canind know your
+  Portal and the Corrupt Kennel", "Ulric of Canind is carrying news of your Portal home".
+  The player acts on what the world knows (kill the witness before they get home). The
+  region-level line is the skeleton TruePlanet grows into (per region / nation).
+- **Visual fog of war and borders [L]:** settlement borders (the areas a village holds) and,
+  around them, the nation's (faction's) borders, drawn on the map; each faction's knowledge
+  shown on the map when it is selected (its known buildings marked, the rest dimmed, carried
+  news as a marker on the witness). Needs its own map overlay (SpriteRenderers per area, as
+  the Mass Grave overlay test did); national borders tie into Phase 6 and TruePlanet.
 
 *Dependency:* feeds Trade (info = prices), War (scouting), and TruePlanet (inter-nation
 knowledge).
@@ -287,6 +344,12 @@ knowledge).
 4. **Library [M to L]:** a structure that *persists* faction knowledge against that decay
    (Phase 3 ledger + Phase 4 aging). Villagers deposit what they learn on return from
    searches/trades; burning it is a real strategic blow.
+   From play feedback: knowledge lives in two places, people and records. Each villager has a
+   *memory* of what they know (the carried-news model per person, extended), which fades
+   with age, dementia and Alzheimer's (item 3) and dies with them; bookshelves and books in
+   dwellings, and the Library, keep it. Burn the books and kill or outlive the people who
+   remember, and after a while the faction loses where you are. Needs births, aging, illness
+   and death (items 2 and 3) first, so it follows them.
 
 *Dependency:* population + food + war together drive Phase 5 settlement growth.
 
@@ -345,12 +408,49 @@ knowledge).
    once a day each starving villager (not ruler / faction leader) may move, via the game's
    own `Character.MigrateHomeStructureTo`, to a free Dwelling in a village of their faction
    not in famine. Active famines are saved (`ModData/ruinarch.plus.famine.json`).
-   *Still to do:* unrest and political unrest (ruler challenged) from a long famine.
-   Food-producing hunters are optional (Butchers already turn carcasses into food). Sabotaging a food
-   source becomes a real lever for the player.
-3. **Traders & messengers [L]:** entirely new. Caravans run between settlements, moving
-   piles and carrying facts (Phase 3). No trade between factions at war (Phase 6). This is
-   the seed of the "TruePlanet kingdoms" economy.
+   **Unrest: shipped** (0.6.0, config `unrestEnabled`, `unrestHours` 24, `challengeHours` 72):
+   restless after `unrestHours` of famine (announced), each day every villager's opinion of the
+   ruler drops ("Famine", -10, no opinion jobs); after `challengeHours` the villager who
+   thinks least of the ruler takes the rule of the village through the game's own
+   `INTERRUPT.Become_Settlement_Ruler` (the deposed ruler: "Deposed", -30). A faction leader
+   always rules their home village (`Faction.ProcessFactionLeaderAsSettlementRuler` reinstated
+   them, and the deposed leader-ruler then emigrated), so a ruler who leads the faction is
+   overthrown as leader too, as the game's Overthrow Leader scheme does
+   (`Become_Faction_Leader`, a grudge). Once per famine;
+   hours and the challenge ride in the famine save. The game has no NPC coup of its own
+   (Overthrow Leader and Rebellion are player schemes). *(verified in game)*
+   **Hunters: shipped** (`Phase5/Hunters.cs`, config `huntingEnabled`, `huntersPerTrip` 2):
+   every 6 hours a hungry village (in famine or a fifth starving) gives up to
+   `huntersPerTrip` fighters (Hunters first) the hunting job predators use (`HUNT_PREY` with
+   `ASSAULT`, a lethal job) on a wild animal within 60 tiles (not Bears). Prey that flees is
+   hunted again hourly for a day. On the kill (postfix `Summon.Death`: animals are Summons and
+   `Summon.Death` does not call `Character.Death`) the hunter gets `PRODUCE_FOOD` with
+   `BUTCHER` on the carcass; a postfix on `Butcher.AfterTransformSuccess` hauls the meat to the
+   main storage. (A single `PRODUCE_FOOD`/`BUTCHER` job on a live animal never got planned.)
+   *(verified in game)*
+   **Next for unrest (from play feedback): how a ruler falls.** Today the challenger simply
+   takes over. Instead, depending on the village and the people involved: a brawl between
+   the two camps (the game's own `BRAWL` job), a civil war in a larger village (residents
+   pick sides by opinion of the ruler and challenger and fight; the loser's camp is exiled
+   or leaves the faction), an assassination of the old ruler (the game's `ASSASSINATE` /
+   murder paths, with its crime and witnesses), or the old ruler jailed (the game's
+   apprehend / imprison flow into the village prison). Bigger villages and stronger
+   factions within them make war more likely than a quiet handover.
+3. **Traders: shipped** (`Phase5/Traders.cs`, config `tradeEnabled`, `tradeAmount` 40). Daily
+   at 8:00 a village with more than 20 food per villager plus `tradeAmount` sends one
+   villager (a Merchant first) with a pile of `tradeAmount` food (split off its storage) on
+   the game's own `HAUL` / `DEPOSIT_RESOURCE_PILE` job to the neediest village (hungry, or
+   under 10 food per villager) whose faction is not hostile; never to or from a village
+   under curfew. The goods are owned by the trader until delivered (`SetCharacterOwner`: the
+   game's haulers and stockpile combiners skip owned piles; before this, other villagers
+   carried the trader's pile off), and a trader called away puts them down and picks them up
+   again up to 3 times. On delivery (postfix `DepositResourcePile.AfterDepositSuccess`) it is
+   announced and the trader exchanges news (`Knowledge.Exchange`). Trips are not saved (the
+   haul job itself is the game's). Messengers as a separate role are not needed: within a
+   faction the ledger is shared once news reaches any of its villages, and between factions
+   traders and gossip carry it. *(verified in game: a trader delivers; the news exchange
+   between factions has not come up in a test world yet, since test villages trading with
+   each other have so far been of one faction)*
 
 ---
 
