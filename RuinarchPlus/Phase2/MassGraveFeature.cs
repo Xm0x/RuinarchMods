@@ -26,8 +26,8 @@ namespace RuinarchPlus.Phase2
 					// Framework passes the allocated virtual STRUCTURE_TYPE into these.
 					Factory = (type, region) => new MassGrave(type, region),
 					LoadFactory = (type, region, save) => new MassGrave(region, (SaveDataManMadeStructure)save),
-					// Borrow the Cemetery's prefab (footprint, walls, pathing); MassGraveLook lays
-					// the Mass Grave's own pit art over it.
+					// Borrow the Cemetery's prefab (footprint, walls, pathing); MassGraveFloor makes
+					// it bare dirt without the Cemetery's props.
 					PrefabSource = STRUCTURE_TYPE.CEMETERY,
 					// A normal village building, not a demonic/player structure. No build skill:
 					// it is village infrastructure, not something placed from the demonic build menu.
@@ -36,6 +36,7 @@ namespace RuinarchPlus.Phase2
 					IsPlayerStructure = false,
 					IsVillageStructure = true
 				});
+				MassGraveConstruction.Building = ModBuildings.Add(Id, "Mass Grave", STRUCTURE_TYPE.CEMETERY);
 				RuinarchPlus.Log?.Info(string.Format("Mass Grave registered as village building (STRUCTURE_TYPE={0}).",
 					(int)reg.StructureType));
 			}

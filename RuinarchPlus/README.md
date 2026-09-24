@@ -5,8 +5,8 @@ A bug-fix and gameplay mod for **Ruinarch**, built on the
 against the decompiled game source.
 
 It follows the [Ruinarch+ roadmap](RuinarchPlus-DESIGN.md). Shipped so far: the Phase 1
-bug fixes, and the first features of Phases 2 to 4 (death and decay, knowledge, and
-migration). These change the game by default; each one can be switched off in
+bug fixes, and the first features of Phases 2 to 5 (death and decay, knowledge,
+migration, growing settlements and famine). These change the game by default; each one can be switched off in
 `config.json`.
 
 ## What it fixes
@@ -25,12 +25,12 @@ migration). These change the game by default; each one can be switched off in
 | Feature | What you'll notice |
 |---------|--------------------|
 | **Corpse decomposition** | Bodies left lying unburied now rot over time (Fresh → Bloated → Rotting → Skeletal) and finally **decompose and vanish**, instead of littering the map forever. Anything buried (a grave in a Cemetery, a Mass Grave, or anywhere else) never rots, nor does a Mummified body, and a body being carried pauses. Hover over or select a body to see how far it has gone: the bar above it is full when fresh and empties as it rots. Tunable via `corpseDecayDays`. On by default. |
-| **Corpse-borne plague** *(opt-in)* | Rotting/skeletal unburied bodies inside a settlement sicken the living present, scaled by corpse count. Uses the game's own plague (Quarantined resistance applies). Buried bodies are never infectious. Enable with `corpseDiseaseEnabled`. |
+| **Corpse-borne plague** | Rotting/skeletal unburied bodies inside a settlement sicken the living present, scaled by corpse count. Uses the game's own plague (Quarantined resistance applies). Buried bodies are never infectious. On by default; switch off with `corpseDiseaseEnabled`. |
 | **No more scattered graves** | A village with no Cemetery or Cult Temple no longer buries its dead in random spots around the wilderness. Bodies lie where they fell until the village has a Mass Grave. Villages with a Cemetery bury their own people there exactly as before; outsiders, monsters and creatures go to the Mass Grave if the village has one. |
-| **Mass Grave** | A new village building. When a village has dead nobody else will bury (any body, if it has no Cemetery or Cult Temple; a creature's carcass even if it has one, since villagers never bury animals in a Cemetery), its villagers place a Mass Grave blueprint, gather the wood or stone, and build it themselves, like any other building (it can be damaged and destroyed like one too). It is a bare dirt pit labelled "Mass Grave" on the map (placeholder art until real art arrives), with none of the Cemetery's paving, statues, braziers or basins. A village has at most one. Once it stands, villagers carry every body in the village into it (residents, strangers and creature carcasses; once the village also has a Cemetery, its own people go there instead) and also fetch bodies from the land around the village. Bodies laid in the pit leave no gravestones; the pit just keeps count. Nobody left alive to carry them? After `massGraveFallbackHours` the pit takes nearby bodies itself. |
+| **Mass Grave** | A new village building. When a village has dead nobody else will bury (any body, if it has no Cemetery or Cult Temple; a creature's carcass even if it has one, since villagers never bury animals in a Cemetery), its villagers place a Mass Grave blueprint, gather the wood or stone, and build it themselves, like any other building (it can be damaged and destroyed like one too). It is a bare dirt pit labelled "Mass Grave" on the map, with none of the Cemetery's paving, statues, braziers or basins. A village has at most one. Once it stands, villagers carry every body in the village into it (residents, strangers and creature carcasses; once the village also has a Cemetery, its own people go there instead) and also fetch bodies from the land around the village. Bodies laid in the pit leave no gravestones; the pit just keeps count. Nobody left alive to carry them? After `massGraveFallbackHours` the pit takes nearby bodies itself. |
 | **Plague curfew** | When plague breaks out and the ruler answers with a measured response (Quarantine or Exile, rather than Slay or doing nothing), they also put the village under curfew: residents give up their free time (visiting, taverns, wandering) and go home, until the plague event ends. Work goes on, so plague care, burials and food production continue. The ruler and faction leader are exempt. Announced in the event log. |
 
-*Corpse-borne plague is off by default. Starvation is not part of this mod: the base game already kills starving villagers through the Malnourished status. The Mass Grave art is a placeholder; real art is welcome (one `mass_grave.png`, or four fill stages `mass_grave_0..3.png`, in `art/mass_grave/`).*
+*Starvation is not part of this mod: the base game already kills starving villagers through the Malnourished status.*
 
 ## Phase 3: Knowledge & Fog of War (in progress)
 
@@ -43,7 +43,14 @@ migration). These change the game by default; each one can be switched off in
 
 | Feature | What you'll notice |
 |---------|--------------------|
-| **Migration follows a village's fortunes** | Settlers no longer pour into a village in crisis. Nobody moves in during a plague, while the village is under attack, or once more of its homes stand abandoned than lived in; otherwise each abandoned home (beyond the couple a growing village keeps spare) and each unburied body in the streets halves the pull; and every resident who dies sets the "Incoming Migrants" meter back. A village of ten reduced to one stops drawing settlers. Hover the migration meter to see why. Your Induce Migration power still works as before. |
+| **Migration follows a village's fortunes** | Settlers no longer pour into a village in crisis. Nobody moves in during a plague or a famine, while the village is under attack, or once more of its homes stand abandoned than lived in; otherwise each abandoned home (beyond the couple a growing village keeps spare) and each unburied body in the streets halves the pull; and every resident who dies sets the "Incoming Migrants" meter back. A village of ten reduced to one stops drawing settlers. Hover the migration meter to see why. Your Induce Migration power still works as before. |
+
+## Phase 5: Settlements & Economy (in progress)
+
+| Feature | What you'll notice |
+|---------|--------------------|
+| **Villages grow into Towns and Cities** | A village that reaches 20 people builds a **Town Hall**: its villagers place the blueprint, gather the materials and build it like any other building (it looks like a Tavern; it can be damaged and destroyed). While it stands the village is a **Town**, and a **City** from 40 people. A Town may build 8 more homes and 4 more facilities than a village of its culture, a City 16 and 8, so it keeps growing as settlers arrive. A settlement keeps its rank until it falls to three quarters of the mark, and loses it at once if its Town Hall is destroyed (it builds a new one when it is big enough again). The rank shows under the settlement's name in its panel ("Human Empire Town") and is announced in the event log. |
+| **Famine** | When a third of a village's people have gone starving for half a day, the village is in famine (announced in the event log). Nobody moves in while it lasts, and once a day each starving villager may pack up and move to a free home in another village of their faction that has food. The famine ends when no more than a tenth are starving for half a day. It uses the game's own hunger, so anything that empties the larder counts: lost farmers, a burnt farm, too many mouths. |
 
 ## Optional QOL (config)
 
@@ -65,7 +72,13 @@ your `Mods/RuinarchPlus/` folder:
     "searchRetryHours": 24,
     "searchMaxAttempts": 3,
     "migrationHealthEnabled": true,
-    "corpseDiseaseEnabled": false,
+    "settlementTiersEnabled": true,
+    "townPopulation": 20,
+    "cityPopulation": 40,
+    "famineEnabled": true,
+    "famineHours": 12,
+    "famineLeaveChance": 25,
+    "corpseDiseaseEnabled": true,
     "corpseDiseaseChancePerCorpse": 3
 }
 ```
@@ -85,7 +98,13 @@ your `Mods/RuinarchPlus/` folder:
 | `searchRetryHours` | `24` | Wait after the first failed search; doubles after each failure. |
 | `searchMaxAttempts` | `3` | Failed searches before the village gives the person up. |
 | `migrationHealthEnabled` | `true` | Plague, sieges, abandoned homes, unburied dead and deaths hold migration back. Set `false` for vanilla migration. |
-| `corpseDiseaseEnabled` | `false` | Opt-in. Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
+| `settlementTiersEnabled` | `true` | Villages that grow build a Town Hall and become Towns and Cities, with room for more buildings. Set `false` for vanilla. |
+| `townPopulation` | `20` | Living villagers a village needs to build a Town Hall and become a Town. |
+| `cityPopulation` | `40` | Living villagers a Town needs to become a City. |
+| `famineEnabled` | `true` | Villages notice when their people starve: famine, no settlers, starving villagers moving away. Set `false` for vanilla. |
+| `famineHours` | `12` | Hours a third of the villagers must be starving before a famine (and a tenth or fewer before it ends). |
+| `famineLeaveChance` | `25` | Percent chance, per starving villager per day of famine, to move to a village of their faction with food. |
+| `corpseDiseaseEnabled` | `true` | Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
 | `corpseDiseaseChancePerCorpse` | `3` | Percent infection chance, per rotting corpse, per in-game hour, per nearby villager. |
 
 Edit the file and relaunch for changes to take effect.

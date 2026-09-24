@@ -12,7 +12,8 @@ namespace RuinarchPlus.Phase4
 	/// finished quest, as long as it has at least one resident. So a village of ten reduced to
 	/// one by plague or raids keeps drawing settlers as if nothing happened. Now every natural
 	/// gain is scaled by how the village is doing, and every death sets the meter back:
-	/// - plague (an outbreak, or recent plague deaths) or a siege: nobody moves in;
+	/// - plague (an outbreak, or recent plague deaths), famine (<c>Phase5/Famine</c>) or a
+	///   siege: nobody moves in;
 	/// - more homes abandoned than lived in: nobody moves in;
 	/// - otherwise each empty home beyond the two a growing village keeps spare: gains halve;
 	/// - each unburied body lying in the village: gains halve;
@@ -42,6 +43,11 @@ namespace RuinarchPlus.Phase4
 			if (village.isUnderSiege)
 			{
 				reason = "under attack";
+				return 0f;
+			}
+			if (Phase5.Famine.IsInFamine(village))
+			{
+				reason = "famine";
 				return 0f;
 			}
 			int unoccupied = village.GetNumberOfUnoccupiedStructure(STRUCTURE_TYPE.DWELLING);

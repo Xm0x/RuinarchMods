@@ -49,7 +49,7 @@ mod; TruePlanet is the "replace the world" mod. They're designed to stack.
 | **2** | **Death, Decay & Disease** | corpses rot, mass grave, corpse-borne plague, curfews | **M to L** | wires existing systems |
 | **3** | **Knowledge & Fog of War** | villagers only know what they've seen; gossip; search parties; portal secrecy | **L** | new knowledge model |
 | **4** | **Living Population** | birth, aging, natural death, dementia/knowledge-loss, migration rework | **L to XL** | mostly net-new |
-| **5** | **Settlements & Economy** | growth tiers, food/hunters, famine & unrest, traders/messengers | **L to XL** | new progression + economy |
+| **5** | **Settlements & Economy** | growth tiers (shipped: Town Hall, Town, City), food/hunters, famine & unrest, traders/messengers | **L to XL** | new progression + economy |
 | **6** | **War & Diplomacy** | training grounds, standing armies, real wars, curfews/borders | **L** | extends warfare |
 | **7** | **TruePlanet** (sister mod) | planet-scale world, nations & capitals, religion + language, travel portals | **XL** | separate mod |
 
@@ -119,7 +119,7 @@ starts a real world and plays the scenario out at speed.
    **graves** outside cemeteries instead of bodies; replaced.
 2. **Corpse-borne disease** - `Phase2/CorpseDisease.cs`: rotting/skeletal *unburied* bodies
    inside a settlement structure feed the existing plague, scaled by corpse count. Buried
-   bodies are never infectious. Opt-in.
+   bodies are never infectious. On by default (0.5.0; was opt-in).
 3. **Mass Grave** - a non-demonic **village building** (`MassGrave : ManMadeStructure`,
    mirroring `Cemetery`), new content via `Ruinarch.ModContent` (`IsVillageStructure`),
    borrowing the Cemetery prefab. Destructible like any village building.
@@ -141,19 +141,19 @@ starts a real world and plays the scenario out at speed.
      *(verified)*
    - **Fallback**: a body near the pit that nobody hauls for `massGraveFallbackHours` (12,
      e.g. the village is dead) is absorbed directly.
-   - Known limit: the "this blueprint is a Mass Grave" mark is not saved; a Mass Grave saved
-     half-built completes as a regular Cemetery after reload (which also stops scattering).
-   - **Look** (`MassGraveLook.cs`): the pit's art laid over the borrowed Cemetery floor
-     (above the ground tilemap, below walls, objects and characters), optionally stepping
-     through 4 fill stages (`mass_grave_0..3.png`) or one image (`mass_grave.png`). Loaded at
-     gameplay time via the framework's `ModArt`; stripped on destruction and on any pooled
-     structure-object reset so a real Cemetery never inherits it. The Cemetery prefab's props
+   - The "this blueprint is a Mass Grave" mark is saved (`ModBuildings.cs`,
+     `ModData/ruinarch.plus.blueprints.json`), so a pit saved half-built still completes as a
+     Mass Grave after reload. The construction machinery is shared by every Ruinarch+
+     building (Mass Grave, Town Hall).
+   - **Look** (`MassGraveFloor.cs`): bare dirt, no art of its own. Like every building in
+     the game it is a floor with walls and objects on top; the pit keeps the Cemetery's
+     footprint and walls, and its floor is set to the prefab's own dirt tile on build and
+     load (the Cemetery's paved cross removed). An earlier sprite overlay (a test of the
+     framework's `ModArt`) was removed in 0.5.0. The Cemetery prefab's props
      (BRAZIER, PLINTH_BOOK, GODDESS_STATUE, WATER_BASIN, TRASH) are not built on a Mass Grave
      (prefix `LocationStructureObject.OnBuiltStructureObjectPlaced`) and are cleared from pits
      saved before this; its STRUCTURE_TILE_OBJECT is kept (removing it made the pit count as
-     not standing). *(verified: overlay present and sorted, no props, absent on a real
-     Cemetery)* Art is a text placeholder until real art arrives. The floor is set to the
-     prefab's own dirt tile on build and load (the Cemetery's paved cross removed).
+     not standing). *(verified: one dirt ground tile over the pit, no props)*
    - **Anonymous burial:** a body laid in the pit (hauled or absorbed) leaves no Tombstone;
      it is removed like a fully decomposed body (`Tombstone.SetRespawnCorpseOnDestroy(false)`
      + `RemovePOI`), and older pits have their gravestones cleared once per session. Only the
@@ -323,16 +323,30 @@ knowledge).
   are no caravans or trade routes.
 
 **What's NEW:**
-1. **Settlement progression [L]:** `Outpost -> Village -> Town -> City` driven by
-   population + buildings-in-use, with demotion when they collapse (hysteresis so one bad
-   week doesn't flip it). Capital is defined in TruePlanet. Implement the tier as mod state
-   that scales the two existing caps (postfix the `maxDwellings`/`maxFacilities` getters, or
-   set them through reflection on tier change), so the game's own planner builds the town
-   out. No new `SETTLEMENT_TYPE`: it is saved and drives culture-specific facility weights.
-2. **Food economy & famine [M to L]:** add a settlement food-shortage signal (food on hand
-   vs residents, from the existing pile totals), then shortage -> the existing hunger need
-   -> (Phase 2) starvation -> **famine, unrest, political unrest** events. Food-producing
-   hunters are optional (Butchers already turn carcasses into food). Sabotaging a food
+1. **Settlement progression: shipped** (`Phase5/SettlementTiers.cs`, `Phase5/TownHall.cs`,
+   config `settlementTiersEnabled`, `townPopulation` 20, `cityPopulation` 40).
+   `Village -> Town -> City`. A village of `townPopulation` living villagers queues a
+   **Town Hall** blueprint (a new village building through `Ruinarch.ModContent`, borrowing
+   the Tavern's prefab; no art of its own) and its villagers build it through the game's
+   own pipeline, so it is damaged and destroyed like any building. While it stands the
+   village is a Town, a City from `cityPopulation`; a tier is kept down to 3/4 of its mark
+   (hysteresis) and lost the moment the Town Hall is destroyed. A tier raises the two
+   limits the build planner reads (set through reflection hourly and on load; the culture's
+   own values are the base): Town +8 dwellings / +4 facilities, City +16 / +8. No new
+   `SETTLEMENT_TYPE` (it is saved and drives culture-specific facility weights). The tier
+   is saved (`ModData/ruinarch.plus.tiers.json`), announced in the event log, and named in
+   the settlement panel ("Human Empire Town"). Outpost (a tier *below* a vanilla village)
+   is left out: it would shrink villages the game generates. Capital is TruePlanet's.
+2. **Food economy & famine [M to L]:** *Famine shipped* (`Phase5/Famine.cs`, config
+   `famineEnabled`, `famineHours` 12, `famineLeaveChance` 25). The signal is the game's own
+   hunger rather than food piles (consumption rates are runtime-only editor values): a third
+   of a village's villagers Starving or Malnourished for `famineHours` -> famine, until a
+   tenth or fewer for as long. Announced; no migration (`MigrationHealth` reason "famine");
+   once a day each starving villager (not ruler / faction leader) may move, via the game's
+   own `Character.MigrateHomeStructureTo`, to a free Dwelling in a village of their faction
+   not in famine. Active famines are saved (`ModData/ruinarch.plus.famine.json`).
+   *Still to do:* unrest and political unrest (ruler challenged) from a long famine.
+   Food-producing hunters are optional (Butchers already turn carcasses into food). Sabotaging a food
    source becomes a real lever for the player.
 3. **Traders & messengers [L]:** entirely new. Caravans run between settlements, moving
    piles and carrying facts (Phase 3). No trade between factions at war (Phase 6). This is

@@ -57,10 +57,25 @@ namespace RuinarchPlus
 		// meter back. The player's Induce Migration skill is unaffected.
 		public bool migrationHealthEnabled = true;
 
-		// Corpse-borne disease (default OFF - opt in). Rotting unburied corpses in a
-		// settlement sicken the living present, scaled by corpse count. Requires
-		// corpseDecayEnabled (it reads the decay stage).
-		public bool corpseDiseaseEnabled = false;
+		// Phase 5 - Settlements & Economy.
+		// Village -> Town -> City. A village of townPopulation living villagers builds a Town
+		// Hall; while it stands the village is a Town (a City from cityPopulation), and the
+		// game's build planner may put up more homes and facilities. A settlement keeps its
+		// tier down to 3/4 of that population, and loses it when its Town Hall is destroyed.
+		public bool settlementTiersEnabled = true;
+		public int townPopulation = 20;
+		public int cityPopulation = 40;
+		// Famine: a village where a third of the villagers have been starving (or
+		// malnourished) for famineHours is in famine until no more than a tenth have been for
+		// as long. No settlers move in, and once a day each starving villager may leave, with
+		// famineLeaveChance percent, for a free home in a village of their faction with food.
+		public bool famineEnabled = true;
+		public int famineHours = 12;
+		public int famineLeaveChance = 25;
+
+		// Corpse-borne disease. Rotting unburied corpses in a settlement sicken the living
+		// present, scaled by corpse count. Requires corpseDecayEnabled (it reads the decay stage).
+		public bool corpseDiseaseEnabled = true;
 		// Percent infection chance, per rotting corpse, per in-game hour, per nearby villager.
 		public int corpseDiseaseChancePerCorpse = 3;
 

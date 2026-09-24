@@ -88,6 +88,45 @@ namespace RuinarchDebug
 			return v is bool b && b;
 		}
 
+		private static Type TiersType => Plus?.GetType("RuinarchPlus.Phase5.SettlementTiers");
+
+		private static Type TownHallType => Plus?.GetType("Inner_Maps.Location_Structures.TownHall");
+
+		/// <summary>"Village", "Town" or "City"; null without Ruinarch+.</summary>
+		internal static string Tier(NPCSettlement settlement)
+		{
+			return TiersType?.GetMethod("Get", Any)?.Invoke(null, new object[] { settlement })?.ToString();
+		}
+
+		/// <summary>The faction line under a settlement's name, as Ruinarch+ labels it.</summary>
+		internal static string TierLabel(NPCSettlement settlement, string factionLine)
+		{
+			return TiersType?.GetMethod("Label", Any)?.Invoke(null, new object[] { settlement, factionLine }) as string;
+		}
+
+		internal static LocationStructure TownHallFor(BaseSettlement settlement)
+		{
+			return TownHallType?.GetMethod("FindFor", Any)?.Invoke(null, new object[] { settlement }) as LocationStructure;
+		}
+
+		internal static LocationStructure InstantBuildTownHall(NPCSettlement settlement)
+		{
+			return TiersType?.GetMethod("InstantBuildTownHall", Any)?.Invoke(null, new object[] { settlement }) as LocationStructure;
+		}
+
+		internal static bool HasPendingTownHall(NPCSettlement settlement)
+		{
+			object v = TiersType?.GetMethod("HasPendingTownHall", Any)?.Invoke(null, new object[] { settlement });
+			return v is bool b && b;
+		}
+
+		/// <summary>Whether <paramref name="settlement"/> is in famine; null without Ruinarch+.</summary>
+		internal static bool? InFamine(NPCSettlement settlement)
+		{
+			MethodInfo m = Plus?.GetType("RuinarchPlus.Phase5.Famine")?.GetMethod("IsInFamine", Any);
+			return m == null ? (bool?)null : m.Invoke(null, new object[] { settlement }) is bool b && b;
+		}
+
 		/// <summary>Decay stage name of an unburied corpse ("Fresh".."Skeletal"), or null if untracked.</summary>
 		internal static string DecayStage(Character corpse)
 		{

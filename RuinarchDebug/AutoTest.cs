@@ -198,7 +198,7 @@ namespace RuinarchDebug
 				Time.timeScale = TimeScale;
 			});
 			Log($"world running; plus bridge available={PlusBridge.Available}");
-			// Corpse-borne plague is opt-in and not under test; left on, it slowly empties the
+			// Corpse-borne plague is not under test; left on, it slowly empties the
 			// villages the later tests need. In memory only: config.json is untouched.
 			PlusBridge.SetConfig("corpseDiseaseEnabled", false);
 			yield return WaitGameHours(1f, null);
@@ -206,6 +206,10 @@ namespace RuinarchDebug
 			FreshWorldChecks();
 			// Early, while villagers are out walking; leaves the camera as it found it.
 			yield return PathLineTest();
+			// Needs a village with room for a Tavern-sized building; takes the fullest one.
+			// First, while the villages still have free space (later Mass Graves and
+			// Cemeteries fill it).
+			yield return TierSuite();
 			// Needs three free villagers of one village, so it runs while the villages are
 			// full. Strands them in the wilderness; one never comes back.
 			yield return MissingPersonsSuite();
@@ -215,6 +219,8 @@ namespace RuinarchDebug
 			yield return KnowledgeSuite();
 			// Waits ~72 in-game hours, during which villages lose people to the world.
 			yield return DecayTest();
+			// Starves one village until famine, then feeds it; some villagers move away.
+			yield return FamineSuite();
 			// After the burial and knowledge tests: a plague answered with Exile makes the
 			// plagued Criminals, and Criminals take no village jobs (burial, construction).
 			yield return CurfewSuite();
@@ -241,18 +247,21 @@ namespace RuinarchDebug
 				return (n == "Mass Grave" && e == "MASS_GRAVE", $"LocalizedStructureName='{n}' ToStringEnum='{e}'");
 			});
 			// Freshly generated villages must count as healthy, or migration would be throttled
-			// from day one.
+			// from day one. (A world can start with a village already under attack or plagued:
+			// those are throttled on purpose, so they are left out.)
 			List<NPCSettlement> villages = Villages();
 			foreach (NPCSettlement v in villages)
 			{
 				float m = PlusBridge.MigrationMultiplier(v, out string why);
 				Log($"  migration health {v.name}: x{m:0.##} emptyHomes={v.GetNumberOfUnoccupiedStructure(STRUCTURE_TYPE.DWELLING)} {why}");
 			}
+			List<NPCSettlement> calm = villages.Where(v => !v.isUnderSiege && !v.isPlagued).ToList();
 			Check("freshly generated villages draw settlers normally", () =>
 			{
-				List<NPCSettlement> throttled = villages.Where(v => PlusBridge.MigrationMultiplier(v, out _) < 1f).ToList();
-				return (villages.Count > 0 && throttled.Count == 0,
-					throttled.Count == 0 ? $"all {villages.Count} at x1" : "throttled: " + string.Join(", ", throttled.Select(v => v.name)));
+				List<NPCSettlement> throttled = calm.Where(v => PlusBridge.MigrationMultiplier(v, out _) < 1f).ToList();
+				return (calm.Count > 0 && throttled.Count == 0,
+					(throttled.Count == 0 ? $"all {calm.Count} at x1" : "throttled: " + string.Join(", ", throttled.Select(v => v.name)))
+					+ (calm.Count < villages.Count ? $" ({villages.Count - calm.Count} under attack or plagued, left out)" : ""));
 			});
 		}
 
@@ -301,7 +310,6 @@ namespace RuinarchDebug
 				Log(cemetery != null ? $"  built a Cemetery in {host.name} for the precedence test" : $"  could not build a Cemetery (host={host?.name ?? "none"})");
 				if (cemetery != null)
 				{
-					Check("a real Cemetery never carries the Mass Grave art", () => (Overlay(cemetery) == null, Overlay(cemetery) == null ? "no overlay" : "overlay present"));
 					yield return Snapshot(cemetery, "cemetery");
 					if (PlusBridge.FindFor(host) == null && Guard("instant-build a Mass Grave beside the Cemetery", () => PlusBridge.InstantBuild(host)) == null)
 					{
@@ -433,10 +441,18 @@ namespace RuinarchDebug
 							&& n.poiTarget is GenericTileObject g && g.blueprintOnTile != null && g.blueprintOnTile.structureType == STRUCTURE_TYPE.CEMETERY);
 					buildText = node?.descriptionLog.logText;
 				}
-				return PlusBridge.FindFor(village) != null;
+				// The game's own planner also places Cemeteries, and a blueprint nobody starts
+				// within 24h expires: a village can end up with a Cemetery instead, which then
+				// takes its dead (vanilla), so it no longer calls for a pit.
+				return PlusBridge.FindFor(village) != null || HasGraveyard(village);
 			});
 			LocationStructure pit = PlusBridge.FindFor(village);
-			if (pit == null && !queued && !HasRoomFor(village, STRUCTURE_TYPE.CEMETERY))
+			bool ownGraveyard = pit == null && HasGraveyard(village);
+			if (ownGraveyard)
+			{
+				Skip("villagers build a Mass Grave from materials", $"{village.name} built its own Cemetery or Cult Temple after {GameHours - start:F1}h (the game's planner; the Mass Grave blueprint expired: pending={PlusBridge.HasPendingBlueprint(village)})");
+			}
+			else if (pit == null && !queued && !HasRoomFor(village, STRUCTURE_TYPE.CEMETERY))
 			{
 				Skip("villagers build a Mass Grave from materials", $"{village.name} has no room for a 5x5 building (the game's own placement check)");
 			}
@@ -445,9 +461,9 @@ namespace RuinarchDebug
 				Check("villagers build a Mass Grave from materials", () =>
 					(pit != null, pit != null ? $"built after {GameHours - start:F1}h" : $"not built within 120h (blueprint seen={queued}, pending={PlusBridge.HasPendingBlueprint(village)})"));
 			}
-			if (buildText == null)
+			if (buildText == null || ownGraveyard)
 			{
-				Skip("the builder's action names the Mass Grave", "no builder seen mid-build");
+				Skip("the builder's action names the Mass Grave", ownGraveyard ? "the village built a Cemetery instead" : "no builder seen mid-build");
 			}
 			else
 			{
@@ -466,11 +482,13 @@ namespace RuinarchDebug
 			Check("mass grave is a village structure of the settlement", () =>
 				(pit.settlementLocation == village && pit.structureType.IsVillageStructure() && !pit.structureType.IsPlayerStructure(),
 				$"settlement={pit.settlementLocation?.name} village={pit.structureType.IsVillageStructure()} player={pit.structureType.IsPlayerStructure()} tiles={pit.tiles.Count}"));
-			Check("mass grave wears its own pit art (not the Cemetery look)", () =>
+			// Bare dirt, no art of its own: one ground tile over the whole pit (the Cemetery's
+			// paved cross replaced), and nothing drawn on top of it.
+			Check("the pit is bare dirt", () =>
 			{
-				SpriteRenderer overlay = Overlay(pit);
-				return (overlay != null && overlay.enabled && overlay.sprite != null,
-					overlay == null ? "no overlay" : $"sprite={overlay.sprite?.name} {overlay.sprite?.rect.width}px layer={overlay.sortingLayerName}/{overlay.sortingOrder} scale={overlay.transform.lossyScale.x:F3}");
+				List<string> ground = pit.tiles.Select(t => t.parentMap.groundTilemap.GetTile(t.localPlace)?.name ?? "none").Distinct().ToList();
+				int drawn = (pit as ManMadeStructure)?.structureObj?.GetComponentsInChildren<SpriteRenderer>().Count(r => r.enabled && r.sprite != null && r.gameObject.name.StartsWith("RuinarchPlus")) ?? 0;
+				return (ground.Count == 1 && drawn == 0, $"ground tiles: {string.Join(", ", ground)}; mod sprites={drawn}");
 			});
 			yield return Snapshot(pit, "massgrave");
 			Check("the pit carries none of the Cemetery's props", () =>
@@ -854,10 +872,19 @@ namespace RuinarchDebug
 			{
 				Camera cam = InnerMapCameraMove.Instance.camera;
 				float zoom = cam.orthographicSize;
-				Guard("hover the body", () => { body.CenterOnCharacter(); cam.orthographicSize = 4f; InnerMapManager.Instance.SetCurrentlyHoveredPOI(body); return body; });
-				yield return null;
-				yield return null;
-				float fill = PlusBridge.DecayBarFill(body);
+				Guard("hover the body", () => { body.CenterOnCharacter(); cam.orthographicSize = 4f; return body; });
+				// The real mouse cursor also sets the hovered object (pointer enter/exit on
+				// whatever lands under it after the camera moves), so keep hovering the body
+				// until the bar is up, for at most 10 frames.
+				float fill = -1f;
+				object hoveredInstead = null;
+				for (int frame = 0; frame < 10 && fill < 0f; frame++)
+				{
+					InnerMapManager.Instance.SetCurrentlyHoveredPOI(body);
+					yield return null;
+					fill = PlusBridge.DecayBarFill(body);
+					hoveredInstead = InnerMapManager.Instance.currentlyHoveredPoi != body ? InnerMapManager.Instance.currentlyHoveredPoi : null;
+				}
 				float left = PlusBridge.DecayRemaining(body);
 				yield return new WaitForEndOfFrame();
 				Texture2D shot = null;
@@ -876,7 +903,7 @@ namespace RuinarchDebug
 					if (shot != null) Destroy(shot);
 				}
 				Check("hovering a corpse shows how much of its decay is left", () =>
-					(fill >= 0f && left >= 0f && Math.Abs(fill - left) < 0.05f && fill < 0.8f && fill > 0.3f, $"bar fill={fill:F2} decay left={left:F2} stage={PlusBridge.DecayStage(body)}"));
+					(fill >= 0f && left >= 0f && Math.Abs(fill - left) < 0.05f && fill < 0.8f && fill > 0.3f, $"bar fill={fill:F2} decay left={left:F2} stage={PlusBridge.DecayStage(body)}{(hoveredInstead != null ? " hovered instead: " + hoveredInstead : "")}"));
 				InnerMapManager.Instance.SetCurrentlyHoveredPOI(null);
 				yield return null;
 				Check("the decay bar goes away when the corpse is no longer hovered", () =>
@@ -907,6 +934,201 @@ namespace RuinarchDebug
 				Check("a mummified body does not decay", () =>
 					(mummy.hasMarker && PlusBridge.DecayStage(mummy) == null, $"hasMarker={mummy.hasMarker} stage={PlusBridge.DecayStage(mummy) ?? "untracked"}"));
 			}
+		}
+
+		// Phase 5: settlements grow. The fullest village with room for a Town Hall (the
+		// Tavern's footprint) is made to qualify by lowering townPopulation to just under its
+		// size. Its villagers place the blueprint, gather materials and build the hall, and
+		// it becomes a Town; then a City and back; finally the Town Hall is destroyed.
+		private IEnumerator TierSuite()
+		{
+			if (!PlusBridge.Available || PlusBridge.Tier(null) == null)
+			{
+				Skip("settlement tiers", "RuinarchPlus (with tiers) not loaded");
+				yield break;
+			}
+			NPCSettlement village = Villages().Where(v => PlusBridge.TownHallFor(v) == null && HasRoomFor(v, STRUCTURE_TYPE.TAVERN))
+				.OrderByDescending(Villagers).FirstOrDefault();
+			if (village == null)
+			{
+				Skip("settlement tiers", "no village has room for a Town Hall (the Tavern's footprint): " + string.Join("; ", Villages().Select(Describe)));
+				yield break;
+			}
+			int baseDwellings = village.settlementType.maxDwellings;
+			int baseFacilities = village.settlementType.maxFacilities;
+			int townMark = Math.Max(1, Villagers(village) - 2);
+			Log($"tier test village: {Describe(village)} villagers={Villagers(village)} caps={baseDwellings}/{baseFacilities} townPopulation={townMark}");
+			PlusBridge.SetConfig("cityPopulation", 1000);
+			PlusBridge.SetConfig("townPopulation", townMark);
+
+			// 1. Built by villagers. A blueprint seen on the way is saved and reloaded.
+			float start = GameHours;
+			yield return WaitGameHours(120f, () => PlusBridge.HasPendingTownHall(village) || PlusBridge.TownHallFor(village) != null);
+			if (PlusBridge.HasPendingTownHall(village))
+			{
+				Log($"  Town Hall blueprint placed after {GameHours - start:F1}h");
+				string json = null;
+				string entries = null;
+				yield return SaveAndRead("ruinarch.plus.blueprints.json", (j, e) => { json = j; entries = e; });
+				Check("a Town Hall under construction is stored inside the player's save file", () =>
+					(json != null && json.Contains("ruinarch.plus.town_hall|"), json ?? "entries: " + entries));
+				if (json != null)
+				{
+					ReplayLoad("ruinarch.plus.blueprints.json", json);
+					Check("a Town Hall under construction is still one after the save loads", () =>
+						(PlusBridge.HasPendingTownHall(village), $"pending after load={PlusBridge.HasPendingTownHall(village)}"));
+				}
+				yield return WaitGameHours(120f - (GameHours - start), () => PlusBridge.TownHallFor(village) != null);
+			}
+			LocationStructure hall = PlusBridge.TownHallFor(village);
+			Check("a grown village builds a Town Hall from materials", () =>
+				(hall != null, hall != null ? $"built after {GameHours - start:F1}h" : $"not built within 120h (pending={PlusBridge.HasPendingTownHall(village)} placeJob={village.HasJob(JOB_TYPE.PLACE_BLUEPRINT)} villagers={Villagers(village)} {BlueprintState(village)})"));
+			if (hall == null)
+			{
+				hall = Guard("instant-build a Town Hall", () => PlusBridge.InstantBuildTownHall(village));
+				Log(hall != null ? "  fallback: instant-built a Town Hall to continue the suite" : "  fallback instant build failed");
+				if (hall == null)
+				{
+					RestoreTierConfig();
+					yield break;
+				}
+			}
+
+			// 2. A Town: bigger limits for the game's build planner, named in its panel.
+			yield return WaitGameHours(2f, () => PlusBridge.Tier(village) == "Town");
+			Check("the village is a Town once its Town Hall stands", () =>
+				(PlusBridge.Tier(village) == "Town" && village.settlementType.maxDwellings == baseDwellings + 8 && village.settlementType.maxFacilities == baseFacilities + 4,
+				$"tier={PlusBridge.Tier(village)} caps={village.settlementType.maxDwellings}/{village.settlementType.maxFacilities} (base {baseDwellings}/{baseFacilities}) villagers={Villagers(village)}"));
+			Check("the Town is announced", () => (ModsLogHas($"{village.name} has grown into a Town"), "mods.log"));
+			string panel = Guard("open the settlement panel", () =>
+			{
+				UIManager.Instance.ShowSettlementInfo(village);
+				string text = (AccessTools.Field(typeof(SettlementInfoUI), "typeLbl").GetValue(UIManager.Instance.settlementInfoUI) as TMPro.TMP_Text)?.text;
+				UIManager.Instance.settlementInfoUI.CloseMenu();
+				return text;
+			});
+			Check("the settlement panel names the tier", () => (panel != null && panel.EndsWith(" Town"), $"\"{panel}\""));
+			string saved = null;
+			yield return SaveAndRead("ruinarch.plus.tiers.json", (j, e) => saved = j);
+			Check("the tier is stored inside the player's save file", () =>
+				(saved != null && saved.Contains(village.persistentID + "|Town"), saved ?? "no tiers entry"));
+
+			// 3. A City, which it keeps down to three quarters of the mark, then back to a Town.
+			PlusBridge.SetConfig("cityPopulation", Villagers(village));
+			yield return WaitGameHours(2f, () => PlusBridge.Tier(village) == "City");
+			Check("a Town reaching the city mark becomes a City", () =>
+				(PlusBridge.Tier(village) == "City" && village.settlementType.maxDwellings == baseDwellings + 16 && village.settlementType.maxFacilities == baseFacilities + 8,
+				$"tier={PlusBridge.Tier(village)} caps={village.settlementType.maxDwellings}/{village.settlementType.maxFacilities}"));
+			PlusBridge.SetConfig("cityPopulation", Villagers(village) + 1);
+			yield return WaitGameHours(2f, null);
+			Check("a City keeps its tier just under the mark", () => (PlusBridge.Tier(village) == "City", $"tier={PlusBridge.Tier(village)} villagers={Villagers(village)}"));
+			PlusBridge.SetConfig("cityPopulation", 1000);
+			yield return WaitGameHours(2f, () => PlusBridge.Tier(village) == "Town");
+			Check("a City far below the mark falls back to a Town", () =>
+				(PlusBridge.Tier(village) == "Town" && village.settlementType.maxDwellings == baseDwellings + 8 && ModsLogHas($"{village.name} has dwindled back to a Town"),
+				$"tier={PlusBridge.Tier(village)} caps={village.settlementType.maxDwellings}/{village.settlementType.maxFacilities}"));
+
+			// 4. The Town Hall destroyed: a village again, at once.
+			RestoreTierConfig();
+			Guard("destroy the Town Hall", () => { hall.AdjustHP(-hall.currentHP); return hall; });
+			Check("destroying the Town Hall makes the Town a village again", () =>
+				(hall.hasBeenDestroyed && PlusBridge.Tier(village) == "Village" && village.settlementType.maxDwellings == baseDwellings && village.settlementType.maxFacilities == baseFacilities
+					&& ModsLogHas($"The Town Hall of {village.name} has been destroyed"),
+				$"destroyed={hall.hasBeenDestroyed} tier={PlusBridge.Tier(village)} caps={village.settlementType.maxDwellings}/{village.settlementType.maxFacilities}"));
+		}
+
+		private static int Villagers(NPCSettlement v) => v.GetNumberOfResidentsThatIsAliveVillager();
+
+		private static bool HasGraveyard(NPCSettlement v) => v.HasStructure(STRUCTURE_TYPE.CEMETERY) || v.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE);
+
+		private static void RestoreTierConfig()
+		{
+			PlusBridge.SetConfig("townPopulation", 20);
+			PlusBridge.SetConfig("cityPopulation", 40);
+		}
+
+		// For failure details: blueprints standing in the village, its build jobs, its taverns.
+		private static string BlueprintState(NPCSettlement village)
+		{
+			List<string> blueprints = village.areas.SelectMany(a => a.gridTileComponent.gridTiles)
+				.Select(t => t.tileObjectComponent.genericTileObject)
+				.Where(g => g != null && g.blueprintOnTile != null)
+				.Select(g => $"{g.blueprintOnTile.structureType}@{g.gridTileLocation.localPlace}").ToList();
+			List<JobQueueItem> jobs = new List<JobQueueItem>();
+			village.PopulateJobsOfType(jobs, JOB_TYPE.BUILD_BLUEPRINT);
+			int taverns = village.structures.TryGetValue(STRUCTURE_TYPE.TAVERN, out List<LocationStructure> t2) ? t2.Count(s => !s.hasBeenDestroyed) : 0;
+			return $"blueprints=[{string.Join(", ", blueprints)}] buildJobs={jobs.Count} (taken {jobs.Count(j => j.assignedCharacter != null)}) taverns={taverns}";
+		}
+
+		// Phase 5: famine. One village's villagers are kept starving (fullness held at 5, as
+		// if there were nothing to eat) until a famine is declared. With famineLeaveChance at
+		// 100, the first day of famine sends them to a village of their faction with a free
+		// home. Fed again, the famine ends.
+		private IEnumerator FamineSuite()
+		{
+			if (PlusBridge.InFamine(null) == null)
+			{
+				Skip("famine", "RuinarchPlus (with famine) not loaded");
+				yield break;
+			}
+			Func<NPCSettlement, List<Character>> villagers = v => v.residents.Where(r => r != null && !r.isDead && r.isNormalCharacter && r.race.IsSapient()).ToList();
+			Func<NPCSettlement, bool> hasRefuge = v => v.owner.ownedSettlements.OfType<NPCSettlement>()
+				.Any(o => o != v && o.locationType == LOCATION_TYPE.VILLAGE && o.GetFirstUnoccupiedStructureOfType(STRUCTURE_TYPE.DWELLING) != null);
+			NPCSettlement village = Villages().Where(v => v.owner != null && v.owner.isMajorFaction && villagers(v).Count >= 4 && !v.isPlagued)
+				.OrderByDescending(hasRefuge).FirstOrDefault();
+			if (village == null)
+			{
+				Skip("famine", "no village of a major faction with 4+ villagers: " + string.Join("; ", Villages().Select(Describe)));
+				yield break;
+			}
+			List<Character> people = villagers(village);
+			Log($"famine test village: {Describe(village)} villagers={people.Count} refuge={hasRefuge(village)}");
+			PlusBridge.SetConfig("famineLeaveChance", 100);
+			Action starve = () =>
+			{
+				foreach (Character c in people.Where(c => !c.isDead && c.homeSettlement == village))
+				{
+					c.needsComponent.SetFullness(5f);
+				}
+			};
+
+			float start = GameHours;
+			yield return WaitGameHours(20f, () => { starve(); return PlusBridge.InFamine(village) == true; });
+			Check("a village whose people go hungry falls into famine", () =>
+				(PlusBridge.InFamine(village) == true, $"famine={PlusBridge.InFamine(village)} after {GameHours - start:F1}h"));
+			Check("the famine is announced", () => (ModsLogHas($"Famine in {village.name}"), "mods.log"));
+			Check("no settlers move into a village in famine", () =>
+			{
+				float m = PlusBridge.MigrationMultiplier(village, out string why);
+				return (m == 0f && why == "famine", $"x{m} {why}");
+			});
+
+			if (!hasRefuge(village))
+			{
+				Skip("starving villagers leave for a village with food", "no other village of the faction has a free home");
+			}
+			else
+			{
+				// Only a move into another village counts: exile or a lost home also empties
+				// homeSettlement, and neither is the famine's doing.
+				Func<Character, bool> movedAway = c => !c.isDead && c.homeSettlement != null && c.homeSettlement != village;
+				yield return WaitGameHours(26f, () => { starve(); return people.Any(movedAway); });
+				List<Character> left = people.Where(movedAway).ToList();
+				List<Character> homeless = people.Where(c => !c.isDead && c.homeSettlement == null).ToList();
+				Check("starving villagers leave for a village with food", () =>
+					(left.Count > 0 && left.All(c => c.homeSettlement.owner == village.owner) && ModsLogHas("to escape the famine"),
+					(left.Count == 0 ? "nobody left" : string.Join(", ", left.Select(c => $"{c.name} -> {c.homeSettlement.name}")))
+					+ (homeless.Count > 0 ? $" (homeless, not counted: {string.Join(", ", homeless.Select(c => c.name))})" : "")));
+			}
+
+			foreach (Character c in people.Where(c => !c.isDead))
+			{
+				c.needsComponent.SetFullness(100f);
+			}
+			yield return WaitGameHours(16f, () => PlusBridge.InFamine(village) == false);
+			Check("fed again, the famine ends", () =>
+				(PlusBridge.InFamine(village) == false && ModsLogHas($"The famine in {village.name} is over"), $"famine={PlusBridge.InFamine(village)}"));
+			PlusBridge.SetConfig("famineLeaveChance", 25);
 		}
 
 		// ---------------------------------------------------------------------------------
@@ -1001,13 +1223,6 @@ namespace RuinarchDebug
 			return s;
 		}
 
-		private const string OverlayName = "RuinarchPlus.MassGraveOverlay";
-
-		private static SpriteRenderer Overlay(LocationStructure structure)
-		{
-			Transform t = (structure as ManMadeStructure)?.structureObj?.transform.Find(OverlayName);
-			return t != null ? t.GetComponent<SpriteRenderer>() : null;
-		}
 
 		// The selected character's path line, zoomed all the way out: at least 2 pixels wide
 		// on screen (Ruinarch+ fix; the game draws it a fixed world width that vanishes when
@@ -1154,11 +1369,15 @@ namespace RuinarchDebug
 			// Held inside a building: an aware faction sends a Demon Rescue there, but only to a
 			// building it knows. (Instant: placed on a tile, the rescue asked for, and put back,
 			// all in one frame; the ledger is reset after in case they saw anything.)
+			// Not being carried: a carried character is wherever their carrier is
+			// (Character.currentStructure), so teleporting their marker moves nothing.
 			Character held = village.residents.FirstOrDefault(r => r != null && !r.isDead && r.hasMarker && r.isNormalCharacter && r.race.IsSapient()
-				&& r != village.ruler && !r.partyComponent.hasParty);
+				&& r != village.ruler && !r.partyComponent.hasParty && r.carryComponent.isBeingCarriedBy == null);
 			LocationGridTile heldHome = held?.gridTileLocation;
-			LocationGridTile inPortal = portal.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? portal.tiles.FirstOrDefault();
-			LocationGridTile inOutpost = outpost.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? outpost.tiles.FirstOrDefault();
+			LocationGridTile InsideOf(LocationStructure s) =>
+				s.passableTiles.FirstOrDefault(t => t.structure == s && !t.isOccupied) ?? s.tiles.FirstOrDefault(t => t.structure == s);
+			LocationGridTile inPortal = InsideOf(portal);
+			LocationGridTile inOutpost = InsideOf(outpost);
 			if (held == null || heldHome == null || inPortal == null || inOutpost == null)
 			{
 				Skip("rescues go only to buildings the faction knows", held == null ? "no free resident" : "no tile inside the portal or outpost");
@@ -1323,7 +1542,9 @@ namespace RuinarchDebug
 			// knowledge test does.
 			Func<NPCSettlement, Character, bool> free = (v, r) => r != null && !r.isDead && r.hasMarker && r.isNormalCharacter
 				&& r.race.IsSapient() && r != v.ruler && !r.isFactionLeader && r.limiterComponent.canMove
-				&& (!r.partyComponent.hasParty || !r.partyComponent.currentParty.isActive);
+				&& (!r.partyComponent.hasParty || !r.partyComponent.currentParty.isActive)
+				// A carried character is wherever the carrier is: teleporting them moves nothing.
+				&& r.carryComponent.isBeingCarriedBy == null;
 			NPCSettlement village = Villages().Where(v => v.owner != null && v.owner.isMajorNonPlayer && !v.isPlagued)
 				.OrderByDescending(v => v.residents.Count(r => free(v, r))).FirstOrDefault();
 			// Villagers in no party first: taking someone out of an idle party can empty it,
@@ -1365,8 +1586,10 @@ namespace RuinarchDebug
 			LocationGridTile spotCaptive = wild[0];
 			LocationGridTile spotWanderer = wild[1];
 			LocationGridTile spotVictim = wild[2];
-			// The one nobody should stumble on: as far from every settlement as possible.
-			LocationGridTile far = wild.Skip(3).OrderByDescending(t => settlementCentres.Min(c => c.GetDistanceTo(t))).First();
+			// The one nobody should stumble on: as far as possible from every settlement and
+			// from the other three spots (the searches for them sweep the land around them).
+			LocationGridTile far = wild.Skip(3).OrderByDescending(t => Math.Min(settlementCentres.Min(c => c.GetDistanceTo(t)),
+				new[] { spotCaptive, spotWanderer, spotVictim }.Min(s => s.GetDistanceTo(t)))).First();
 			Log($"missing persons village: {Describe(village)}; spots captive={spotCaptive} wanderer={spotWanderer} far={far} victim={spotVictim}");
 
 			PlusBridge.SetConfig("missingAfterHours", 4);
@@ -1390,7 +1613,7 @@ namespace RuinarchDebug
 				victim.Death("autotest");
 				return captive;
 			});
-			Log($"  captive {captive.name} restrained={captive.traitContainer.HasTrait("Restrained")}, wanderer {wanderer.name} restrained={wanderer.traitContainer.HasTrait("Restrained")}, victim {victim.name} dead={victim.isDead}");
+			Log($"  captive {captive.name} restrained={captive.traitContainer.HasTrait("Restrained")} at {captive.gridTileLocation?.localPlace}, wanderer {wanderer.name} restrained={wanderer.traitContainer.HasTrait("Restrained")} at {wanderer.gridTileLocation?.localPlace} (far {far.localPlace}), victim {victim.name} dead={victim.isDead}");
 
 			// 1. The base game would roll a rescue for a restrained resident nobody saw.
 			yield return WaitGameHours(3f, null);
@@ -1440,15 +1663,23 @@ namespace RuinarchDebug
 			// 3. The search goes where they were seen, not where they are.
 			PartyQuest search = null;
 			yield return WaitGameHours(2f, () => (search = PlusBridge.MissingSearch(wanderer)) != null);
-			Check("the search heads for the last-seen spot, not where they are", () =>
+			if (search == null && PlusBridge.MissingState(wanderer) == "Seen")
 			{
-				IPartyTargetDestination d = search?.GetTargetDestination();
-				bool atLastSeen = d == spotWanderer.area || d == spotWanderer.structure;
-				bool atLive = d == far.area || d == far.structure;
-				return (search != null && atLastSeen && !atLive,
-					$"destination={(d as Area)?.name ?? (d as LocationStructure)?.name ?? "none"} lastSeen={spotWanderer.area.name} live={far.area.name}");
-			});
-			Check("the search is named as a search", () => (search?.GetPartyQuestName() == "Search for " + wanderer.name, "name=" + (search?.GetPartyQuestName() ?? "no search")));
+				Skip("the search heads for the last-seen spot, not where they are", $"{wanderer.name} was come across before a search was organised (last seen {PlusBridge.MissingLastSeen(wanderer)})");
+				Skip("the search is named as a search", "no search: the wanderer was found by chance");
+			}
+			else
+			{
+				Check("the search heads for the last-seen spot, not where they are", () =>
+				{
+					IPartyTargetDestination d = search?.GetTargetDestination();
+					bool atLastSeen = d == spotWanderer.area || d == spotWanderer.structure;
+					bool atLive = d == far.area || d == far.structure;
+					return (search != null && atLastSeen && !atLive,
+						$"destination={(d as Area)?.name ?? (d as LocationStructure)?.name ?? "none"} lastSeen={spotWanderer.area.name} live={far.area.name}");
+				});
+				Check("the search is named as a search", () => (search?.GetPartyQuestName() == "Search for " + wanderer.name, "name=" + (search?.GetPartyQuestName() ?? "no search")));
+			}
 
 			// 4-6. Let the searches run. Parties take quests at dawn; if none took a search by
 			// 8 am, form one at the next 5 am as the game would.
@@ -1494,26 +1725,39 @@ namespace RuinarchDebug
 			{
 				bool freed = !captive.traitContainer.HasTrait("Restrained");
 				bool announced = ModsLogHas($"{captive.name} of {village.name} has been found.");
-				return (freed && announced && PlusBridge.MissingState(captive) == "Seen", $"freed={freed} announced={announced} state={PlusBridge.MissingState(captive)}");
+				// After being found, they may die or move away later; the record is then dropped.
+				string state = PlusBridge.MissingState(captive);
+				return (freed && announced && (state == "Seen" || state == null),
+					$"freed={freed} announced={announced} state={state ?? $"dropped (dead={captive.isDead} home={captive.homeSettlement?.name ?? "-"})"}");
 			});
 			Check("a resident killed out of sight is found dead", () =>
 			{
 				bool announced = ModsLogHas($"{victim.name} of {village.name} has been found dead.");
 				return (announced && PlusBridge.MissingState(victim) == null, $"announced={announced} state={PlusBridge.MissingState(victim) ?? "dropped"}");
 			});
-			Check("failed searches are retried less often, then given up", () =>
+			// The far spot is only far from the settlements: anyone passing by (a hunter, a
+			// caravan, another search) can come across the wanderer before a search fails, and
+			// then there is nothing left to retry.
+			if (PlusBridge.FailedSearches(wanderer) == 0 && ModsLogHas($"{wanderer.name} of {village.name} has been found."))
 			{
-				// The waits the mod announced for this person, in order (a poll can miss a short
-				// Missing spell, e.g. while the harness waits for dawn to form a party).
-				string mods = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(_logPath)), "mods.log");
-				string pattern = $"The search for {System.Text.RegularExpressions.Regex.Escape(wanderer.name)} found nothing\\. {System.Text.RegularExpressions.Regex.Escape(village.name)} will look again in (\\d+) hours\\.";
-				List<int> waits = File.Exists(mods)
-					? System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(mods), pattern).Cast<System.Text.RegularExpressions.Match>().Select(m => int.Parse(m.Groups[1].Value)).ToList()
-					: new List<int>();
-				bool spaced = waits.Count == 2 && waits[0] == 4 && waits[1] == 8;
-				bool givenUp = PlusBridge.MissingState(wanderer) == "Lost" && ModsLogHas($"{village.name} has given up the search for {wanderer.name}.");
-				return (spaced && givenUp, $"retry waits={string.Join(", ", waits)}h (polled {string.Join(", ", gaps.Select(g => g.ToString("F1")))}h) state={PlusBridge.MissingState(wanderer)} failed={PlusBridge.FailedSearches(wanderer)}");
-			});
+				Skip("failed searches are retried less often, then given up", $"{wanderer.name} was come across before any search failed (state={PlusBridge.MissingState(wanderer) ?? "dropped"})");
+			}
+			else
+			{
+				Check("failed searches are retried less often, then given up", () =>
+				{
+					// The waits the mod announced for this person, in order (a poll can miss a short
+					// Missing spell, e.g. while the harness waits for dawn to form a party).
+					string mods = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(_logPath)), "mods.log");
+					string pattern = $"The search for {System.Text.RegularExpressions.Regex.Escape(wanderer.name)} found nothing\\. {System.Text.RegularExpressions.Regex.Escape(village.name)} will look again in (\\d+) hours\\.";
+					List<int> waits = File.Exists(mods)
+						? System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(mods), pattern).Cast<System.Text.RegularExpressions.Match>().Select(m => int.Parse(m.Groups[1].Value)).ToList()
+						: new List<int>();
+					bool spaced = waits.Count == 2 && waits[0] == 4 && waits[1] == 8;
+					bool givenUp = PlusBridge.MissingState(wanderer) == "Lost" && ModsLogHas($"{village.name} has given up the search for {wanderer.name}.");
+					return (spaced && givenUp, $"retry waits={string.Join(", ", waits)}h (polled {string.Join(", ", gaps.Select(g => g.ToString("F1")))}h) state={PlusBridge.MissingState(wanderer)} failed={PlusBridge.FailedSearches(wanderer)}");
+				});
+			}
 
 			// 7. Records ride inside the real save. (Replaying the load hands every other
 			// ModSave handler load(null): the knowledge ledger is emptied, which no later

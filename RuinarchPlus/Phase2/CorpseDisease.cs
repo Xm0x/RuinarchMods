@@ -6,7 +6,7 @@ using UtilityScripts;
 
 namespace RuinarchPlus
 {
-	// PHASE 2 - Death, Decay & Disease: corpse-borne plague.  (default OFF)
+	// PHASE 2 - Death, Decay & Disease: corpse-borne plague.  (default ON)
 	//
 	// Wires the decay system (CorpseDecay) into the game's existing plague. Once per
 	// in-game hour, UNBURIED bodies at the rotting/skeletal stage lying inside a settlement
@@ -19,7 +19,7 @@ namespace RuinarchPlus
 	// resistance, and infection goes through interruptComponent.TriggerInterrupt(Plagued)
 	// exactly like Plague.Transmission.Transmission.Infect, so all plague listeners fire.
 	//
-	// Requires corpseDecayEnabled (it reads the decay stage). Opt in via config.json.
+	// Requires corpseDecayEnabled (it reads the decay stage). Switch off via config.json.
 	public static class CorpseDisease
 	{
 		private const int TicksPerHour = 20; // 480 ticks/day, hourly checks

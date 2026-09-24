@@ -37,18 +37,11 @@ namespace Inner_Maps.Location_Structures
 		// How close (in tiles) an un-hauled corpse must be for the fallback to absorb it.
 		private const float FallbackRadius = 12f;
 
-		// Bodies that visually "fill" the mound. The pit keeps accepting bodies forever;
-		// this only caps the fill level used by the mound visual.
-		private const int MoundCapacity = 30;
-
 		// Hours each nearby, still-unburied corpse has been waiting (fallback timer).
 		private readonly Dictionary<Character, int> _waitingHours = new Dictionary<Character, int>();
 
 		/// <summary>Number of bodies laid in this pit (hauled by villagers or absorbed).</summary>
 		public int bodyCount { get; private set; }
-
-		/// <summary>0..1 fill level for the mound visual. Caps at full; burial never stops.</summary>
-		public float fillRatio => Mathf.Clamp01((float)bodyCount / MoundCapacity);
 
 		public MassGrave(STRUCTURE_TYPE type, Region location)
 			: base(type, location)
@@ -89,12 +82,6 @@ namespace Inner_Maps.Location_Structures
 			return true;
 		}
 
-		public override void SetStructureObject(LocationStructureObject structureObj)
-		{
-			base.SetStructureObject(structureObj);
-			global::RuinarchPlus.Phase2.MassGraveLook.Refresh(this);
-		}
-
 		public override void OnBuiltNewStructure()
 		{
 			base.OnBuiltNewStructure();
@@ -106,7 +93,6 @@ namespace Inner_Maps.Location_Structures
 		protected override void AfterStructureDestruction(Character p_responsibleCharacter = null)
 		{
 			Active.Remove(this);
-			global::RuinarchPlus.Phase2.MassGraveLook.Strip(structureObj);
 			_waitingHours.Clear();
 			base.AfterStructureDestruction(p_responsibleCharacter);
 		}
@@ -126,7 +112,6 @@ namespace Inner_Maps.Location_Structures
 		{
 			bodyCount++;
 			HauledTotal++;
-			global::RuinarchPlus.Phase2.MassGraveLook.Refresh(this);
 			if (corpse != null)
 			{
 				_waitingHours.Remove(corpse);
@@ -380,7 +365,6 @@ namespace Inner_Maps.Location_Structures
 			_waitingHours.Remove(corpse);
 			bodyCount++;
 			AbsorbedTotal++;
-			global::RuinarchPlus.Phase2.MassGraveLook.Refresh(this);
 			global::RuinarchPlus.RuinarchPlus.Log?.Info($"Mass Grave: Absorbed un-hauled {corpse.name} into the pit (bodyCount={bodyCount}).");
 		}
 	}

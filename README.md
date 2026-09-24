@@ -12,14 +12,15 @@ replaced or recompiled.
 
 | Mod | What it does |
 |---|---|
-| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, villages that search for their missing, and migration that follows a village's fortunes. Risky features are opt-in, and every feature can be switched off in `config.json`. |
+| **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew, factions that only attack what they know about, villages that search for their missing, migration that follows a village's fortunes, villages that grow into Towns and Cities around a Town Hall, and famine. Every feature can be switched off in `config.json`. |
 | **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
 
 ## Art
 
-I don't make sprites or art myself. Until someone offers to handle the art side of the
-mods, buildings and anything else that needs a sprite use generic placeholders, which
-also help with debugging.
+I don't make sprites or art myself. New buildings are made the way the game makes its
+own: a floor, with walls and objects on top, using the game's own tiles and objects (the
+Mass Grave is a dirt floor; the Town Hall uses the Tavern's). Only something that is a
+thing of its own gets new art, loaded through the modloader's asset support.
 
 ## New content
 
@@ -32,18 +33,21 @@ RuinarchModLoader repo; see its
 
 ```
 RuinarchPlus/
-  RuinarchPlus.cs            entry point: applies the patches, registers the Mass Grave
+  RuinarchPlus.cs            entry point: applies the patches, registers the buildings
   Config.cs                  config.json options
+  ModBuildings.cs            villagers build Ruinarch+ buildings (shared construction)
   Fixes/                     one Harmony patch class per bug fix
   Phase2/                    death, decay and disease
     CorpseDecay*.cs          unburied bodies rot and disappear; the decay bar
-    CorpseDisease.cs         rotting bodies spread plague (opt-in)
+    CorpseDisease.cs         rotting bodies spread plague
     Curfew.cs                plague curfew
-    MassGrave*.cs            the Mass Grave: structure, burial, construction, look
+    MassGrave*.cs            the Mass Grave: structure, burial, construction, dirt floor
   Phase3/Knowledge*.cs       per-faction list of known demonic structures; what it gates
   Phase3/MissingPersons*.cs  missing residents and search parties
   Phase4/MigrationHealth.cs  migration follows village health
-  art/mass_grave/            Mass Grave sprite
+  Phase5/SettlementTiers.cs  Village, Town, City
+  Phase5/TownHall.cs         the Town Hall building
+  Phase5/Famine.cs           famine: starving villages, people moving away
   RuinarchPlus-DESIGN.md     design notes and roadmap
 RuinarchDebug/
   DebugMenu.cs               in-game overlay
