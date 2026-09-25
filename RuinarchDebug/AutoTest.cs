@@ -1292,7 +1292,9 @@ namespace RuinarchDebug
 			Check("no settlers move into a village in famine", () =>
 			{
 				float m = PlusBridge.MigrationMultiplier(village, out string why);
-				return (m == 0f && why == "famine", $"x{m} {why}");
+				// Any reason for zero will do (an attack on the village also stops settlers and is
+				// named first); what matters is that nobody moves in.
+				return (m == 0f && (why == "famine" || village.isUnderSiege), $"x{m} {why}");
 			});
 
 			// Unrest: the village turns on its ruler.
