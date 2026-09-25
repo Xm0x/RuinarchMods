@@ -2140,12 +2140,14 @@ namespace RuinarchDebug
 			PlusBridge.Learn(faction, portal);
 			List<Character> converts = Sapients(home).Where(r => PlusBridge.Remembers(r, portal) && !r.traitContainer.HasTrait("Demon Cultist")).ToList();
 			bool knewBefore = PlusBridge.VillageKnows(home, portal);
-			Dictionary<Character, RELIGION> faiths = converts.ToDictionary(r => r, r => r.religionComponent.religion);
+			// Only the trait: it is what makes someone a cultist on the player's side. Changing the
+			// religion as well would make a faction with a religion ideology exile them
+			// (ReligionComponent.ProcessOnChangeReligion). The trait brings Nocturnal; undone too.
+			HashSet<Character> nocturnal = new HashSet<Character>(converts.Where(r => r.traitContainer.HasTrait("Nocturnal")));
 			Guard("make everyone who remembers a cultist", () =>
 			{
 				foreach (Character r in converts)
 				{
-					r.religionComponent.ChangeReligion(RELIGION.Demon_Worship);
 					r.traitContainer.AddTrait(r, "Demon Cultist");
 				}
 				return home;
@@ -2157,7 +2159,10 @@ namespace RuinarchDebug
 				foreach (Character r in converts)
 				{
 					r.traitContainer.RemoveTrait(r, "Demon Cultist");
-					r.religionComponent.ChangeReligion(faiths[r]);
+					if (!nocturnal.Contains(r))
+					{
+						r.traitContainer.RemoveTrait(r, "Nocturnal");
+					}
 				}
 				return home;
 			});
