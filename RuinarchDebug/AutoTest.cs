@@ -291,6 +291,13 @@ namespace RuinarchDebug
 					(throttled.Count == 0 ? $"all {calm.Count} at x1" : "throttled: " + string.Join(", ", throttled.Select(v => v.name)))
 					+ (calm.Count < villages.Count ? $" ({villages.Count - calm.Count} under attack or plagued, left out)" : ""));
 			});
+			// Nobody knows of the demons yet: the "Who Knows of You" section says so.
+			if (!FactionManager.Instance.allFactions.Any(f => f != null && f.isMajorNonPlayer && f.isAwareOfPlayer))
+			{
+				List<string> lines = PlusBridge.KnowledgePanelLines() ?? new List<string>();
+				Check("a new world's bookmarks panel says your presence is not known", () =>
+					(lines.Count == 1 && lines[0] == "Your presence in the region is not known.", string.Join(" / ", lines)));
+			}
 		}
 
 		private IEnumerator MassGraveSuite()
@@ -2119,12 +2126,27 @@ namespace RuinarchDebug
 				Check("a villager who sees the portal carries the news; their faction does not know yet", () =>
 					(PlusBridge.Carries(witness, portal) && !PlusBridge.Knows(faction, portal),
 					$"{witness.name} at {witness.gridTileLocation?.localPlace} carries={PlusBridge.Carries(witness, portal)} faction knows={PlusBridge.Knows(faction, portal)}"));
+				// The bookmarks panel's "Who Knows of You" section names the carrier.
+				yield return WaitGameHours(0.2f, null);
+				List<string> carrying = PlusBridge.KnowledgePanelLines() ?? new List<string>();
+				string header = FindObjectsOfType<BookmarkCategoryItemUI>().Where(i => (int)i.category == 100)
+					.Select(i => (AccessTools.Field(typeof(BookmarkCategoryItemUI), "lblHeaderName").GetValue(i) as TMPro.TMP_Text)?.text).FirstOrDefault();
+				yield return Screenshot("whoknows.png");
+				Check("the bookmarks panel shows who is carrying news of you", () =>
+					(header == "Who Knows of You" && carrying.Any(l => l.Contains(witness.name) && l.Contains("is carrying news of your") && l.Contains(portal.name)),
+					$"section header={header ?? "none"}; lines: {string.Join(" / ", carrying)}"));
 				LocationGridTile home = witness.homeSettlement.cityCenter.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? witness.homeSettlement.cityCenter.passableTiles.FirstOrDefault();
 				Guard("send the witness home", () => { CharacterManager.Instance.Teleport(witness, home); return witness; });
 				yield return WaitGameHours(3f, () => PlusBridge.Knows(faction, portal));
 				Check("back home, the witness teaches it to their faction", () =>
 					(PlusBridge.Knows(faction, portal) && !PlusBridge.Carries(witness, portal),
 					$"{witness.name} of {witness.faction?.name ?? "no faction"} (home {witness.homeSettlement?.name ?? "-"}) at {witness.gridTileLocation?.localPlace} in structure {witness.currentStructure?.name}/{witness.currentSettlement?.name ?? "-"} (owner {witness.currentSettlement?.owner?.name ?? "-"}), area {witness.gridTileLocation?.area?.GetFirstNPCSettlementOnArea()?.name ?? "the wild"}; known={PlusBridge.Knows(faction, portal)} carries={PlusBridge.Carries(witness, portal)}"));
+				yield return WaitGameHours(0.2f, null);
+				List<string> knowing = PlusBridge.KnowledgePanelLines() ?? new List<string>();
+				Check("the bookmarks panel shows what a faction knows", () =>
+					(knowing.Any(l => l.Contains(faction.name) && l.Contains("know of your") && l.Contains(portal.name))
+						&& !knowing.Any(l => l.Contains(witness.name) && l.Contains("is carrying")),
+					string.Join(" / ", knowing)));
 			}
 
 			yield return KnowledgeSaveRoundTrip(faction, portal);

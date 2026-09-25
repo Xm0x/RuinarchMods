@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using Inner_Maps;
 using Inner_Maps.Location_Structures;
@@ -279,12 +280,45 @@ namespace RuinarchPlus.Phase3
 			}
 		}
 
-		private static IEnumerable<string> Names(IEnumerable<LocationStructure> set)
+		internal static IEnumerable<string> Names(IEnumerable<LocationStructure> set)
 		{
 			foreach (LocationStructure s in set)
 			{
 				yield return s?.name ?? "a ruin";
 			}
+		}
+
+		/// <summary>The player's buildings <paramref name="faction"/> knows that still stand.</summary>
+		internal static List<LocationStructure> KnownStanding(Faction faction)
+		{
+			List<LocationStructure> standing = new List<LocationStructure>();
+			if (faction != null && Known.TryGetValue(faction, out HashSet<LocationStructure> set))
+			{
+				foreach (LocationStructure s in set)
+				{
+					if (s != null && !s.hasBeenDestroyed)
+					{
+						standing.Add(s);
+					}
+				}
+			}
+			return standing;
+		}
+
+		/// <summary>Living villagers carrying news home, with the buildings they would tell of
+		/// that still stand.</summary>
+		internal static List<KeyValuePair<Character, List<LocationStructure>>> Couriers()
+		{
+			List<KeyValuePair<Character, List<LocationStructure>>> couriers = new List<KeyValuePair<Character, List<LocationStructure>>>();
+			foreach (KeyValuePair<Character, HashSet<LocationStructure>> kv in Carried)
+			{
+				List<LocationStructure> news = kv.Value.Where(s => s != null && !s.hasBeenDestroyed).ToList();
+				if (kv.Key != null && !kv.Key.isDead && news.Count > 0)
+				{
+					couriers.Add(new KeyValuePair<Character, List<LocationStructure>>(kv.Key, news));
+				}
+			}
+			return couriers;
 		}
 
 		/// <summary>

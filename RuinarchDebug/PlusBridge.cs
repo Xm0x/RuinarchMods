@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Inner_Maps;
@@ -194,6 +195,12 @@ namespace RuinarchDebug
 		internal static bool Carries(Character c, LocationStructure structure)
 		{
 			return KnowledgeType?.GetMethod("Carries", Any)?.Invoke(null, new object[] { c, structure }) is bool b && b;
+		}
+
+		/// <summary>The "Who Knows of You" bookmark section's lines as shown, or null.</summary>
+		internal static List<string> KnowledgePanelLines()
+		{
+			return Plus?.GetType("RuinarchPlus.Phase3.KnowledgePanel")?.GetMethod("Texts", Any)?.Invoke(null, null) as List<string>;
 		}
 
 		internal static void Forget(Faction faction)

@@ -300,13 +300,20 @@ witnessed or been told.** It also addresses why the portal keeps getting found.
   learns of the player this way becomes aware. Traders (Phase 5) carry news both ways.
   *(verified in game)*
 
+- **Shipped: "Who Knows of You"** (`Phase3/KnowledgePanel.cs`, with `knowledgeEnabled`). A
+  section of the bookmarks panel under Major Events, read from the ledger: one line for the
+  region ("Your presence in the region is not known." / "2 of 3 factions know of you."), one
+  per faction that knows ("Aurenad know of your Portal and Corrupt Kennel", or "... know of
+  you, but not where you are"; hover lists everything it knows, click opens the faction),
+  one per villager carrying news home (up to 5; click selects them). The player acts on
+  what the world knows (kill the witness before they get home). It is a bookmark category
+  the game's enum does not have (value 100): the panel's sort order (which throws on
+  unknown values) and header text are patched. Bookmarks are not saved, so it is rebuilt
+  per game/load; it always keeps the region line, since an emptied category loses its
+  section for good. The region line is the skeleton TruePlanet grows into (per region /
+  nation). *(verified in game)*
+
 **Next for Phase 3 (from play feedback):**
-- **"Who knows of you" status [M]:** a section in the right-hand panel (under Win Condition /
-  Major Events) that reads the ledger the mod already keeps, e.g. "Your presence in the
-  region is not known", "Aurenad know of you but not where you are", "Canind know your
-  Portal and the Corrupt Kennel", "Ulric of Canind is carrying news of your Portal home".
-  The player acts on what the world knows (kill the witness before they get home). The
-  region-level line is the skeleton TruePlanet grows into (per region / nation).
 - **Visual fog of war and borders [L]:** settlement borders (the areas a village holds) and,
   around them, the nation's (faction's) borders, drawn on the map; each faction's knowledge
   shown on the map when it is selected (its known buildings marked, the rest dimmed, carried
@@ -493,6 +500,14 @@ This is a **world-generation replacement**, correctly its own mod:
   language barriers throttle information spread).
 
 TruePlanet depends on Ruinarch+ Phases 3 to 6 being in place to feel alive; it ships last.
+
+**Another sister mod, later: a performance mod.** Optimisations that change what the player
+sees belong there, not in Ruinarch+ (which only fixes outright waste, like the wall-rescan
+fix in 0.6.0). First candidate, measured with RuinarchDebug's `FireProbe`: the floating
+damage number and hit spark every damaged object shows on every hit. In a whole-village fire
+that is thousands a second; skipping them for fire damage on objects took a test from 66 to
+77 fps at 1x, about three times that gain at 4x. The game shows them for anything that takes
+damage, so it is a player's choice.
 
 ---
 
