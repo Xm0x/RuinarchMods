@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using Inner_Maps;
 using Inner_Maps.Location_Structures;
@@ -134,8 +135,11 @@ namespace RuinarchDebug
 				_gameTicks += delta;
 			}
 			_lastTick = tick;
-			// Popups/events may pause the game; the test must keep time moving.
-			if (GameManager.Instance.isPaused && UIManager.Instance != null)
+			// Popups/events may pause the game; the test must keep time moving. Not while a save
+			// runs (the harness's or the game's autosave): its threads read the world, and a world
+			// running under them crashed a save (SaveDataJobQueueItem.Save, a job freed mid-read).
+			SaveCurrentProgressManager saver = SaveManager.Instance?.saveCurrentProgressManager;
+			if (GameManager.Instance.isPaused && UIManager.Instance != null && !_saving && saver != null && !saver.isSaving && !saver.isWritingToDisk)
 			{
 				UIManager.Instance.Unpause();
 			}
@@ -222,6 +226,7 @@ namespace RuinarchDebug
 
 			FreshWorldChecks();
 			// Early, while villagers are out walking; leaves the camera as it found it.
+			if (Runs("FireWallTest")) { yield return FireWallTest(); }
 			if (Runs("PathLineTest")) { yield return PathLineTest(); }
 			if (Runs("ExploitSuite")) { yield return ExploitSuite(); }
 			// Needs a village with room for a Tavern-sized building; takes the fullest one.
@@ -248,6 +253,8 @@ namespace RuinarchDebug
 			// Last: it wipes a village out, which can end the world (player victory, and the
 			// game repopulating empty villages with new factions).
 			if (Runs("MigrationSuite")) { yield return MigrationSuite(); }
+			// A measurement that burns a village down: only when asked for by name.
+			if (_only.Contains("FireProbe")) { yield return FireProbe(); }
 
 			Finish("done");
 		}
@@ -1089,7 +1096,33 @@ namespace RuinarchDebug
 				UIManager.Instance.settlementInfoUI.CloseMenu();
 				return text;
 			});
-			Check("the settlement panel names the tier", () => (panel != null && panel.EndsWith(" Town"), $"\"{panel}\""));
+			// A faction leader's home village, in a faction of several villages, is its Capital.
+			bool capital = village.owner?.leader is Character leader && leader.homeSettlement == village
+				&& village.owner.ownedSettlements.Count(o => o is NPCSettlement { locationType: LOCATION_TYPE.VILLAGE }) > 1;
+			Check("the settlement panel names the tier", () => (panel != null && panel.EndsWith(capital ? " Capital" : " Town"), $"\"{panel}\" (capital={capital})"));
+			// The center's building panel: the "Village" line says what the village is now.
+			string[] center = Guard("open the center's building panel", () =>
+			{
+				UIManager.Instance.ShowStructureInfo(village.cityCenter);
+				StructureInfoUI ui = UIManager.Instance.structureInfoUI;
+				// Open the Info tab (a toggle labelled "Info"), as a player would, for the screenshot.
+				UnityEngine.UI.Toggle info = ui.GetComponentsInChildren<UnityEngine.UI.Toggle>(true)
+					.FirstOrDefault(t => t.GetComponentInChildren<TMPro.TMP_Text>(true)?.text == "Info");
+				if (info != null) info.isOn = true;
+				TMPro.TMP_Text value = AccessTools.Field(typeof(StructureInfoUI), "villageLbl").GetValue(ui) as TMPro.TMP_Text;
+				GameObject row = AccessTools.Field(typeof(StructureInfoUI), "villageParentGO").GetValue(ui) as GameObject;
+				TMPro.TMP_Text headerLbl = row?.GetComponentsInChildren<TMPro.TMP_Text>(true).FirstOrDefault(t => t != value);
+				string header = headerLbl?.text;
+				Log("  building panel header components: " + string.Join(", ", headerLbl?.GetComponents<Component>().Select(c => c.GetType().Name + (c is Behaviour b ? (b.enabled ? "" : " (off)") : "")) ?? new string[0]));
+				string description = (AccessTools.Field(typeof(StructureInfoUI), "cityCenterDescriptionLbl").GetValue(ui) as TMPro.TMP_Text)?.text;
+				return new[] { header, description };
+			});
+			yield return new WaitForSecondsRealtime(3f);
+			yield return Screenshot("centerpanel.png");
+			Guard("close the building panel", () => { UIManager.Instance.structureInfoUI.CloseMenu(); return village; });
+			Check("the center's building panel names what the village is", () =>
+				(center != null && center[0] == (capital ? "Capital" : "Town") && center[1] != null && center[1].Contains("Town Center"),
+				$"header=\"{center?[0]}\" (capital={capital}) description=\"{center?[1]}\""));
 			string saved = null;
 			yield return SaveAndRead("ruinarch.plus.tiers.json", (j, e) => saved = j);
 			Check("the tier is stored inside the player's save file", () =>
@@ -1526,6 +1559,321 @@ namespace RuinarchDebug
 				(shown && px >= 1.9f, $"{walker.name} zoom {cam.orthographicSize:F1} (max {max:F1}) line shown={shown} width={px:F1}px"));
 			Guard("close the character panel", () => { AccessTools.FieldRefAccess<UIManager, CharacterInfoUI>("characterInfoUI")(UIManager.Instance).CloseMenu(); return walker; });
 			cam.orthographicSize = before;
+		}
+
+		// ---------------------------------------------------------------------------------
+		// A wall hit that leaves the wall standing changes no path, so the building must not
+		// rescan its pathfinding grid (Ruinarch+ fix: burning walls did it every tick); a wall
+		// that breaks opens a way through, so that one must.
+		private IEnumerator FireWallTest()
+		{
+			ThinWall wall = Villages().SelectMany(v => v.structures.Values.SelectMany(l => l))
+				.OfType<ManMadeStructure>().Where(s => s.structureWalls != null)
+				.SelectMany(s => s.structureWalls).FirstOrDefault(w => w != null && w.currentHP > 2 && w.gridTileLocation != null);
+			if (wall == null)
+			{
+				Skip("a wall hit that leaves it standing does not rescan the building", "no village building with walls");
+				yield break;
+			}
+			int Requests() => (int)GraphRequests.Where(kv => kv.Key.Contains("RescanPathfindingGridOfStructure")).Sum(kv => kv.Value[0]);
+			GraphRequests.Clear();
+			FireProbeTiming.On = true;
+			Guard("hit the wall", () => { wall.AdjustHP(-1, ELEMENTAL_TYPE.Normal, isTrueDamage: true); return wall; });
+			yield return null;
+			int afterHit = Requests();
+			Guard("break the wall", () => { wall.AdjustHP(-wall.currentHP, ELEMENTAL_TYPE.Normal, isTrueDamage: true); return wall; });
+			yield return null;
+			int afterBreak = Requests();
+			FireProbeTiming.On = false;
+			Guard("rebuild the wall", () => { wall.AdjustHP(wall.maxHP, ELEMENTAL_TYPE.Normal, isTrueDamage: true); return wall; });
+			Check("a wall hit that leaves it standing does not rescan the building", () => (afterHit == 0, $"rescans after the hit: {afterHit}"));
+			Check("a wall that breaks rescans the building", () => (afterBreak > afterHit, $"rescans after the break: {afterBreak - afterHit}; wall hp now {wall.currentHP}/{wall.maxHP}"));
+		}
+
+		// ---------------------------------------------------------------------------------
+		// Fire and frame rate (run by name only: it burns a village down). A measurement, not a
+		// test: frame times as more of a village burns, what the fire's own tick code costs,
+		// and the frame time with the fire's effects hidden, to tell rendering from logic.
+		private IEnumerator FireProbe()
+		{
+			NPCSettlement village = Villages().OrderByDescending(v => v.areas.Count).FirstOrDefault();
+			if (village?.cityCenter == null)
+			{
+				Skip("fire probe", "no village");
+				yield break;
+			}
+			GameObject prefab = Guard("find the burning effect", () =>
+				(AccessTools.Field(typeof(GameManager), "particleEffectsDictionary").GetValue(GameManager.Instance) as ParticleEffectAssetDictionary)?[PARTICLE_EFFECT.Burning]);
+			if (prefab != null)
+			{
+				ParticleSystem[] systems = prefab.GetComponentsInChildren<ParticleSystem>(true);
+				Log($"burning effect '{prefab.name}': " + string.Join(", ", prefab.GetComponentsInChildren<Component>(true).GroupBy(c => c.GetType().Name).Select(g => $"{g.Key} x{g.Count()}"))
+					+ "; max particles " + string.Join("/", systems.Select(p => p.main.maxParticles)) + ", emission " + string.Join("/", systems.Select(p => p.emission.rateOverTime.constant.ToString("F0"))) + "/s");
+			}
+			Guard("look at the village at normal speed", () =>
+			{
+				UIManager.Instance.ShowStructureInfo(village.cityCenter);
+				UIManager.Instance.structureInfoUI.CloseMenu();
+				Time.timeScale = 1f;
+				UIManager.Instance.SetProgressionSpeed1X();
+				return village;
+			});
+			yield return new WaitForSecondsRealtime(3f);
+
+			// Everything flammable in the village, nearest the center first (on screen).
+			LocationGridTile centre = village.cityCenter.tiles.FirstOrDefault();
+			List<Traits.ITraitable> fuel = new List<Traits.ITraitable>();
+			List<Traits.ITraitable> onTile = new List<Traits.ITraitable>();
+			foreach (LocationGridTile t in village.areas.SelectMany(a => a.gridTileComponent.gridTiles).OrderBy(t => centre == null ? 0f : t.GetDistanceTo(centre)))
+			{
+				onTile.Clear();
+				t.PopulateTraitablesOnTileThatCanHaveElementalTrait(onTile, "Burning", true, 0f, ELEMENTAL_TYPE.Fire);
+				fuel.AddRange(onTile.Where(x => !(x is Character) && x.traitContainer.HasTrait("Flammable")));
+			}
+			Log($"fire probe in {village.name}: {fuel.Count} flammable things in {village.areas.Count} areas");
+			Func<List<BaseParticleEffect>> effects = () => prefab == null ? new List<BaseParticleEffect>()
+				: FindObjectsOfType<BaseParticleEffect>().Where(e => e.name.StartsWith(prefab.name)).ToList();
+
+			Guard("time the game's per-frame methods", () => { InstallHotTimers(); return village; });
+			yield return MeasureFrames("no fire, 1x", 5f, effects);
+			BurningSource source = new BurningSource();
+			int lit = 0;
+			foreach (int stage in new[] { 100, 400, fuel.Count })
+			{
+				for (; lit < Math.Min(stage, fuel.Count); lit++)
+				{
+					Traits.ITraitable x = fuel[lit];
+					if (x.gridTileLocation == null || x.traitContainer.HasTrait("Burning"))
+					{
+						continue;
+					}
+					x.traitContainer.AddTrait(x, "Burning", out Traits.Trait trait, null, bypassElementalChance: true, -1, 0f, ELEMENTAL_TYPE.Fire);
+					(trait as Traits.Burning)?.SetSourceOfBurning(source, x);
+				}
+				yield return new WaitForSecondsRealtime(1f);
+				yield return MeasureFrames($"{lit} set alight, 1x", 5f, effects);
+			}
+			Guard("4x speed", () => { UIManager.Instance.SetProgressionSpeed4X(); return village; });
+			yield return MeasureFrames("all set alight, 4x", 5f, effects);
+			List<BaseParticleEffect> hidden = effects();
+			foreach (BaseParticleEffect e in hidden)
+			{
+				e.gameObject.SetActive(false);
+			}
+			yield return MeasureFrames($"all set alight, 4x, {hidden.Count} effects hidden", 5f, effects);
+			foreach (BaseParticleEffect e in hidden)
+			{
+				if (e != null) e.gameObject.SetActive(true);
+			}
+			FireProbeTiming.QuietBurns = true;
+			yield return MeasureFrames("all set alight, 4x, no damage numbers or hit sparks from burning", 5f, effects);
+			FireProbeTiming.QuietBurns = false;
+			yield return Screenshot("fire.png");
+			Guard("back to test speed", () => { Time.timeScale = TimeScale; return village; });
+		}
+
+		private IEnumerator MeasureFrames(string label, float seconds, Func<List<BaseParticleEffect>> effects)
+		{
+			FireProbeTiming.Reset();
+			HotMs.Clear();
+			GraphRequests.Clear();
+			FireProbeTiming.On = true;
+			float end = Time.realtimeSinceStartup + seconds;
+			int frames = 0;
+			float sum = 0f;
+			float worst = 0f;
+			while (Time.realtimeSinceStartup < end)
+			{
+				yield return null;
+				frames++;
+				sum += Time.unscaledDeltaTime;
+				worst = Math.Max(worst, Time.unscaledDeltaTime);
+			}
+			FireProbeTiming.On = false;
+			int hpBars = FindObjectsOfType<BaseMapObjectVisual>().Count(v => v.hasHPBarGO && v.hpBarGO.activeSelf);
+			string hot = string.Join(", ", HotMs.OrderByDescending(kv => kv.Value).Take(10)
+				.Select(kv => $"{kv.Key.DeclaringType?.Name}.{kv.Key.Name} {kv.Value / Math.Max(1, frames):F2}"));
+			List<BaseParticleEffect> active = effects().Where(e => e.gameObject.activeInHierarchy).ToList();
+			int particles = active.SelectMany(e => e.GetComponentsInChildren<ParticleSystem>()).Sum(p => p.particleCount);
+			int ticks = Math.Max(1, FireProbeTiming.Ticks);
+			Log($"  fire probe [{label}]: {frames / sum:F0} fps (avg {sum / frames * 1000f:F1} ms, worst {worst * 1000f:F0} ms); "
+				+ $"{FireProbeTiming.Ticks} ticks, tick start {FireProbeTiming.TickStartMs / ticks:F1} ms + tick end {FireProbeTiming.TickEndMs / ticks:F1} ms per tick, "
+				+ $"of which burning {FireProbeTiming.BurningMs / ticks:F1} ms ({FireProbeTiming.BurningCalls / ticks} fires); {active.Count} fire effects, {particles} live particles, {hpBars} HP bars shown");
+			Log($"    ms per frame: {hot}");
+			if (GraphRequests.Count > 0)
+			{
+				Log("    graph rebuilds requested: " + string.Join("; ", GraphRequests.OrderByDescending(kv => kv.Value[0]).Take(6)
+					.Select(kv => $"{kv.Value[0]}x {kv.Key} (avg {kv.Value[1] / kv.Value[0]:F0} tiles)")));
+			}
+		}
+
+		// Who asks the pathfinder to rebuild part of its graph, how often, and how big a box.
+		private static readonly Dictionary<string, double[]> GraphRequests = new Dictionary<string, double[]>();
+
+		[HarmonyPatch(typeof(Inner_Maps.InnerMapManager), nameof(Inner_Maps.InnerMapManager.ShowHealthAdjustmentEffect))]
+		internal static class FireProbe_QuietNumbers
+		{
+			private static bool Prefix() => !(FireProbeTiming.QuietBurns && FireProbeTiming.InBurn);
+		}
+
+		[HarmonyPatch(typeof(CombatManager), nameof(CombatManager.CreateHitEffectAt))]
+		internal static class FireProbe_QuietSparks
+		{
+			private static bool Prefix() => !(FireProbeTiming.QuietBurns && FireProbeTiming.InBurn);
+		}
+
+		private static void TallyGraphRequest(Bounds b)
+		{
+			if (!FireProbeTiming.On)
+			{
+				return;
+			}
+			string caller = string.Join(" < ", new System.Diagnostics.StackTrace(3, false).GetFrames()?.Take(3)
+				.Select(f => f.GetMethod()).Where(m => m != null).Select(m => $"{m.DeclaringType?.Name}.{m.Name}") ?? new string[0]);
+			if (!GraphRequests.TryGetValue(caller, out double[] tally))
+			{
+				GraphRequests[caller] = tally = new double[2];
+			}
+			tally[0]++;
+			tally[1] += b.size.x * b.size.y;
+		}
+
+		[HarmonyPatch(typeof(PathfindingManager), nameof(PathfindingManager.UpdatePathfindingGraphPartialCoroutine), new[] { typeof(Bounds) })]
+		internal static class FireProbe_GraphRequestBounds
+		{
+			private static void Prefix(Bounds bounds) => TallyGraphRequest(bounds);
+		}
+
+		[HarmonyPatch(typeof(PathfindingManager), nameof(PathfindingManager.UpdatePathfindingGraphPartialCoroutine), new[] { typeof(Pathfinding.GraphUpdateObject) })]
+		internal static class FireProbe_GraphRequestObject
+		{
+			private static void Prefix(Pathfinding.GraphUpdateObject guo) => TallyGraphRequest(guo.bounds);
+		}
+
+		// Per-method CPU time of every Update / LateUpdate / FixedUpdate / 2D trigger callback of
+		// the game's MonoBehaviours and the pathfinder's, while a measurement runs.
+		private static readonly Dictionary<MethodBase, double> HotMs = new Dictionary<MethodBase, double>();
+
+		private void InstallHotTimers()
+		{
+			HashSet<string> names = new HashSet<string> { "Update", "LateUpdate", "FixedUpdate", "OnTriggerEnter2D", "OnTriggerExit2D", "OnTriggerStay2D" };
+			Harmony harmony = new Harmony("ruinarch.debug.fireprobe");
+			HarmonyMethod pre = new HarmonyMethod(AccessTools.Method(typeof(AutoTest), nameof(HotPre)));
+			HarmonyMethod post = new HarmonyMethod(AccessTools.Method(typeof(AutoTest), nameof(HotPost)));
+			int patched = 0;
+			int failed = 0;
+			foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies().Where(a => a.GetName().Name == "Assembly-CSharp" || a.GetName().Name == "AstarPathfindingProject"))
+			{
+				Type[] types;
+				try { types = a.GetTypes(); }
+				catch (ReflectionTypeLoadException e) { types = e.Types.Where(t => t != null).ToArray(); }
+				foreach (Type t in types.Where(t => typeof(MonoBehaviour).IsAssignableFrom(t) && !t.ContainsGenericParameters))
+				{
+					foreach (MethodInfo m in t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+						.Where(m => names.Contains(m.Name) && !m.IsAbstract && !m.ContainsGenericParameters && m.GetMethodBody() != null))
+					{
+						try { harmony.Patch(m, pre, post); patched++; }
+						catch { failed++; }
+					}
+				}
+			}
+			Log($"  timing {patched} per-frame methods ({failed} could not be patched)");
+		}
+
+		private static void HotPre(out long __state) => __state = System.Diagnostics.Stopwatch.GetTimestamp();
+
+		private static void HotPost(MethodBase __originalMethod, long __state)
+		{
+			if (FireProbeTiming.On)
+			{
+				HotMs.TryGetValue(__originalMethod, out double ms);
+				HotMs[__originalMethod] = ms + FireProbeTiming.Ms(__state);
+			}
+		}
+
+		internal static class FireProbeTiming
+		{
+			internal static bool On;
+			// Skip the damage number and hit spark of each burn (inside Burning's tick).
+			internal static bool QuietBurns;
+			internal static bool InBurn;
+			internal static int Ticks;
+			internal static long BurningCalls;
+			internal static double TickStartMs, TickEndMs, BurningMs;
+
+			internal static void Reset()
+			{
+				Ticks = 0;
+				BurningCalls = 0;
+				TickStartMs = TickEndMs = BurningMs = 0;
+			}
+
+			internal static double Ms(long since) => (System.Diagnostics.Stopwatch.GetTimestamp() - since) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+		}
+
+		[HarmonyPatch(typeof(GameManager), "TickStarted")]
+		internal static class FireProbe_TickStarted
+		{
+			private static void Prefix(out long __state) => __state = System.Diagnostics.Stopwatch.GetTimestamp();
+			private static void Postfix(long __state)
+			{
+				if (FireProbeTiming.On) FireProbeTiming.TickStartMs += FireProbeTiming.Ms(__state);
+			}
+		}
+
+		[HarmonyPatch(typeof(GameManager), "TickEnded")]
+		internal static class FireProbe_TickEnded
+		{
+			private static void Prefix(out long __state) => __state = System.Diagnostics.Stopwatch.GetTimestamp();
+			private static void Postfix(long __state)
+			{
+				if (FireProbeTiming.On)
+				{
+					FireProbeTiming.TickEndMs += FireProbeTiming.Ms(__state);
+					FireProbeTiming.Ticks++;
+				}
+			}
+		}
+
+		[HarmonyPatch(typeof(Traits.Burning), "PerTickEnded")]
+		internal static class FireProbe_Burning
+		{
+			private static void Prefix(out long __state)
+			{
+				FireProbeTiming.InBurn = true;
+				__state = System.Diagnostics.Stopwatch.GetTimestamp();
+			}
+
+			private static void Postfix(long __state)
+			{
+				FireProbeTiming.InBurn = false;
+				if (FireProbeTiming.On)
+				{
+					FireProbeTiming.BurningMs += FireProbeTiming.Ms(__state);
+					FireProbeTiming.BurningCalls++;
+				}
+			}
+		}
+
+		// Saves the real screen next to autotest.log, at the end of this frame.
+		private IEnumerator Screenshot(string file)
+		{
+			yield return new WaitForEndOfFrame();
+			Texture2D shot = null;
+			try
+			{
+				shot = ScreenCapture.CaptureScreenshotAsTexture();
+				File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(_logPath), file), shot.EncodeToPNG());
+				Log($"  screenshot saved: {file}");
+			}
+			catch (Exception e)
+			{
+				Log($"  screenshot {file} failed: {e.Message}");
+			}
+			finally
+			{
+				if (shot != null) Destroy(shot);
+			}
 		}
 
 		// Render a structure with a temporary orthographic camera (a copy of the game camera:
@@ -2194,6 +2542,7 @@ namespace RuinarchDebug
 			string captiveWas = PlusBridge.MissingState(captive);
 			Func<bool> settled = () => PlusBridge.MissingState(wanderer) == "Lost" && PlusBridge.MissingState(victim) == null
 				&& !captive.traitContainer.HasTrait("Restrained");
+			_partyShortages = 0;
 			while (GameHours - start < 220f && !settled())
 			{
 				yield return WaitGameHours(1f, () =>
@@ -2247,7 +2596,15 @@ namespace RuinarchDebug
 				ResetMissingConfig();
 				yield break;
 			}
-			Check("a resident killed out of sight is found dead", () =>
+			// Searches need people: a village whose residents were all busy (no party could be
+			// formed morning after morning) runs out of test time with searches still pending.
+			string starved = !settled() && _partyShortages >= 3
+				? $"no search party could be formed {_partyShortages} times: {village.name}'s residents were busy ({Describe(village)})" : null;
+			if (starved != null && PlusBridge.MissingState(victim) != null)
+			{
+				Skip("a resident killed out of sight is found dead", starved);
+			}
+			else Check("a resident killed out of sight is found dead", () =>
 			{
 				bool announced = ModsLogHas($"{victim.name} of {village.name} has been found dead.");
 				return (announced && PlusBridge.MissingState(victim) == null, $"announced={announced} state={PlusBridge.MissingState(victim) ?? "dropped"}");
@@ -2255,7 +2612,11 @@ namespace RuinarchDebug
 			// The far spot is only far from the settlements: anyone passing by (a hunter, a
 			// caravan, another search) can come across the wanderer before a search fails, and
 			// then there is nothing left to retry.
-			if (PlusBridge.FailedSearches(wanderer) == 0 && ModsLogHas($"{wanderer.name} of {village.name} has been found."))
+			if (starved != null && PlusBridge.MissingState(wanderer) != "Lost" && PlusBridge.FailedSearches(wanderer) > 0)
+			{
+				Skip("failed searches are retried less often, then given up", starved);
+			}
+			else if (PlusBridge.FailedSearches(wanderer) == 0 && PlusBridge.MissingState(wanderer) != "Lost")
 			{
 				Skip("failed searches are retried less often, then given up", $"{wanderer.name} was come across before any search failed (state={PlusBridge.MissingState(wanderer) ?? "dropped"})");
 			}
@@ -2276,23 +2637,46 @@ namespace RuinarchDebug
 				});
 			}
 
-			// 7. Records ride inside the real save.
+			// 7. Records ride inside the real save. Whoever still has a record: the wanderer's is
+			// gone if they were come across before any search failed.
+			Character kept = new[] { wanderer, captive, victim }.Concat(village.residents)
+				.Where(c => c != null && PlusBridge.MissingState(c) != null)
+				// A search under way is the hardest to bring back (its quest must be found again).
+				.OrderByDescending(c => PlusBridge.MissingState(c) == "Searching").FirstOrDefault();
+			if (kept == null)
+			{
+				foreach (string name in new[] { "missing persons are stored inside the player's save file", "missing persons come back when the save loads" })
+				{
+					Skip(name, "nobody has a missing-person record left to save");
+				}
+				ResetMissingConfig();
+				yield break;
+			}
 			string json = null;
 			string entries = null;
 			yield return SaveAndRead("ruinarch.plus.missing.json", (j, e) => { json = j; entries = e; });
 			Check("missing persons are stored inside the player's save file", () =>
-				(json != null && json.Contains(wanderer.persistentID), json == null ? "entries: " + entries : $"{json.Length} bytes"));
+				(json != null && json.Contains(kept.persistentID), json == null ? "entries: " + entries : $"{json.Length} bytes, {kept.name} ({PlusBridge.MissingState(kept)})"));
 			if (json != null)
 			{
-				string before = PlusBridge.MissingState(wanderer);
+				string before = PlusBridge.MissingState(kept);
+				// A real load registers every saved quest in the game's quest database before the
+				// mod's data is read; a live world has none registered.
+				PartyQuestDatabase quests = DatabaseManager.Instance.partyQuestDatabase;
+				PartyQuest liveSearch = PlusBridge.MissingSearch(kept);
+				bool registered = liveSearch != null && !quests.allPartyQuests.ContainsKey(liveSearch.persistentID);
+				if (registered) quests.AddPartyQuest(liveSearch);
 				PlusBridge.ClearMissing();
 				ReplayLoad("ruinarch.plus.missing.json", json);
 				Check("missing persons come back when the save loads", () =>
-					(before != null && PlusBridge.MissingState(wanderer) == before, $"before={before ?? "none"} after load={PlusBridge.MissingState(wanderer) ?? "none"}"));
+					(before != null && PlusBridge.MissingState(kept) == before, $"{kept.name}: before={before ?? "none"} after load={PlusBridge.MissingState(kept) ?? "none"}"));
+				if (registered) quests.RemovePartyQuest(liveSearch);
 			}
 
 			ResetMissingConfig();
 		}
+
+		private int _partyShortages;
 
 		private static void ResetMissingConfig()
 		{
@@ -2394,6 +2778,7 @@ namespace RuinarchDebug
 			if (members.Count < min)
 			{
 				Log($"  only {members.Count} free resident(s) for a party; {quest.partyQuestType} needs {min}");
+				_partyShortages++;
 				return null;
 			}
 			foreach (Character m in members.Where(m => m.partyComponent.hasParty).ToList())
@@ -2427,13 +2812,22 @@ namespace RuinarchDebug
 			string zip = Path.Combine(UtilityScripts.Utilities.gameSavePath, saveName + ".zip");
 			SaveCurrentProgressManager saver = SaveManager.Instance.saveCurrentProgressManager;
 			Try("delete an old test save", () => { if (File.Exists(zip)) File.Delete(zip); });
-			// Saving a running world races its save threads against live log objects and can
-			// hang the save forever, so pause like the game does.
-			Try("pause for the save", () => UIManager.Instance.Pause());
+			// Saving a running world races its save threads against live objects (a job freed
+			// mid-save threw inside SaveDataJobQueueItem.Save and left "Saving your progress..."
+			// up forever), so pause and lock the speed controls, as the game's own autosave does:
+			// otherwise a key press or a speed button resumes the world mid-save.
+			Try("pause for the save", () =>
+			{
+				UIManager.Instance.Pause();
+				UIManager.Instance.SetSpeedTogglesState(false);
+			});
+			_saving = true;
 			Try("save the game", () => saver.DoManualSave(saveName));
 			yield return WaitReal(() => File.Exists(zip) && !saver.isSaving && !saver.isWritingToDisk, 180f, "the test save to be written");
+			_saving = false;
 			Try("resume after the save", () =>
 			{
+				UIManager.Instance.SetSpeedTogglesState(true);
 				UIManager.Instance.Unpause();
 				UIManager.Instance.SetProgressionSpeed4X();
 				Time.timeScale = TimeScale;
@@ -2457,6 +2851,21 @@ namespace RuinarchDebug
 			});
 			Try("delete the test save", () => { if (File.Exists(zip)) File.Delete(zip); });
 			got(json, entries);
+		}
+
+		// A harness save in progress: anything resuming the world now is logged with its caller.
+		private static bool _saving;
+
+		[HarmonyPatch(typeof(GameManager), nameof(GameManager.SetPausedState))]
+		internal static class SaveUnpauseWatch
+		{
+			private static void Prefix(bool isPaused)
+			{
+				if (_saving && !isPaused)
+				{
+					_running?.Log("  the world was resumed during the test save by: " + Environment.StackTrace.Replace("\n", " | "));
+				}
+			}
 		}
 
 		// Replays loading: stages what a real save holds right now (every ModSave handler's

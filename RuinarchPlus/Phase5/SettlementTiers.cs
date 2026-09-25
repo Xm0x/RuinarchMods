@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
@@ -27,7 +28,7 @@ namespace RuinarchPlus.Phase5
 	/// re-set on load): Town +8 dwellings and +4 facilities, City +16 and +8. The planner then
 	/// builds the settlement out as it grows. No new <c>SETTLEMENT_TYPE</c>: that one is saved
 	/// and drives culture-specific facility weights. The tier is saved inside the player's
-	/// save (<c>ModData/ruinarch.plus.tiers.json</c>) and shown in the settlement's info panel.
+	/// save (<c>ModData/ruinarch.plus.tiers.json</c>) and shown in the settlement's panel and in its buildings' panels.
 	/// </summary>
 	public static class SettlementTiers
 	{
@@ -213,16 +214,33 @@ namespace RuinarchPlus.Phase5
 			}
 		}
 
-		/// <summary>The faction line shown under a settlement's name, with its tier:
+		/// <summary>What a settlement is called: "Capital" for the faction leader's home village
+		/// when the faction holds more than one village, else its tier (Village, Town, City).</summary>
+		internal static string Kind(BaseSettlement settlement)
+		{
+			if (!Enabled || !(settlement is NPCSettlement s))
+			{
+				return Tier.Village.ToString();
+			}
+			Faction f = s.owner;
+			if (f != null && f.isMajorFaction && f.leader is Character leader && leader.homeSettlement == s
+				&& f.ownedSettlements.Count(o => o is NPCSettlement { locationType: LOCATION_TYPE.VILLAGE }) > 1)
+			{
+				return "Capital";
+			}
+			return Get(s).ToString();
+		}
+
+		/// <summary>The faction line shown under a settlement's name, with what it is:
 		/// "Human Empire" stays as is for a village, becomes "Human Empire Town".</summary>
 		internal static string Label(BaseSettlement settlement, string factionLine)
 		{
-			Tier tier = Enabled && settlement is NPCSettlement s ? Get(s) : Tier.Village;
-			if (tier == Tier.Village)
+			string kind = Kind(settlement);
+			if (kind == nameof(Tier.Village))
 			{
 				return factionLine;
 			}
-			return string.IsNullOrEmpty(factionLine) ? tier.ToString() : factionLine + " " + tier;
+			return string.IsNullOrEmpty(factionLine) ? kind : factionLine + " " + kind;
 		}
 
 		/// <summary>Build a Town Hall instantly (debug menu, test harness). A settlement has at
@@ -329,6 +347,63 @@ namespace RuinarchPlus.Phase5
 			if (SubLbl?.GetValue(__instance) is TMP_Text label && __instance.settlement is NPCSettlement { locationType: LOCATION_TYPE.VILLAGE })
 			{
 				label.text = SettlementTiers.Label(__instance.settlement, label.text);
+			}
+		}
+	}
+
+	// A building's info panel: the "Village" line above the settlement's name says what the
+	// settlement is (Town, City, Capital), and the center's description names it the same way.
+	[HarmonyPatch(typeof(StructureInfoUI), "UpdateInfo")]
+	internal static class SettlementTiers_StructurePanel
+	{
+		// The header is a fixed, localized label in the panel, which is reused: keep its own text
+		// to put back. Its localizer (Unity Localization's LocalizeStringEvent) rewrites the text
+		// whenever the row is shown again (opening the Info tab), so it is off while we name the
+		// settlement and back on for a plain village.
+		private static TMP_Text _header;
+		private static string _headerText;
+		private static Behaviour[] _localizers = new Behaviour[0];
+
+		private static void Postfix(StructureInfoUI __instance, GameObject ___villageParentGO, TextMeshProUGUI ___villageLbl, TextMeshProUGUI ___cityCenterDescriptionLbl)
+		{
+			try
+			{
+				if (_header == null && ___villageParentGO != null)
+				{
+					foreach (TMP_Text t in ___villageParentGO.GetComponentsInChildren<TMP_Text>(true))
+					{
+						if (t != ___villageLbl)
+						{
+							_header = t;
+							_headerText = t.text;
+							_localizers = t.GetComponents<Behaviour>().Where(b => b.GetType().Name.Contains("LocalizeStringEvent")).ToArray();
+							break;
+						}
+					}
+				}
+				BaseSettlement settlement = __instance.activeStructure?.settlementLocation;
+				string kind = SettlementTiers.Kind(settlement);
+				if (_header != null)
+				{
+					bool village = kind == nameof(SettlementTiers.Tier.Village);
+					foreach (Behaviour b in _localizers)
+					{
+						if (b != null) b.enabled = village;
+					}
+					if (!village || _localizers.Length == 0)
+					{
+						_header.text = village ? _headerText : kind;
+					}
+				}
+				if (___cityCenterDescriptionLbl != null && __instance.activeStructure?.structureType == STRUCTURE_TYPE.CITY_CENTER
+					&& settlement is NPCSettlement s && SettlementTiers.Get(s) != SettlementTiers.Tier.Village)
+				{
+					___cityCenterDescriptionLbl.text = ___cityCenterDescriptionLbl.text.Replace("Village Center", SettlementTiers.Get(s) + " Center");
+				}
+			}
+			catch (Exception e)
+			{
+				RuinarchPlus.Log?.Warning("Settlement tiers (structure panel) failed: " + e.Message);
 			}
 		}
 	}

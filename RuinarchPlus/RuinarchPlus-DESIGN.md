@@ -398,8 +398,11 @@ knowledge).
    own values are the base): Town +8 dwellings / +4 facilities, City +16 / +8. No new
    `SETTLEMENT_TYPE` (it is saved and drives culture-specific facility weights). The tier
    is saved (`ModData/ruinarch.plus.tiers.json`), announced in the event log, and named in
-   the settlement panel ("Human Empire Town"). Outpost (a tier *below* a vanilla village)
-   is left out: it would shrink villages the game generates. Capital is TruePlanet's.
+   the settlement panel ("Human Empire Town"), in the "Village" line of a building's panel
+   and in the center's description. The faction leader's home village is labelled
+   **Capital** once the faction holds more than one village (a name only, no new rules;
+   TruePlanet's nation capitals build on it). Outpost (a tier *below* a vanilla village)
+   is left out: it would shrink villages the game generates.
 2. **Food economy & famine [M to L]:** *Famine shipped* (`Phase5/Famine.cs`, config
    `famineEnabled`, `famineHours` 12, `famineLeaveChance` 25). The signal is the game's own
    hunger rather than food piles (consumption rates are runtime-only editor values): a third
