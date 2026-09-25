@@ -226,6 +226,9 @@ namespace RuinarchDebug
 			// own checks. In memory only: config.json is untouched.
 			PlusBridge.SetConfig("corpseDiseaseEnabled", false);
 			PlusBridge.SetConfig("lifeCycleEnabled", false);
+			// Unrest neither: the harness's own killings and wrecking would set villages rising
+			// against their rulers mid-test. UnrestSuite turns it on for its own checks.
+			PlusBridge.SetConfig("unrestEnabled", false);
 			yield return WaitGameHours(1f, null);
 
 			FreshWorldChecks();
@@ -250,6 +253,8 @@ namespace RuinarchDebug
 			if (Runs("DecayTest")) { yield return DecayTest(); }
 			// Starves one village until famine, then feeds it; some villagers move away.
 			if (Runs("FamineSuite")) { yield return FamineSuite(); }
+			// Kills a villager, wrecks a building and sets the village against its ruler twice.
+			if (Runs("UnrestSuite")) { yield return UnrestSuite(); }
 			if (Runs("HuntSuite")) { yield return HuntSuite(); }
 			if (Runs("TradeSuite")) { yield return TradeSuite(); }
 			// After the burial and knowledge tests: a plague answered with Exile makes the
@@ -304,6 +309,25 @@ namespace RuinarchDebug
 				List<string> lines = PlusBridge.KnowledgePanelLines() ?? new List<string>();
 				Check("a new world's bookmarks panel says your presence is not known", () =>
 					(lines.Count == 1 && lines[0] == "Your presence in the region is not known.", string.Join(" / ", lines)));
+				// A faction becoming aware while the game is paused (ticks stop; the game may pause
+				// on its own alert) shows in the section at once. Made unaware again, its alert goes.
+				Faction f = villages.Select(v => v.owner).FirstOrDefault(o => o != null && o.isMajorNonPlayer);
+				if (f != null)
+				{
+					bool wasPaused = GameManager.Instance.isPaused;
+					GameManager.Instance.SetPausedState(true);
+					f.SetIsAwareOfPlayer(true);
+					List<string> aware = PlusBridge.KnowledgePanelLines() ?? new List<string>();
+					f.SetIsAwareOfPlayer(false);
+					List<string> after = PlusBridge.KnowledgePanelLines() ?? new List<string>();
+					int alerts = PlayerManager.Instance.player.bookmarkComponent.bookmarkedObjects.TryGetValue(BOOKMARK_CATEGORY.Alerts, out BookmarkCategory cat)
+						? cat.bookmarked.OfType<Quests.Alerts.FactionAwareAlert>().Count(a => a.factionName == f.name) : 0;
+					GameManager.Instance.SetPausedState(wasPaused);
+					Check("a faction becoming aware shows in the panel at once, even paused", () =>
+						(aware.Any(l => l.Contains(f.name) && l.Contains("know of you")) && after.Count == 1 && after[0] == "Your presence in the region is not known.",
+						$"aware: {string.Join(" / ", aware)}; unaware again: {string.Join(" / ", after)}"));
+					Check("the harness takes back the 'is now aware' alert when it makes a faction unaware", () => (alerts == 0, $"{alerts} alert(s) left for {f.name}"));
+				}
 			}
 		}
 
@@ -396,7 +420,9 @@ namespace RuinarchDebug
 				Check("a village never gets a second Mass Grave", () =>
 					(PitCount(withPit) == before && again == PlusBridge.FindFor(withPit), $"{withPit.name}: pits {before} -> {PitCount(withPit)}"));
 			}
-			NPCSettlement withoutPit = villages.Where(v => PitCount(v) == 0).OrderByDescending(v => HasRoomFor(v, STRUCTURE_TYPE.CEMETERY)).FirstOrDefault();
+			// Not one with a Mass Grave blueprint waiting: the instant build hands back the pit
+			// being built there (none yet) rather than place a second.
+			NPCSettlement withoutPit = villages.Where(v => PitCount(v) == 0 && !PlusBridge.HasPendingBlueprint(v)).OrderByDescending(v => HasRoomFor(v, STRUCTURE_TYPE.CEMETERY)).FirstOrDefault();
 			if (withoutPit != null && !HasRoomFor(withoutPit, STRUCTURE_TYPE.CEMETERY))
 			{
 				Skip("instant build creates a real Mass Grave in the village", $"no village without a pit has room for a 5x5 building (the game's own placement check; tried {withoutPit.name})");
@@ -407,6 +433,10 @@ namespace RuinarchDebug
 				Check("instant build creates a real Mass Grave in the village", () =>
 					(built != null && PlusBridge.IsMassGrave(built) && built.settlementLocation == withoutPit && built.tiles.Count > 0,
 					built == null ? $"no valid spot / null ({withoutPit.name} owner={withoutPit.owner?.name ?? "none"})" : $"settlement={built.settlementLocation?.name} tiles={built.tiles.Count} type={built.structureType.ToStringEnum()}"));
+			}
+			else
+			{
+				Skip("instant build creates a real Mass Grave in the village", "every village has a pit or a Mass Grave blueprint waiting");
 			}
 		}
 
@@ -1243,6 +1273,20 @@ namespace RuinarchDebug
 
 		private static int Villagers(NPCSettlement v) => v.GetNumberOfResidentsThatIsAliveVillager();
 
+		// The Age row Ruinarch+ adds to the character panel's Info tab: { header, value }.
+		private static string[] AgeRow(Component panel)
+		{
+			Transform row = panel.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "RuinarchPlus.AgeRow");
+			TMPro.TMP_Text[] texts = row?.GetComponentsInChildren<TMPro.TMP_Text>(true);
+			if (texts == null || texts.Length == 0)
+			{
+				return null;
+			}
+			TMPro.TMP_Text header = texts.FirstOrDefault(t => t.text == "Age");
+			TMPro.TMP_Text value = texts.FirstOrDefault(t => t != header);
+			return new[] { header?.text, value?.text };
+		}
+
 		// A creature for the Mass Grave's carcass checks. A village with a Hunter Lodge skins
 		// skinnable carcasses (wolves) as in the base game, so it gets a Scorpion instead.
 		private static SUMMON_TYPE CarcassFor(NPCSettlement village) =>
@@ -1379,11 +1423,6 @@ namespace RuinarchDebug
 			Log($"famine test village: {Describe(village)} villagers={people.Count} refuge={hasRefuge(village)}");
 			yield return CaptivesDoNotStarveTheVillage(village, people);
 			PlusBridge.SetConfig("famineLeaveChance", 100);
-			// Unrest on a short clock: restless after 2 hours of famine, the ruler challenged
-			// after 4 (before the first day's emigration takes people away).
-			PlusBridge.SetConfig("unrestHours", 2);
-			PlusBridge.SetConfig("challengeHours", 4);
-			Character oldRuler = village.ruler;
 			// Hunters sent out are left to eat: kept starving, they would only ever look for
 			// food and never hunt.
 			Action starve = () =>
@@ -1399,6 +1438,11 @@ namespace RuinarchDebug
 			Check("a village whose people go hungry falls into famine", () =>
 				(PlusBridge.InFamine(village) == true, $"famine={PlusBridge.InFamine(village)} after {GameHours - start:F1}h"));
 			Check("the famine is announced", () => (ModsLogHas($"Famine in {village.name}"), "mods.log"));
+			Check("the famine is held against the ruler (unrest)", () =>
+			{
+				List<string> reasons = PlusBridge.UnrestReasons(village);
+				return (reasons.Contains("the famine"), string.Join(", ", reasons));
+			});
 			Check("no settlers move into a village in famine", () =>
 			{
 				float m = PlusBridge.MigrationMultiplier(village, out string why);
@@ -1406,29 +1450,6 @@ namespace RuinarchDebug
 				// named first); what matters is that nobody moves in.
 				return (m == 0f && (why == "famine" || village.isUnderSiege), $"x{m} {why}");
 			});
-
-			// Unrest: the village turns on its ruler.
-			if (oldRuler == null || oldRuler.isDead)
-			{
-				Skip("a long famine turns the village against its ruler", "the village has no ruler");
-			}
-			else
-			{
-				yield return WaitGameHours(6f, () => { starve(); return village.ruler != oldRuler; });
-				Check("a long famine makes the village restless", () => (ModsLogHas($"{village.name} is restless"), "mods.log"));
-				bool wasLeader = village.owner?.leader == oldRuler;
-				Character newRuler = village.ruler;
-				Check("a long famine turns the village against its ruler", () =>
-					(newRuler != null && newRuler != oldRuler
-						&& (ModsLogHas($"has taken the rule of {village.name} from {oldRuler.name}") || ModsLogHas($"has overthrown {oldRuler.name} as leader of")),
-					$"ruler {oldRuler.name} (faction leader={wasLeader}) -> {newRuler?.name ?? "none"}; faction leader now {(village.owner?.leader as Character)?.name ?? "-"}; opinion of the old ruler: "
-					+ string.Join(", ", people.Where(c => !c.isDead && c != oldRuler).Take(5).Select(c => $"{c.name} {c.relationshipContainer.GetTotalOpinion(oldRuler)}"))));
-				// The game puts a faction leader back in charge of their home village: the
-				// challenge must stick.
-				yield return WaitGameHours(6f, () => { starve(); return village.ruler != newRuler; });
-				Check("the challenger keeps the rule", () =>
-					(newRuler != null && village.ruler == newRuler, $"ruler now {village.ruler?.name ?? "none"} (was {newRuler?.name}); faction leader {(village.owner?.leader as Character)?.name ?? "-"}"));
-			}
 
 			if (!hasRefuge(village))
 			{
@@ -1466,8 +1487,168 @@ namespace RuinarchDebug
 			Check("fed again, the famine ends", () =>
 				(PlusBridge.InFamine(village) == false && ModsLogHas($"The famine in {village.name} is over"), $"famine={PlusBridge.InFamine(village)}"));
 			PlusBridge.SetConfig("famineLeaveChance", 25);
-			PlusBridge.SetConfig("unrestHours", 24);
-			PlusBridge.SetConfig("challengeHours", 72);
+		}
+
+		// Unrest: what a village holds against its ruler, restlessness, and uprisings the
+		// rebels win (the ruler knocked out loses the rule) and lose (the rebels knocked out).
+		// Outcomes are made certain by opinions (who takes which side) and by hurting the side
+		// meant to lose before it starts.
+		private IEnumerator UnrestSuite()
+		{
+			if (!PlusBridge.Available || PlusBridge.UnrestPoints(null) < 0f)
+			{
+				Skip("unrest", "RuinarchPlus (with unrest) not loaded");
+				yield break;
+			}
+			Func<NPCSettlement, List<Character>> adults = v => v.residents.Where(r => r != null && !r.isDead && r.isNormalCharacter && r.race.IsSapient()
+				&& r.hasMarker && !PlusBridge.IsChild(r) && r.gridTileLocation != null && r.gridTileLocation.IsPartOfSettlement(v)).ToList();
+			// Residents, wherever they are now (people come and go; only those present rise).
+			Func<NPCSettlement, int> residents = v => v.residents.Count(r => r != null && !r.isDead && r.isNormalCharacter && r.race.IsSapient() && !PlusBridge.IsChild(r));
+			NPCSettlement village = Villages().Where(v => v.owner != null && v.owner.isMajorFaction && v.ruler != null && !v.ruler.isDead && !v.isPlagued && residents(v) >= 6)
+				.OrderByDescending(v => adults(v).Count).FirstOrDefault();
+			if (village == null)
+			{
+				Skip("unrest", "no village with a ruler and 6+ adult villagers: " + string.Join("; ", Villages().Select(Describe)));
+				yield break;
+			}
+			Log($"unrest test village: {Describe(village)} ruler={village.ruler.name} (faction leader={village.ruler.isFactionLeader}) adults at home={adults(village).Count}");
+			PlusBridge.SetConfig("unrestEnabled", true);
+			PlusBridge.SetUnrest(village, 0f);
+			Log("  grievances at the start: " + string.Join(", ", PlusBridge.UnrestReasons(village)));
+
+			// 1. Grievances, each read right after it is caused.
+			Character victim = Guard("kill a villager", () => KillResident(village));
+			Check("a villager's death is held against the ruler", () =>
+			{
+				List<string> r = PlusBridge.UnrestReasons(village);
+				return (victim != null && r.Any(x => x == "a death" || x.EndsWith(" deaths")), string.Join(", ", r));
+			});
+			bool sieged = Guard("put the village under attack", () => { village.SetIsUnderSiege(true); return village; }) != null && village.isUnderSiege;
+			List<string> duringSiege = PlusBridge.UnrestReasons(village);
+			Guard("lift the attack", () => { village.SetIsUnderSiege(false); return village; });
+			Check("an attack on the village is held against the ruler", () => (sieged && duringSiege.Contains("the attacks on the village"), $"siege={sieged}: {string.Join(", ", duringSiege)}"));
+			LocationStructure wreck = village.structures.Values.SelectMany(l => l).FirstOrDefault(st => st is ManMadeStructure && !st.hasBeenDestroyed
+				&& st.structureType.IsVillageStructure() && st.structureType != STRUCTURE_TYPE.CITY_CENTER && st.structureType != STRUCTURE_TYPE.DWELLING && st.residents.Count == 0);
+			if (wreck == null)
+			{
+				Skip("a lost building is held against the ruler", "no empty village building to wreck");
+			}
+			else
+			{
+				Guard("wreck " + wreck.name, () => { wreck.AdjustHP(-wreck.currentHP); return wreck; });
+				Check("a lost building is held against the ruler", () =>
+				{
+					List<string> r = PlusBridge.UnrestReasons(village);
+					return (wreck.hasBeenDestroyed && r.Any(x => x.EndsWith("lost building") || x.EndsWith("lost buildings")), $"{wreck.name} destroyed={wreck.hasBeenDestroyed}: {string.Join(", ", r)}");
+				});
+			}
+			Character ruler = village.ruler;
+			List<Character> people = adults(village).Where(c => c != ruler).ToList();
+			Guard("turn the village against its ruler", () =>
+			{
+				foreach (Character c in people)
+				{
+					c.relationshipContainer.AdjustOpinion(c, ruler, "Autotest", -400, "autotest", createJobsOnReduce: false);
+				}
+				return ruler;
+			});
+			Check("a ruler most villagers dislike is held against", () =>
+			{
+				List<string> r = PlusBridge.UnrestReasons(village);
+				return (r.Contains("their rule"), string.Join(", ", r));
+			});
+
+			// 2. Restless, with the reasons named.
+			float restlessAt = PlusBridge.Config("unrestRestless") is int rr ? rr : 24;
+			PlusBridge.SetUnrest(village, restlessAt - 0.25f);
+			yield return WaitGameHours(2f, () => PlusBridge.IsRestless(village));
+			Check("a village with grievances enough becomes restless, and says why", () =>
+				(PlusBridge.IsRestless(village) && ModsLogHas($"{village.name} is restless: its people blame {ruler.name} for"), $"restless={PlusBridge.IsRestless(village)} points={PlusBridge.UnrestPoints(village):F1}"));
+			string saved = null;
+			yield return SaveAndRead("ruinarch.plus.unrest.json", (j, e) => saved = j);
+			Check("unrest is stored inside the player's save file", () => (saved != null && saved.Contains(village.persistentID), saved ?? "no unrest entry"));
+			if (saved != null)
+			{
+				float before = PlusBridge.UnrestPoints(village);
+				ReplayLoad("ruinarch.plus.unrest.json", saved);
+				Check("unrest comes back when the save loads", () =>
+					(PlusBridge.IsRestless(village) && Math.Abs(PlusBridge.UnrestPoints(village) - before) < 0.01f, $"points {before:F2} -> {PlusBridge.UnrestPoints(village):F2} restless={PlusBridge.IsRestless(village)}"));
+			}
+
+			// 3. An uprising the rebels win: everyone is against the ruler, who starts hurt.
+			float uprisingAt = PlusBridge.Config("unrestUprising") is int uu ? uu : 72;
+			Guard("hurt the ruler", () => { ruler.AdjustHP(-(ruler.currentHP - Math.Max(1, ruler.maxHP / 5)), ELEMENTAL_TYPE.Normal); return ruler; });
+			PlusBridge.SetUnrest(village, uprisingAt);
+			yield return WaitGameHours(2f, () => PlusBridge.HasUprising(village));
+			bool rose = PlusBridge.HasUprising(village);
+			int fighting = 0;
+			yield return WaitGameHours(14f, () =>
+			{
+				fighting = Math.Max(fighting, people.Count(c => !c.isDead && c.combatComponent.hostilesInRange.Contains(ruler)));
+				return !PlusBridge.HasUprising(village);
+			});
+			Check("an uprising breaks out and the rebels fight the ruler", () =>
+				(rose && fighting > 0 && ModsLogHas($"leads an uprising against {ruler.name} in {village.name}"), $"rose={rose} rebels fighting the ruler at once={fighting}"));
+			Character newRuler = village.ruler;
+			Log("  after the uprising: " + string.Join(", ", adults(village).Concat(new[] { ruler }).Distinct().Select(c =>
+				$"{c.name}[opinion of {newRuler?.name}={(newRuler == null || c == newRuler ? 0 : c.relationshipContainer.GetTotalOpinion(newRuler))} wanted={c.crimeComponent.IsWantedBy(village.owner)} crimes={string.Join("/", c.crimeComponent.activeCrimes.Select(k => k.crimeType))} unconscious={c.traitContainer.HasTrait("Unconscious")} canPerform={c.limiterComponent.canPerform}]")));
+			Check("the rebels who knock the ruler out take the rule", () =>
+				(newRuler != null && newRuler != ruler && ModsLogHas("in an uprising") && people.Contains(newRuler),
+				$"ruler {ruler.name} -> {newRuler?.name ?? "none"}; ruler unconscious={ruler.traitContainer.HasTrait("Unconscious")} uprising={PlusBridge.HasUprising(village)}"));
+			// The game puts a faction leader back in charge of their home village: it must stick.
+			yield return WaitGameHours(6f, () => village.ruler != newRuler);
+			Check("the new ruler keeps the rule", () => (newRuler != null && village.ruler == newRuler, $"ruler now {village.ruler?.name ?? "none"} (was {newRuler?.name})"));
+
+			// 4. An uprising the ruler puts down: one hurt challenger against a loyal village.
+			if (newRuler == null || newRuler.isDead || newRuler != village.ruler)
+			{
+				Skip("a ruler who knocks the rebels out keeps the rule", "no new ruler to test with");
+			}
+			else
+			{
+				// Every resident, home or not: one left hating the ruler would lead the next rising.
+				List<Character> loyal = village.residents.Where(c => c != null && !c.isDead && c != newRuler && c.isNormalCharacter && c.race.IsSapient() && !PlusBridge.IsChild(c)).ToList();
+				Character rebel = adults(village).FirstOrDefault(c => c != newRuler && c != ruler && !c.traitContainer.HasTrait("Unconscious"));
+				if (rebel == null || loyal.Count < 3)
+				{
+					Skip("a ruler who knocks the rebels out keeps the rule", $"too few villagers standing: {loyal.Count}");
+				}
+				else
+				{
+					Guard("one against a loyal village", () =>
+					{
+						foreach (Character c in loyal)
+						{
+							int now = c.relationshipContainer.GetTotalOpinion(newRuler);
+							c.relationshipContainer.AdjustOpinion(c, newRuler, "Autotest", (c == rebel ? -300 : 300) - now, "autotest", createJobsOnReduce: false);
+						}
+						rebel.AdjustHP(-(rebel.currentHP - Math.Max(1, rebel.maxHP / 5)), ELEMENTAL_TYPE.Normal);
+						return rebel;
+					});
+					PlusBridge.SetUnrest(village, uprisingAt);
+					// Only villagers in the village rise: keep the challenger there until it starts.
+					LocationGridTile square = village.cityCenter.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? village.cityCenter.tiles.First();
+					yield return WaitGameHours(2f, () =>
+					{
+						if (!rebel.isDead && rebel.gridTileLocation != null && !rebel.gridTileLocation.IsPartOfSettlement(village))
+						{
+							CharacterManager.Instance.Teleport(rebel, square);
+						}
+						return PlusBridge.HasUprising(village);
+					});
+					bool rose2 = PlusBridge.HasUprising(village);
+					yield return WaitGameHours(14f, () => !PlusBridge.HasUprising(village));
+					Check("a ruler who knocks the rebels out keeps the rule", () =>
+						(rose2 && village.ruler == newRuler && (ModsLogHas($"{newRuler.name} has put down the uprising in {village.name}") || ModsLogHas($"The uprising in {village.name} has failed"))
+							&& newRuler.relationshipContainer.HasGrudgeAgainst(rebel),
+						$"rose={rose2} ruler={village.ruler?.name} (was {newRuler.name}); challenger {rebel.name} unconscious={rebel.traitContainer.HasTrait("Unconscious")} grudge={newRuler.relationshipContainer.HasGrudgeAgainst(rebel)}"));
+				}
+			}
+			foreach (NPCSettlement v in Villages())
+			{
+				PlusBridge.SetUnrest(v, 0f);
+			}
+			PlusBridge.SetConfig("unrestEnabled", false);
 		}
 
 		// Villagers starving away from home (held in a player building, lost in the wild) do
@@ -1870,7 +2051,16 @@ namespace RuinarchDebug
 						CharacterManager.Instance.Teleport(witness, otherTile);
 						return witness;
 					});
-					yield return WaitGameHours(2f, () => PlusBridge.VillageKnows(other, portal));
+					// Held there until the hourly delivery (they would walk home first otherwise).
+					yield return WaitGameHours(2f, () =>
+					{
+						NPCSettlement at = witness.currentSettlement as NPCSettlement ?? witness.gridTileLocation?.area?.GetFirstNPCSettlementOnArea();
+						if (at != other && !witness.isDead)
+						{
+							CharacterManager.Instance.Teleport(witness, otherTile);
+						}
+						return PlusBridge.VillageKnows(other, portal);
+					});
 					Check("someone who remembers tells the faction's other village they stand in", () =>
 						(PlusBridge.VillageKnows(other, portal) && ModsLogHas($"{witness.name} brought word of {portal.name} to {other.name}"),
 						$"{other.name} knows={PlusBridge.VillageKnows(other, portal)}; {witness.name} at {witness.gridTileLocation?.localPlace} in {witness.currentSettlement?.name ?? "the wild"}"));
@@ -1944,6 +2134,38 @@ namespace RuinarchDebug
 			{
 				PlusBridge.SetForgetful(elder, false);
 			}
+
+			// Cultists (Demon Worship, on the player's side) remember but do not count: a village
+			// whose every rememberer is a cultist does not know. Within one frame, then undone.
+			PlusBridge.Learn(faction, portal);
+			List<Character> converts = Sapients(home).Where(r => PlusBridge.Remembers(r, portal) && !r.traitContainer.HasTrait("Demon Cultist")).ToList();
+			bool knewBefore = PlusBridge.VillageKnows(home, portal);
+			Dictionary<Character, RELIGION> faiths = converts.ToDictionary(r => r, r => r.religionComponent.religion);
+			Guard("make everyone who remembers a cultist", () =>
+			{
+				foreach (Character r in converts)
+				{
+					r.religionComponent.ChangeReligion(RELIGION.Demon_Worship);
+					r.traitContainer.AddTrait(r, "Demon Cultist");
+				}
+				return home;
+			});
+			bool knewAsCult = PlusBridge.VillageKnows(home, portal);
+			bool allied = converts.All(r => r.isAlliedWithPlayer);
+			Guard("turn them back", () =>
+			{
+				foreach (Character r in converts)
+				{
+					r.traitContainer.RemoveTrait(r, "Demon Cultist");
+					r.religionComponent.ChangeReligion(faiths[r]);
+				}
+				return home;
+			});
+			bool knewAfter = PlusBridge.VillageKnows(home, portal);
+			Check("what cultists remember does not count for their village", () =>
+				(converts.Count > 0 && knewBefore && allied && !knewAsCult && knewAfter,
+				$"{home.name}: {converts.Count} remember; knows before={knewBefore}, all cultists (allied={allied})={knewAsCult}, turned back={knewAfter}; "
+					+ string.Join(", ", converts.Select(r => $"{r.name}[allied={r.isAlliedWithPlayer} cultist={r.traitContainer.HasTrait("Demon Cultist")} religion={r.religionComponent.religion} faction={r.faction?.name} home={r.homeSettlement?.name} remembers={PlusBridge.Remembers(r, portal)} carries={PlusBridge.Carries(r, portal)}]"))));
 
 			// Leave the world as found (see KnowledgeSuite).
 			PlusBridge.Forget(faction);
@@ -2041,6 +2263,7 @@ namespace RuinarchDebug
 				UIManager.Instance.ShowCharacterInfo(child, centerOnCharacter: true);
 				return (AccessTools.Field(typeof(CharacterInfoUI), "subLbl").GetValue(panel) as TMPro.TMP_Text)?.text;
 			});
+			string[] childRow = AgeRow(panel);
 			// For the screenshot: child and mother side by side on the village square, close up.
 			List<LocationGridTile> square = home.cityCenter.passableTiles.Where(t => !t.isOccupied).ToList();
 			LocationGridTile a = square.FirstOrDefault();
@@ -2060,9 +2283,40 @@ namespace RuinarchDebug
 			}
 			yield return new WaitForSecondsRealtime(0.5f);
 			yield return Screenshot("child.png");
+			// The Info tab open (a toggle labelled "Info", as a player would click), to see the Age row.
+			Guard("open the Info tab", () =>
+			{
+				// As if the player had paid to reveal the child's info (the tab is locked otherwise).
+				child.isInfoUnlocked = true;
+				UIManager.Instance.ShowCharacterInfo(child);
+				UnityEngine.UI.Toggle info = panel.GetComponentsInChildren<UnityEngine.UI.Toggle>(true)
+					.FirstOrDefault(t => t.GetComponentInChildren<TMPro.TMP_Text>(true)?.text == "Info");
+				if (info != null) info.isOn = true;
+				return info;
+			});
+			yield return new WaitForSecondsRealtime(1f);
+			yield return Screenshot("agerow.png");
 			cam.orthographicSize = zoom;
 			Guard("close the child's panel", () => { panel.CloseMenu(); return child; });
 			Check("the character panel gives the age", () => (label == "Child, age 0", $"\"{label}\""));
+			Check("the panel's Info tab has an Age row", () =>
+				(childRow != null && childRow[0] == "Age" && childRow[1] == "0, child", childRow == null ? "no Age row" : $"\"{childRow[0]}\": \"{childRow[1]}\""));
+			// Someone the life cycle does not follow (a creature, a demon): "Unknown".
+			Character ageless = GridMap.Instance.mainRegion.charactersAtLocation.FirstOrDefault(c => c != null && !c.isDead && c.hasMarker && PlusBridge.AgeYears(c) < 0f);
+			if (ageless == null)
+			{
+				Skip("a character without an age shows it as unknown", "no living character outside the life cycle on the map");
+			}
+			else
+			{
+				// Creatures open the monster panel, villagers the character panel.
+				MonsterInfoUI monsterPanel = AccessTools.FieldRefAccess<UIManager, MonsterInfoUI>("monsterInfoUI")(UIManager.Instance);
+				Component shown = ageless is Summon ? (Component)monsterPanel : panel;
+				string[] agelessRow = Guard("open an ageless character's panel", () => { UIManager.Instance.ShowCharacterInfo(ageless); return AgeRow(shown); });
+				Guard("close the panel", () => { if (ageless is Summon) monsterPanel.CloseMenu(); else panel.CloseMenu(); return ageless; });
+				Check("a character without an age shows it as unknown", () =>
+					(agelessRow != null && agelessRow[1] == "Unknown", $"{ageless.name} ({ageless.race}): {(agelessRow == null ? "no Age row" : agelessRow[1])}"));
+			}
 
 			// Children don't rule: let the game pick a village ruler 30 times.
 			Character ruler = home.ruler;
@@ -3175,7 +3429,11 @@ namespace RuinarchDebug
 					}
 				}
 			}
-			if (!captiveFound) Check("a captive left where they were seen is found and freed", () =>
+			if (!captiveFound && captive.isDead && !ModsLogHas($"{captive.name} of {village.name} has been found."))
+			{
+				Skip("a captive left where they were seen is found and freed", $"{captive.name} died before anyone found them");
+			}
+			else if (!captiveFound) Check("a captive left where they were seen is found and freed", () =>
 			{
 				bool freed = !captive.traitContainer.HasTrait("Restrained");
 				bool announced = ModsLogHas($"{captive.name} of {village.name} has been found.");
@@ -3472,6 +3730,27 @@ namespace RuinarchDebug
 				string key = cause + by + (interrupt != null ? $" ({interrupt.name})" : "") + (__instance.traitContainer.HasTrait("Plagued") ? " [plagued]" : "");
 				Deaths.TryGetValue(key, out int n);
 				Deaths[key] = n + 1;
+			}
+		}
+
+		// The tests make factions unaware again (and aware again later); the game posts a new
+		// "is now aware" alert each time and never takes one back. Take the faction's alerts
+		// away when it becomes unaware, so the screen shows what is true now.
+		[HarmonyPatch(typeof(Faction), nameof(Faction.SetIsAwareOfPlayer))]
+		internal static class AwareAlertCleanup
+		{
+			private static void Postfix(Faction __instance, bool p_state)
+			{
+				if (_running == null || p_state || __instance.isAwareOfPlayer
+					|| !(PlayerManager.Instance?.player?.bookmarkComponent?.bookmarkedObjects is Dictionary<BOOKMARK_CATEGORY, BookmarkCategory> all)
+					|| !all.TryGetValue(BOOKMARK_CATEGORY.Alerts, out BookmarkCategory alerts))
+				{
+					return;
+				}
+				foreach (Quests.Alerts.FactionAwareAlert alert in alerts.bookmarked.OfType<Quests.Alerts.FactionAwareAlert>().Where(a => a.factionName == __instance.name).ToList())
+				{
+					alert.RemoveBookmark();
+				}
 			}
 		}
 

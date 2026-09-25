@@ -151,6 +151,24 @@ namespace RuinarchPlus.Phase3
 		}
 	}
 
+	// A faction becoming aware (or unaware) shows at once, not at the next tick: the game may
+	// pause right after posting its "is now aware" alert, and ticks stop while paused.
+	[HarmonyPatch(typeof(Faction), nameof(Faction.SetIsAwareOfPlayer))]
+	internal static class KnowledgePanel_Awareness
+	{
+		private static void Postfix()
+		{
+			try
+			{
+				KnowledgePanel.Refresh();
+			}
+			catch (Exception e)
+			{
+				RuinarchPlus.Log?.Warning("Who Knows of You panel failed: " + e.Message);
+			}
+		}
+	}
+
 	[HarmonyPatch(typeof(GameManager), "TickStarted")]
 	internal static class KnowledgePanel_Tick
 	{

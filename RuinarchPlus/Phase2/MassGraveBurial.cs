@@ -77,6 +77,8 @@ namespace RuinarchPlus.Phase2
 				|| !corpse.hasMarker
 				|| component.IsCharacterGhost(corpse)
 				|| corpse.traitContainer.HasTrait("Mummified")
+				// A hunter's kill is meat for the village, not a body for the pit.
+				|| Phase5.Hunters.IsPrey(corpse) || corpse.HasJobTargetingThis(JOB_TYPE.PRODUCE_FOOD)
 				// Hunters skin skinnable carcasses; leave those to the Hunter Lodge as vanilla does.
 				|| (corpse.race.IsSkinnable() && settlement.HasStructureOfTypeThatIsAssigned(STRUCTURE_TYPE.HUNTER_LODGE));
 		}

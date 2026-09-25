@@ -391,8 +391,8 @@ knowledge).
    touched); the Farmer class does not fight (`CharacterClass.IsCombatant`). Coming of age:
    `RandomizeCurrentClassBasedOnAbleClasses`. Old age: `Death("normal")` (the death log is
    keyed `death_` + cause, so a new cause would have no text) plus an announcement. The
-   character panel's class line gives the age. Ruinarch+'s own picks (traders, the famine
-   challenger) skip children, and so do the game's own: while `NPCSettlement.DesignateNewRuler`
+   character panel's class line gives the age. Ruinarch+'s own picks (traders, the uprising's
+   leader and sides) skip children, and so do the game's own: while `NPCSettlement.DesignateNewRuler`
    or `Faction.DesignateNewLeader` runs, a child reads as `isBeingSeized` (both pickers skip
    it); party quests already skip non-combatants (`CharacterBehaviour.PartyLogic`).
    *(verified in game)*
@@ -481,17 +481,26 @@ knowledge).
    once a day each starving villager (not ruler / faction leader) may move, via the game's
    own `Character.MigrateHomeStructureTo`, to a free Dwelling in a village of their faction
    not in famine. Active famines are saved (`ModData/ruinarch.plus.famine.json`).
-   **Unrest: shipped** (0.6.0, config `unrestEnabled`, `unrestHours` 24, `challengeHours` 72):
-   restless after `unrestHours` of famine (announced), each day every villager's opinion of the
-   ruler drops ("Famine", -10, no opinion jobs); after `challengeHours` the villager who
-   thinks least of the ruler takes the rule of the village through the game's own
-   `INTERRUPT.Become_Settlement_Ruler` (the deposed ruler: "Deposed", -30). A faction leader
-   always rules their home village (`Faction.ProcessFactionLeaderAsSettlementRuler` reinstated
-   them, and the deposed leader-ruler then emigrated), so a ruler who leads the faction is
-   overthrown as leader too, as the game's Overthrow Leader scheme does
-   (`Become_Faction_Leader`, a grudge). Once per famine;
-   hours and the challenge ride in the famine save. The game has no NPC coup of its own
-   (Overthrow Leader and Rebellion are player schemes). *(verified in game)*
+   **Unrest and uprisings: shipped** (`Phase5/Unrest.cs`, config `unrestEnabled`,
+   `unrestRestless` 24, `unrestUprising` 72; replaces 0.6.0's famine-only unrest). A score per
+   village fed hourly by grievances blamed on the ruler: famine 1, plague 1, the game's siege
+   state 1, resident deaths in the last 3 days (not old age; `LifeCycle.DyingOfAge`) 0.5 each up
+   to 2, unburied dead in the village 0.5, a fifth homeless 0.5, a wanted resident not held 0.5,
+   village buildings destroyed in the last 3 days (postfix `ManMadeStructure.DestroyStructure`)
+   0.5 each up to 1.5, most villagers with a negative opinion of the ruler 1; -1/h with none.
+   Restless at `unrestRestless` (announced with the three heaviest grievances; daily opinion
+   "Unrest" -10, no opinion jobs), calm below half. At `unrestUprising` the villager with the
+   lowest opinion of the ruler leads everyone with a negative opinion; those with a positive
+   one defend. Both sides get each other as hostiles through the game's own non-lethal
+   `CombatComponent.Fight(.., "Anger", isLethal: false)`, renewed hourly. Ruler knocked out:
+   the leader takes the rule (`INTERRUPT.Become_Settlement_Ruler`; a faction leader-ruler is
+   overthrown as leader too via `Become_Faction_Leader`, since
+   `Faction.ProcessFactionLeaderAsSettlementRuler` would reinstate them), loyalists and the
+   deposed ruler hold it against them. Rebels all down, or 12 hours: the ruler holds (a grudge
+   against the leader), no new uprising for a day. Score, restlessness and recent deaths and
+   losses are saved (`ModData/ruinarch.plus.unrest.json`); an uprising in progress is not.
+   The game has no NPC coup of its own (Overthrow Leader and Rebellion are player schemes).
+   *(verified in game)*
    **Hunters: shipped** (`Phase5/Hunters.cs`, config `huntingEnabled`, `huntersPerTrip` 2):
    every 6 hours a hungry village (in famine or a fifth starving) gives up to
    `huntersPerTrip` fighters (Hunters first) the hunting job predators use (`HUNT_PREY` with
@@ -501,14 +510,13 @@ knowledge).
    `BUTCHER` on the carcass; a postfix on `Butcher.AfterTransformSuccess` hauls the meat to the
    main storage. (A single `PRODUCE_FOOD`/`BUTCHER` job on a live animal never got planned.)
    *(verified in game)*
-   **Next for unrest (from play feedback): how a ruler falls.** Today the challenger simply
-   takes over. Instead, depending on the village and the people involved: a brawl between
-   the two camps (the game's own `BRAWL` job), a civil war in a larger village (residents
-   pick sides by opinion of the ruler and challenger and fight; the loser's camp is exiled
-   or leaves the faction), an assassination of the old ruler (the game's `ASSASSINATE` /
-   murder paths, with its crime and witnesses), or the old ruler jailed (the game's
-   apprehend / imprison flow into the village prison). Bigger villages and stronger
-   factions within them make war more likely than a quiet handover.
+   **Next for unrest (from play feedback): other ways a ruler falls.** The brawl between the
+   two camps shipped (Unrest and uprisings above). Still to come, depending on the village and
+   the people involved: a civil war in a larger village (the loser's camp is exiled or leaves
+   the faction), an assassination of the old ruler (the game's `ASSASSINATE` / murder paths,
+   with its crime and witnesses), or the old ruler jailed (the game's apprehend / imprison
+   flow into the village prison). Bigger villages and stronger factions within them make war
+   more likely than a brawl.
 3. **Traders: shipped** (`Phase5/Traders.cs`, config `tradeEnabled`, `tradeAmount` 40). Daily
    at 8:00 a village with more than 20 food per villager plus `tradeAmount` sends one
    villager (a Merchant first) with a pile of `tradeAmount` food (split off its storage) on
@@ -561,6 +569,10 @@ This is a **world-generation replacement**, correctly its own mod:
 - **Religion & language:** every nation has its own; a region can diverge from its nation
   (conquest, territory trade). Feeds diplomacy (Phase 6) and gossip/knowledge (Phase 3:
   language barriers throttle information spread).
+- **Calendar (held for TruePlanet, from play feedback):** a toggle between the game's "Day x"
+  and a real date and time (year, season, month, day, hour), on a planet calendar that fits
+  Ruinarch+'s 16-day year. Held back from Ruinarch+ because it depends on the world's lore
+  (what a year is on the planet), which TruePlanet defines.
 
 TruePlanet depends on Ruinarch+ Phases 3 to 6 being in place to feel alive; it ships last.
 

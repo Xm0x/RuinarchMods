@@ -76,6 +76,12 @@ namespace RuinarchPlus.Phase3
 
 		private static bool CanRemember(Character c) => c != null && !c.isDead && c.isNormalCharacter && c.race.IsSapient();
 
+		// Someone on the player's side (a Demon Worship cultist, as the game counts it) keeps what
+		// they remember but does not give the demons away: their village and party do not know
+		// it through them, they tell nobody, and they learn nothing new. Should they turn from
+		// the cult, what they remember counts again.
+		private static bool Counts(Character c) => c != null && !c.isDead && !c.isAlliedWithPlayer;
+
 		// ---- people ------------------------------------------------------------------------
 
 		internal static bool Remembers(Character c, LocationStructure structure)
@@ -114,7 +120,7 @@ namespace RuinarchPlus.Phase3
 		internal static HashSet<LocationStructure> NewsOf(Character c)
 		{
 			HashSet<LocationStructure> news = new HashSet<LocationStructure>();
-			if (c != null && Memory.TryGetValue(c, out HashSet<LocationStructure> set))
+			if (Counts(c) && Memory.TryGetValue(c, out HashSet<LocationStructure> set))
 			{
 				news.UnionWith(set.Where(Standing));
 			}
@@ -127,7 +133,7 @@ namespace RuinarchPlus.Phase3
 		/// </summary>
 		private static bool Learned(Character c, LocationStructure s)
 		{
-			if (!CanRemember(c) || c.faction == null || !Standing(s))
+			if (!CanRemember(c) || c.isAlliedWithPlayer || c.faction == null || !Standing(s))
 			{
 				return false;
 			}
@@ -210,7 +216,7 @@ namespace RuinarchPlus.Phase3
 			}
 			foreach (Character r in village.residents)
 			{
-				if (r == null || r.isDead || !Memory.TryGetValue(r, out HashSet<LocationStructure> set))
+				if (!Counts(r) || !Memory.TryGetValue(r, out HashSet<LocationStructure> set))
 				{
 					continue;
 				}
@@ -228,13 +234,13 @@ namespace RuinarchPlus.Phase3
 
 		internal static bool VillageKnows(NPCSettlement village, LocationStructure structure)
 		{
-			return village != null && village.residents.Any(r => r != null && !r.isDead && Remembers(r, structure) && !Carries(r, structure));
+			return village != null && village.residents.Any(r => Counts(r) && Remembers(r, structure) && !Carries(r, structure));
 		}
 
 		/// <summary>How many living residents of <paramref name="village"/> remember the structure.</summary>
 		internal static int Rememberers(NPCSettlement village, LocationStructure structure)
 		{
-			return village?.residents.Count(r => r != null && !r.isDead && Remembers(r, structure)) ?? 0;
+			return village?.residents.Count(r => Counts(r) && Remembers(r, structure)) ?? 0;
 		}
 
 		private static IEnumerable<NPCSettlement> VillagesOf(Faction faction)
@@ -292,7 +298,7 @@ namespace RuinarchPlus.Phase3
 			List<LocationStructure> told = news.Where(s => Standing(s) && !known.Contains(s)).Distinct().ToList();
 			foreach (Character r in village.residents.ToList())
 			{
-				if (!CanRemember(r))
+				if (!CanRemember(r) || r.isAlliedWithPlayer)
 				{
 					continue;
 				}
@@ -514,7 +520,7 @@ namespace RuinarchPlus.Phase3
 			foreach (KeyValuePair<Character, HashSet<LocationStructure>> kv in Carried)
 			{
 				List<LocationStructure> news = kv.Value.Where(Standing).ToList();
-				if (kv.Key != null && !kv.Key.isDead && news.Count > 0)
+				if (Counts(kv.Key) && news.Count > 0)
 				{
 					couriers.Add(new KeyValuePair<Character, List<LocationStructure>>(kv.Key, news));
 				}

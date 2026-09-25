@@ -30,6 +30,7 @@ namespace RuinarchPlus
 			// Per-save data kept inside the player's save file (ModContent's ModSave).
 			Phase3.Knowledge.Register();
 			Phase5.Famine.Register();
+			Phase5.Unrest.Register();
 			Phase4.LifeCycle.Register();
 			Phase3.MissingPersons.Register();
 

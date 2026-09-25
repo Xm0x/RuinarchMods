@@ -33,6 +33,8 @@ namespace RuinarchPlus.Phase5
 
 		internal static bool IsHunting(Character c) => c != null && Out.ContainsKey(c);
 
+		internal static bool IsPrey(Character c) => c != null && Out.ContainsValue(c);
+
 		internal static bool IsHungry(NPCSettlement s)
 		{
 			int starving = Famine.Starving(s, out int villagers);
@@ -176,6 +178,12 @@ namespace RuinarchPlus.Phase5
 			if (!hunter.jobQueue.AddJobInQueue(butcher))
 			{
 				return false;
+			}
+			// A burial queued before the kill was the hunter's (the Mass Grave takes carcasses)
+			// would carry the meat off to the pit.
+			foreach (JobQueueItem bury in carcass.allJobsTargetingThis.Where(j => j.jobType == JOB_TYPE.BURY || j.jobType == JOB_TYPE.BURY_IN_ACTIVE_PARTY).ToList())
+			{
+				bury.ForceCancelJob();
 			}
 			RuinarchPlus.Log?.Info($"{hunter.name} is butchering {carcass.name}.");
 			return true;

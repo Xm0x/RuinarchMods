@@ -84,13 +84,15 @@ namespace RuinarchPlus
 		public bool famineEnabled = true;
 		public int famineHours = 12;
 		public int famineLeaveChance = 25;
-		// Unrest: after unrestHours of famine the village is restless and thinks less of its
-		// ruler each day; after challengeHours the villager who thinks least of the ruler takes
-		// the rule of the village, and the faction's leadership too if the ruler led it (once
-		// per famine).
+		// Unrest: every hour a village's unrest grows by what its people hold against the ruler
+		// (famine and plague 1, an attack 1, recent deaths and lost buildings 0.5 each, the
+		// unburied dead, homelessness and criminals walking free 0.5, a disliked ruler 1) and
+		// falls by 1 when there is nothing. At unrestRestless the village is restless and thinks
+		// less of its ruler each day; at unrestUprising it rises against the ruler (a brawl: the
+		// ruler's side against the rebels; the ruler knocked out loses the rule).
 		public bool unrestEnabled = true;
-		public int unrestHours = 24;
-		public int challengeHours = 72;
+		public int unrestRestless = 24;
+		public int unrestUprising = 72;
 		// Hunting: every 6 hours a hungry village (in famine, or a fifth of its villagers
 		// starving) sends up to huntersPerTrip fighters, Hunters first, after wild animals
 		// nearby; the meat is carried to the village's storage.

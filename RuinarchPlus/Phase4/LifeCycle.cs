@@ -99,10 +99,25 @@ namespace RuinarchPlus.Phase4
 
 		internal static bool IsChild(Character c) => c != null && Children.Contains(c);
 
+		/// <summary>True while an elder is dying of old age (a death nobody blames the ruler for).</summary>
+		internal static bool DyingOfAge { get; private set; }
+
 		/// <summary>Age in years, or -1 if the mod does not know it.</summary>
 		internal static float AgeYears(Character c)
 		{
 			return c != null && Lives.TryGetValue(c, out Life life) ? (Now - life.Born) / (float)TicksPerYear : -1f;
+		}
+
+		/// <summary>The Age row of the character panel: "3, elder" / "0, child" / "Unknown".</summary>
+		internal static string AgeText(Character c)
+		{
+			string stage = Enabled ? Stage(c) : null;
+			if (stage == null)
+			{
+				return "Unknown";
+			}
+			int age = Mathf.FloorToInt(AgeYears(c));
+			return stage == "Child" ? $"{age}, child" : stage == "Elder" ? $"{age}, elder" : age.ToString();
 		}
 
 		internal static bool IsPregnant(Character c) => c != null && Pregnancies.ContainsKey(c);
@@ -302,7 +317,15 @@ namespace RuinarchPlus.Phase4
 			Lives.Remove(c);
 			Pregnancies.Remove(c);
 			Children.Remove(c);
-			c.Death("normal");
+			DyingOfAge = true;
+			try
+			{
+				c.Death("normal");
+			}
+			finally
+			{
+				DyingOfAge = false;
+			}
 			Phase2.Curfew.Announce("{0} died of old age at " + age + ".", c);
 		}
 
@@ -602,5 +625,98 @@ namespace RuinarchPlus.Phase4
 				__result = true;
 			}
 		}
+	}
+
+	// The character panels' Info tab (villagers' and creatures'): an Age row under House, for
+	// every character (the game has none). Made once per panel by copying the House row, so
+	// it looks like the others.
+	internal static class LifeCycle_AgeRow
+	{
+		internal const string RowName = "RuinarchPlus.AgeRow";
+		private static readonly Dictionary<object, TextMeshProUGUI> Rows = new Dictionary<object, TextMeshProUGUI>();
+
+		internal static void Show(object __instance, TextMeshProUGUI ___houseLbl, Character ____activeCharacter)
+		{
+			try
+			{
+				if (___houseLbl == null || ____activeCharacter == null)
+				{
+					return;
+				}
+				if (!Rows.TryGetValue(__instance, out TextMeshProUGUI value) || value == null)
+				{
+					value = MakeRow(___houseLbl);
+					Rows[__instance] = value;
+				}
+				if (value != null)
+				{
+					value.text = LifeCycle.AgeText(____activeCharacter);
+				}
+			}
+			catch (Exception e)
+			{
+				RuinarchPlus.Log?.Warning("Life cycle (age row) failed: " + e.Message);
+			}
+		}
+
+		// The House row is the value label's parent (a header label and the value). Its copy
+		// goes right below it with the header reading "Age" and no link on the value. The rows
+		// are placed by hand (no layout group) and the panel cannot grow: the rows, the copy
+		// among them, are spread over the height the old ones took, a little closer together.
+		private static TextMeshProUGUI MakeRow(TextMeshProUGUI house)
+		{
+			Transform row = house.transform.parent;
+			Transform parent = row.parent;
+			string layout = string.Join(", ", row.GetComponentsInChildren<TMP_Text>(true).Select(t => $"{t.name}='{t.text}'"));
+			RuinarchPlus.Log?.Info($"Age row: copying '{row.name}' (parent '{parent?.name}', layout group: {parent?.GetComponent<UnityEngine.UI.LayoutGroup>() != null}): {layout}");
+			List<Transform> rows = parent == null ? new List<Transform>() : parent.Cast<Transform>().Where(t => t.gameObject.activeSelf).OrderByDescending(t => t.localPosition.y).ToList();
+			GameObject copy = UnityEngine.Object.Instantiate(row.gameObject, parent);
+			copy.name = RowName;
+			copy.transform.SetSiblingIndex(row.GetSiblingIndex() + 1);
+			if (parent != null && parent.GetComponent<UnityEngine.UI.LayoutGroup>() == null && rows.Count >= 2)
+			{
+				float top = rows[0].localPosition.y;
+				float span = top - rows[rows.Count - 1].localPosition.y;
+				rows.Insert(rows.IndexOf(row) + 1, copy.transform);
+				float step = span / (rows.Count - 1);
+				for (int i = 0; i < rows.Count; i++)
+				{
+					Vector3 p = rows[i].localPosition;
+					rows[i].localPosition = new Vector3(i == rows.IndexOf(copy.transform) ? row.localPosition.x : p.x, top - i * step, p.z);
+				}
+			}
+			foreach (Behaviour b in copy.GetComponentsInChildren<Behaviour>(true).Where(b => b.GetType().Name.Contains("Localize") || b is EventLabel))
+			{
+				b.enabled = false;
+			}
+			string valuePath = house.transform == row ? "" : house.name;
+			TextMeshProUGUI value = null;
+			foreach (TextMeshProUGUI t in copy.GetComponentsInChildren<TextMeshProUGUI>(true))
+			{
+				if (value == null && t.name == valuePath)
+				{
+					value = t;
+				}
+				else
+				{
+					t.text = "Age";
+				}
+			}
+			return value;
+		}
+	}
+
+	[HarmonyPatch(typeof(CharacterInfoUI), "UpdateLocationInfo")]
+	internal static class LifeCycle_AgeRowVillager
+	{
+		private static void Postfix(CharacterInfoUI __instance, TextMeshProUGUI ___houseLbl, Character ____activeCharacter) =>
+			LifeCycle_AgeRow.Show(__instance, ___houseLbl, ____activeCharacter);
+	}
+
+	[HarmonyPatch(typeof(MonsterInfoUI), "UpdateLocationInfo")]
+	internal static class LifeCycle_AgeRowCreature
+	{
+		private static void Postfix(MonsterInfoUI __instance, TextMeshProUGUI ___houseLbl, Character ____activeCharacter) =>
+			LifeCycle_AgeRow.Show(__instance, ___houseLbl, ____activeCharacter);
 	}
 }

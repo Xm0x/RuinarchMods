@@ -136,6 +136,22 @@ namespace RuinarchDebug
 		private static Type HuntersType => Plus?.GetType("RuinarchPlus.Phase5.Hunters");
 		private static Type TradersType => Plus?.GetType("RuinarchPlus.Phase5.Traders");
 
+		private static Type UnrestType => Plus?.GetType("RuinarchPlus.Phase5.Unrest");
+
+		/// <summary>What <paramref name="village"/> holds against its ruler now ("the famine", "2 deaths"...).</summary>
+		internal static List<string> UnrestReasons(NPCSettlement village)
+		{
+			return (UnrestType?.GetMethod("Grievances", Any)?.Invoke(null, new object[] { village }) as List<KeyValuePair<string, float>>)?.Select(g => g.Key).ToList() ?? new List<string>();
+		}
+
+		internal static float UnrestPoints(NPCSettlement village) => UnrestType?.GetMethod("Points", Any)?.Invoke(null, new object[] { village }) is float f ? f : -1f;
+
+		internal static void SetUnrest(NPCSettlement village, float points) => UnrestType?.GetMethod("SetPoints", Any)?.Invoke(null, new object[] { village, points });
+
+		internal static bool IsRestless(NPCSettlement village) => UnrestType?.GetMethod("IsRestless", Any)?.Invoke(null, new object[] { village }) is bool b && b;
+
+		internal static bool HasUprising(NPCSettlement village) => UnrestType?.GetMethod("HasUprising", Any)?.Invoke(null, new object[] { village }) is bool b && b;
+
 		/// <summary>Whether <paramref name="village"/> counts as hungry (sends hunters).</summary>
 		internal static bool IsHungry(NPCSettlement village)
 		{
