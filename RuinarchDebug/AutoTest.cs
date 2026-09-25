@@ -1377,6 +1377,7 @@ namespace RuinarchDebug
 			}
 			List<Character> people = villagers(village);
 			Log($"famine test village: {Describe(village)} villagers={people.Count} refuge={hasRefuge(village)}");
+			yield return CaptivesDoNotStarveTheVillage(village, people);
 			PlusBridge.SetConfig("famineLeaveChance", 100);
 			// Unrest on a short clock: restless after 2 hours of famine, the ruler challenged
 			// after 4 (before the first day's emigration takes people away).
@@ -1468,6 +1469,69 @@ namespace RuinarchDebug
 			PlusBridge.SetConfig("unrestHours", 24);
 			PlusBridge.SetConfig("challengeHours", 72);
 		}
+
+		// Villagers starving away from home (held in a player building, lost in the wild) do
+		// not make their village hungry: the village's food is not what they lack. Two thirds
+		// of the village are held restrained and starving outside it past famineHours.
+		private IEnumerator CaptivesDoNotStarveTheVillage(NPCSettlement village, List<Character> people)
+		{
+			// As far from every settlement as the map allows: nearby, villagers passing by free
+			// restrained allies (the base game) and they walk home, where they rightly count.
+			List<LocationGridTile> centres = GridMap.Instance.mainRegion.settlementsInRegion.OfType<NPCSettlement>()
+				.Where(v => v.cityCenter != null).Select(v => v.cityCenter.tiles.First()).ToList();
+			LocationGridTile outside = GridMap.Instance.mainRegion.areas.Select(a => a.gridTileComponent.centerGridTile)
+				.Where(t => t != null && !t.isOccupied && t.structure.structureType == STRUCTURE_TYPE.WILDERNESS && !t.IsPartOfSettlement())
+				.OrderByDescending(t => centres.Count == 0 ? 0f : centres.Min(c => c.GetDistanceTo(t))).FirstOrDefault();
+			List<Character> held = people.Where(c => c != village.ruler && !c.isFactionLeader && c.carryComponent.isBeingCarriedBy == null)
+				.Take(Math.Max(2, people.Count * 2 / 3)).ToList();
+			if (outside == null || held.Count < 2)
+			{
+				Skip("villagers starving away from home do not put their village in famine", outside == null ? "no free wilderness tile next to the village" : "too few villagers to hold");
+				yield break;
+			}
+			Guard("hold villagers outside the village", () =>
+			{
+				foreach (Character c in held)
+				{
+					CharacterManager.Instance.Teleport(c, outside);
+					c.traitContainer.AddTrait(c, "Restrained");
+				}
+				return village;
+			});
+			bool hungrySeen = false;
+			yield return WaitGameHours(RuinarchPlusFamineHours() + 3f, () =>
+			{
+				foreach (Character c in held.Where(c => !c.isDead))
+				{
+					// Freed by someone after all: held again, away.
+					if (!c.traitContainer.HasTrait("Restrained") || (c.gridTileLocation != null && c.gridTileLocation.IsPartOfSettlement(village)))
+					{
+						CharacterManager.Instance.Teleport(c, outside);
+						c.traitContainer.AddTrait(c, "Restrained");
+					}
+					c.needsComponent.SetFullness(5f);
+				}
+				hungrySeen |= PlusBridge.IsHungry(village) || PlusBridge.InFamine(village) == true;
+				return false;
+			});
+			Check("villagers starving away from home do not put their village in famine", () =>
+				(!hungrySeen && PlusBridge.InFamine(village) == false, $"{held.Count} of {people.Count} held starving at {outside.localPlace}: hungry seen={hungrySeen} famine={PlusBridge.InFamine(village)} "
+					+ string.Join(", ", held.Select(c => $"{c.name}[starving={c.needsComponent.isStarving} restrained={c.traitContainer.HasTrait("Restrained")}]"))));
+			Guard("free and feed them", () =>
+			{
+				LocationGridTile home = village.cityCenter.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? village.cityCenter.tiles.First();
+				foreach (Character c in held.Where(c => !c.isDead))
+				{
+					c.traitContainer.RemoveTrait(c, "Restrained");
+					CharacterManager.Instance.Teleport(c, home);
+					c.needsComponent.SetFullness(100f);
+				}
+				return village;
+			});
+			yield return WaitGameHours(1f, null);
+		}
+
+		private static float RuinarchPlusFamineHours() => PlusBridge.Config("famineHours") is int h ? h : 12;
 
 		// Phase 5: hunting. A pig is put next to a village and the village sends its hunters
 		// (as it does every 6 hours when hungry): they kill and butcher it and carry the meat

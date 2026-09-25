@@ -136,6 +136,12 @@ namespace RuinarchDebug
 		private static Type HuntersType => Plus?.GetType("RuinarchPlus.Phase5.Hunters");
 		private static Type TradersType => Plus?.GetType("RuinarchPlus.Phase5.Traders");
 
+		/// <summary>Whether <paramref name="village"/> counts as hungry (sends hunters).</summary>
+		internal static bool IsHungry(NPCSettlement village)
+		{
+			return HuntersType?.GetMethod("IsHungry", Any)?.Invoke(null, new object[] { village }) is bool b && b;
+		}
+
 		/// <summary>Sends hunters from a hungry village now; how many went (-1 without Ruinarch+).</summary>
 		internal static int SendHunters(NPCSettlement village)
 		{
@@ -182,6 +188,14 @@ namespace RuinarchDebug
 			Type t = Plus?.GetType("RuinarchPlus.RuinarchPlusConfig");
 			object current = t?.GetProperty("Current", Any)?.GetValue(null);
 			t?.GetField(field, Any)?.SetValue(current, value);
+		}
+
+		/// <summary>A Ruinarch+ config field's current value; null without Ruinarch+.</summary>
+		internal static object Config(string field)
+		{
+			Type t = Plus?.GetType("RuinarchPlus.RuinarchPlusConfig");
+			object current = t?.GetProperty("Current", Any)?.GetValue(null);
+			return current == null ? null : t.GetField(field, Any)?.GetValue(current);
 		}
 
 		private static Type KnowledgeType => Plus?.GetType("RuinarchPlus.Phase3.Knowledge");

@@ -56,9 +56,14 @@ namespace RuinarchPlus.Phase5
 			return Enabled && s != null && States.TryGetValue(s, out State st) && st.Active;
 		}
 
+		// The villagers the village feeds: those in it. Someone held in one of the player's
+		// buildings, lost in the wild or away on a quest may starve, but not for want of the
+		// village's food; counted, they would put a well-fed village into famine (and it
+		// would hunt, lose settlers and overthrow its ruler over its captives).
 		private static List<Character> Villagers(NPCSettlement s)
 		{
-			return s.residents.Where(r => r != null && !r.isDead && r.isNormalCharacter && r.race.IsSapient()).ToList();
+			return s.residents.Where(r => r != null && !r.isDead && r.isNormalCharacter && r.race.IsSapient()
+				&& r.gridTileLocation != null && r.gridTileLocation.IsPartOfSettlement(s)).ToList();
 		}
 
 		private static bool IsStarving(Character c)
