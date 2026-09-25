@@ -22,6 +22,7 @@ migration, growing settlements, famine, hunting and trade). These change the gam
 | 7 | Exploit | **Sacrifice and Let It Go no longer take a monster that is only flying over a Kennel.** Cast on the monster, both refuse a flying monster that isn't Restrained: it is not held, just passing over. Cast on the Kennel, they didn't check, so a monster that broke its restraints and flew above its Kennel could still be sacrificed for Chaos Orbs. The Kennel now applies the same rule. Switch off with `closeExploits`. |
 | 8 | Bug | **The Snatch window always offers somewhere to drop your catch.** It only listed bookmarked buildings, so with nothing bookmarked no drop-off could be chosen and the Snatch button stayed greyed out. When you snatch a character and no bookmark will do, it now lists your own demonic buildings. |
 | 9 | Bug | **Big fires no longer drop the frame rate to a crawl.** Every hit on a burning wall made the whole building recalculate its pathfinding, so a burning village kept the pathfinder busy for half of every frame (9 fps at 4x speed in a test with a village on fire, 18 with the fix). A wall that is damaged but still standing blocks the way exactly as before, so it now only recalculates when a wall breaks. |
+| 10 | Bug | **The village center's Residents tab lists the village.** The tab lists the people who live in that building, and nobody lives in the center (villagers live in dwellings), so it was always empty. On a village center it now shows everyone living in the village; other buildings still show their own household. |
 
 ## Phase 2: Death, Decay & Disease (in progress)
 
@@ -51,6 +52,7 @@ migration, growing settlements, famine, hunting and trade). These change the gam
 | Feature | What you'll notice |
 |---------|--------------------|
 | **Migration follows a village's fortunes** | Settlers no longer pour into a village in crisis. Nobody moves in during a plague or a famine, while the village is under attack, or once more of its homes stand abandoned than lived in; otherwise each abandoned home (beyond the couple a growing village keeps spare) and each unburied body in the streets halves the pull; and every resident who dies sets the "Incoming Migrants" meter back. A village of ten reduced to one stops drawing settlers. Hover the migration meter to see why. Your Induce Migration power still works as before. |
+| **Villagers are born, grow up, grow old and die** | A year is 16 in-game days. Everyone has an age (shown in their panel: "Farmer, age 3", "Child, age 0", "elder"); villagers already there when a game starts are adults, some of them elders. A woman and her lover of the same race and village may have a child (rarely: about once a year per couple, half as often when food runs short, never in famine); she is expecting for a season (4 days) and the child is born in their home. Children are drawn smaller, don't work, don't fight and are never picked to rule. Humans come of age at 1 and Elves at 3, then take up a trade the game picks for them. Elders die of old age: Humans around 6 (5 to 7), Elves around 18. |
 
 ## Phase 5: Settlements & Economy (in progress)
 
@@ -82,6 +84,8 @@ your `Mods/RuinarchPlus/` folder:
     "searchRetryHours": 24,
     "searchMaxAttempts": 3,
     "migrationHealthEnabled": true,
+    "lifeCycleEnabled": true,
+    "lifeDaysPerYear": 16,
     "settlementTiersEnabled": true,
     "townPopulation": 20,
     "cityPopulation": 40,
@@ -111,6 +115,12 @@ your `Mods/RuinarchPlus/` folder:
 | `searchRetryHours` | `24` | Wait after the first failed search; doubles after each failure. |
 | `searchMaxAttempts` | `3` | Failed searches before the village gives the person up. |
 | `migrationHealthEnabled` | `true` | Plague, sieges, abandoned homes, unburied dead and deaths hold migration back. Set `false` for vanilla migration. |
+| `lifeCycleEnabled` | `true` | Villagers age, have children, grow up and die of old age. Set `false` for none (children already born stay, as adults). |
+| `lifeDaysPerYear` | `16` | In-game days in a year. |
+| `humanAdultYears` / `humanElderYears` / `humanLifespanYears` | `1` / `4` / `6` | Human ages (years) of coming of age, of becoming an elder, and of death by age (give or take a fifth). Other races except Elves use these too. |
+| `elfAdultYears` / `elfElderYears` / `elfLifespanYears` | `3` / `12` / `18` | The same for Elves. |
+| `birthChancePerDay` | `6` | Percent chance per couple per day to conceive (half with under 20 food per villager, none under 10 or in famine). |
+| `pregnancyDays` | `4` | Days from conceiving to the birth. |
 | `settlementTiersEnabled` | `true` | Villages that grow build a Town Hall and become Towns and Cities, with room for more buildings. Set `false` for vanilla. |
 | `townPopulation` | `20` | Living villagers a village needs to build a Town Hall and become a Town. |
 | `cityPopulation` | `40` | Living villagers a Town needs to become a City. |

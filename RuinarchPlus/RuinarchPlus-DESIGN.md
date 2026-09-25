@@ -344,10 +344,44 @@ knowledge).
    unaffected. In vanilla the only gate is `residents.Count > 0`; wave size scales with
    the player's portal level (`SettlementVillageMigrationComponent.cs:337-355`).
 2. **Natural birth [L]:** couples procreate at a slow rate scaled by food/housing; babies
-   become children then adults over game-years.
+   become children then adults.
 3. **Aging & natural death [L]:** age advances; elders sicken (dementia/alzheimer's as
    new flaws) and eventually die of old age. Dementia ties to Phase 3: they **forget**
    ledger facts, so knowledge decays with generations.
+
+   **Decided (2026-09-25), first Phase 4 release = births + aging + old-age death**
+   (dementia and memory in the release after):
+   - **Calendar:** a year is **16 in-game days**, four seasons of 4 days (as in Songs of
+     Syx). A Ruinarch game runs roughly 10 to 40 days, so generations turn over within
+     long games. TruePlanet may later bring a longer calendar.
+   - **Life stages per race** (config, in years): Human adult at 1 (16 days), elder at 4,
+     dies of age at 5 to 7; Elf adult at 3, elder at 12, dies at 15 to 20. Childhood spans
+     1 to 5 years by race, as in Songs of Syx. Villagers present when a game starts get a
+     random adult age, so some elders exist and old-age deaths happen within a game.
+   - **Children are real villagers, drawn smaller** on the map. They don't work or fight
+     and stay near home; at adulthood they become ordinary villagers.
+   - Nurseries and schooling (Songs of Syx) are not planned yet.
+
+   **Shipped: births, aging, old-age death** (`Phase4/LifeCycle.cs`, config
+   `lifeCycleEnabled`, `lifeDaysPerYear` 16, per-race `*AdultYears`/`*ElderYears`/
+   `*LifespanYears`, `birthChancePerDay` 6, `pregnancyDays` 4). Per villager a birth tick
+   and a personal age of death (lifespan +-20%) in `ModData/ruinarch.plus.life.json`;
+   villagers met without one get an adult age (4 in 5 adults, 1 in 5 elders short of 90%
+   of their span). Daily at 6:00 a woman with a LOVER of her race and village may conceive
+   (half chance under 20 food/villager, none under 10 or in famine); the birth uses
+   `CharacterManager.CreateNewCharacter("Farmer", race, gender, faction, home, region,
+   mother's dwelling)` + `CreateMarker` + `InitialCharacterPlacement` (the migrants'
+   sequence) and `RelationshipManager.CreateNewRelationshipBetween(child, parent, PARENT)`.
+   Children: `CharacterVisuals.markerVisualScale` x0.6 and `LimiterComponent.canTakeJobs`
+   false by getter postfix (the limiter counters are saved by the game, so they are not
+   touched); the Farmer class does not fight (`CharacterClass.IsCombatant`). Coming of age:
+   `RandomizeCurrentClassBasedOnAbleClasses`. Old age: `Death("normal")` (the death log is
+   keyed `death_` + cause, so a new cause would have no text) plus an announcement. The
+   character panel's class line gives the age. Ruinarch+'s own picks (traders, the famine
+   challenger) skip children, and so do the game's own: while `NPCSettlement.DesignateNewRuler`
+   or `Faction.DesignateNewLeader` runs, a child reads as `isBeingSeized` (both pickers skip
+   it); party quests already skip non-combatants (`CharacterBehaviour.PartyLogic`).
+   *(verified in game)*
 4. **Library [M to L]:** a structure that *persists* faction knowledge against that decay
    (Phase 3 ledger + Phase 4 aging). Villagers deposit what they learn on return from
    searches/trades; burning it is a real strategic blow.

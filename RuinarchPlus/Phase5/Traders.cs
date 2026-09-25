@@ -106,7 +106,7 @@ namespace RuinarchPlus.Phase5
 			Character trader = Villagers(from)
 				.Where(c => c != from.ruler && !c.isFactionLeader && c.hasMarker && c.limiterComponent.canMove && c.limiterComponent.canPerform
 					&& !c.partyComponent.hasParty && c.carryComponent.isBeingCarriedBy == null && !c.needsComponent.isStarving
-					&& !c.traitContainer.HasTrait("Enslaved") && !c.jobQueue.HasJob(JOB_TYPE.HAUL) && !Trips.ContainsKey(c) && !Hunters.IsHunting(c)
+					&& !c.traitContainer.HasTrait("Enslaved") && !c.jobQueue.HasJob(JOB_TYPE.HAUL) && !Trips.ContainsKey(c) && !Hunters.IsHunting(c) && !Phase4.LifeCycle.IsChild(c)
 					&& (destination == null || c.movementComponent.HasPathToEvenIfDiffRegion(destination)))
 				.OrderByDescending(c => c.characterClass.className == "Merchant").FirstOrDefault();
 			ResourcePile goods = trader == null ? null : TakeFood(from, amount);

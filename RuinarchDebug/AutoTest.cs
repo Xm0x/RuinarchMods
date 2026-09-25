@@ -219,9 +219,13 @@ namespace RuinarchDebug
 				Time.timeScale = TimeScale;
 			});
 			Log($"world running; plus bridge available={PlusBridge.Available}");
+			Try("dismiss the start-of-game popup", () => DismissIntroPopup());
 			// Corpse-borne plague is not under test; left on, it slowly empties the
-			// villages the later tests need. In memory only: config.json is untouched.
+			// villages the later tests need. The life cycle neither: old age kills the villagers
+			// a test follows (a captive died of it mid-search). LifeSuite turns it on for its
+			// own checks. In memory only: config.json is untouched.
 			PlusBridge.SetConfig("corpseDiseaseEnabled", false);
+			PlusBridge.SetConfig("lifeCycleEnabled", false);
 			yield return WaitGameHours(1f, null);
 
 			FreshWorldChecks();
@@ -233,6 +237,7 @@ namespace RuinarchDebug
 			// First, while the villages still have free space (later Mass Graves and
 			// Cemeteries fill it).
 			if (Runs("TierSuite")) { yield return TierSuite(); }
+			if (Runs("LifeSuite")) { yield return LifeSuite(); }
 			// Needs three free villagers of one village, so it runs while the villages are
 			// full. Strands them in the wilderness; one never comes back.
 			if (Runs("MissingPersonsSuite")) { yield return MissingPersonsSuite(); }
@@ -545,8 +550,14 @@ namespace RuinarchDebug
 			else
 			{
 				yield return WaitGameHours(48f, () => second.grave != null || !second.hasMarker);
+				// The game's own planner may have built a Cemetery meanwhile: then the body rightly
+				// goes there (vanilla burial), and there is nothing of the pit's to check.
+				if (second.grave?.gridTileLocation?.structure?.structureType == STRUCTURE_TYPE.CEMETERY)
+				{
+					Skip("villagers haul a resident's corpse into the pit (no gravestone)", $"the game built a Cemetery in {village.name} meanwhile and the body was buried there");
+				}
 				// Laid in the pit = carried there and gone: no body, no gravestone anywhere.
-				Check("villagers haul a resident's corpse into the pit (no gravestone)", () =>
+				else Check("villagers haul a resident's corpse into the pit (no gravestone)", () =>
 				{
 					bool gone = !second.hasMarker && second.grave == null;
 					bool hauled = PlusBridge.HauledTotal > hauledBefore;
@@ -556,7 +567,11 @@ namespace RuinarchDebug
 
 			// The corpse that was lying before the pit existed must be taken too.
 			yield return WaitGameHours(24f, () => first.grave != null || !first.hasMarker);
-			Check("pre-existing corpse is laid in the pit once it exists", () =>
+			if (first.grave?.gridTileLocation?.structure?.structureType == STRUCTURE_TYPE.CEMETERY)
+			{
+				Skip("pre-existing corpse is laid in the pit once it exists", $"the game built a Cemetery in {village.name} meanwhile and the body was buried there");
+			}
+			else Check("pre-existing corpse is laid in the pit once it exists", () =>
 			{
 				bool gone = !first.hasMarker && first.grave == null;
 				return (gone, $"gone={gone} hasMarker={first.hasMarker} {GraveWhere(first, village)}");
@@ -1077,6 +1092,18 @@ namespace RuinarchDebug
 				yield return WaitGameHours(120f - (GameHours - start), () => PlusBridge.TownHallFor(village) != null);
 			}
 			LocationStructure hall = PlusBridge.TownHallFor(village);
+			if (hall == null && Villagers(village) < 3)
+			{
+				foreach (string name in new[] { "a grown village builds a Town Hall from materials", "the village is a Town once its Town Hall stands", "the Town is announced",
+					"the settlement panel names the tier", "the center's building panel names what the village is", "the tier is stored inside the player's save file",
+					"a Town reaching the city mark becomes a City", "a City keeps its tier just under the mark",
+					"a City far below the mark falls back to a Town", "destroying the Town Hall makes the Town a village again" })
+				{
+					Skip(name, $"{village.name} emptied during the build: {Describe(village)}");
+				}
+				RestoreTierConfig();
+				yield break;
+			}
 			Check("a grown village builds a Town Hall from materials", () =>
 				(hall != null, hall != null ? $"built after {GameHours - start:F1}h" : $"not built within 120h (pending={PlusBridge.HasPendingTownHall(village)} placeJob={village.HasJob(JOB_TYPE.PLACE_BLUEPRINT)} villagers={Villagers(village)} {BlueprintState(village)})"));
 			if (hall == null)
@@ -1130,6 +1157,29 @@ namespace RuinarchDebug
 			Check("the center's building panel names what the village is", () =>
 				(center != null && center[0] == (capital ? "Capital" : "Town") && center[1] != null && center[1].Contains("Town Center"),
 				$"header=\"{center?[0]}\" (capital={capital}) description=\"{center?[1]}\""));
+
+			// The center's Residents tab lists the whole village (a Ruinarch+ fix: nobody lives
+			// in the center itself); a dwelling's lists its own household, as in the base game.
+			Func<LocationStructure, int> residentsShown = structure =>
+			{
+				UIManager.Instance.ShowStructureInfo(structure);
+				StructureInfoUI sui = UIManager.Instance.structureInfoUI;
+				UnityEngine.UI.Toggle tab = AccessTools.Field(typeof(StructureInfoUI), "residentsTab").GetValue(sui) as UnityEngine.UI.Toggle;
+				if (tab != null) tab.isOn = true;
+				AccessTools.Method(typeof(StructureInfoUI), "UpdateResidents").Invoke(sui, null);
+				UnityEngine.UI.ScrollRect list = AccessTools.Field(typeof(StructureInfoUI), "charactersScrollView").GetValue(sui) as UnityEngine.UI.ScrollRect;
+				return list == null ? -1 : list.content.GetComponentsInChildren<CharacterPortrait>().Length;
+			};
+			int villageShown = Guard("open the center's Residents tab", () => (object)residentsShown(village.cityCenter)) as int? ?? -1;
+			yield return new WaitForSecondsRealtime(1f);
+			yield return Screenshot("residents.png");
+			int alive = village.residents.Count(c => c != null && !c.isDead);
+			LocationStructure dwelling = village.structures.TryGetValue(STRUCTURE_TYPE.DWELLING, out List<LocationStructure> homes) ? homes.FirstOrDefault(h => h.residents.Count > 0) : null;
+			int houseShown = dwelling == null ? -1 : Guard("open a dwelling's Residents tab", () => (object)residentsShown(dwelling)) as int? ?? -1;
+			Guard("close the building panel", () => { UIManager.Instance.structureInfoUI.CloseMenu(); return village; });
+			Check("the village center's Residents tab lists the village; a dwelling's its household", () =>
+				(villageShown == alive && alive > 0 && (dwelling == null || houseShown == dwelling.residents.Count),
+				$"center shows {villageShown} of {alive} villagers; {dwelling?.name ?? "no dwelling"} shows {houseShown} of {dwelling?.residents.Count}"));
 			string saved = null;
 			yield return SaveAndRead("ruinarch.plus.tiers.json", (j, e) => saved = j);
 			Check("the tier is stored inside the player's save file", () =>
@@ -1400,7 +1450,14 @@ namespace RuinarchDebug
 			if (trader != null)
 			{
 				yield return WaitGameHours(30f, () => ModsLogHas($"brought 40 food to {to.name}") || trader.isDead);
-				Check("the trader brings the food to the other village", () =>
+				if (trader.isDead && !ModsLogHas($"{trader.name} of {from.name} brought 40 food to {to.name}"))
+				{
+					string cause = trader.deathLog?.logText ?? "no death log";
+					Skip("the trader brings the food to the other village", $"{trader.name} died on the way: {cause}");
+					if (news) Skip("the trader tells the other faction what theirs knows", $"{trader.name} died on the way");
+					news = false;
+				}
+				else Check("the trader brings the food to the other village", () =>
 					(ModsLogHas($"{trader.name} of {from.name} brought 40 food to {to.name}"),
 					$"{trader.name} dead={trader.isDead} at {trader.gridTileLocation?.area?.GetFirstNPCSettlementOnArea()?.name ?? "the wild"} carrying={trader.carryComponent.carriedPOI?.name ?? "nothing"} haul={trader.jobQueue.HasJob(JOB_TYPE.HAUL)}"));
 				if (news)
@@ -1566,6 +1623,178 @@ namespace RuinarchDebug
 				(shown && px >= 1.9f, $"{walker.name} zoom {cam.orthographicSize:F1} (max {max:F1}) line shown={shown} width={px:F1}px"));
 			Guard("close the character panel", () => { AccessTools.FieldRefAccess<UIManager, CharacterInfoUI>("characterInfoUI")(UIManager.Instance).CloseMenu(); return walker; });
 			cam.orthographicSize = before;
+		}
+
+		// ---------------------------------------------------------------------------------
+		// Phase 4: the life cycle. Everyone has an age from the start (adults, elders), the old
+		// die of age, lovers have a child who is drawn smaller and takes no jobs, the child
+		// comes of age, and ages ride inside the save.
+		private IEnumerator LifeSuite()
+		{
+			if (!PlusBridge.Available)
+			{
+				Skip("life cycle", "RuinarchPlus not loaded");
+				yield break;
+			}
+			// Off for the other suites (see Run); on for these checks, then off again.
+			PlusBridge.SetConfig("lifeCycleEnabled", true);
+			yield return WaitGameHours(1f, null);
+			yield return LifeChecks();
+			PlusBridge.SetConfig("lifeCycleEnabled", false);
+			PlusBridge.SetConfig("pregnancyDays", 4);
+		}
+
+		// The couple and child LifeSuite made: later suites leave them be.
+		private readonly HashSet<Character> _lifeFamily = new HashSet<Character>();
+
+		private IEnumerator LifeChecks()
+		{
+			List<Character> people = Villages().SelectMany(v => v.residents)
+				.Where(c => c != null && !c.isDead && c.isNormalCharacter && c.race.IsSapient()).ToList();
+			Check("every villager has an age from the start, none of them a child", () =>
+			{
+				List<Character> unknown = people.Where(c => PlusBridge.LifeStage(c) == null).ToList();
+				List<Character> children = people.Where(c => PlusBridge.LifeStage(c) == "Child").ToList();
+				int elders = people.Count(c => PlusBridge.LifeStage(c) == "Elder");
+				return (people.Count > 0 && unknown.Count == 0 && children.Count == 0,
+					$"{people.Count} villagers, {elders} elder(s); ages {string.Join(", ", people.Take(8).Select(c => $"{c.name} {PlusBridge.AgeYears(c):F1}"))}"
+					+ (unknown.Count > 0 ? "; no age: " + string.Join(", ", unknown.Select(c => c.name)) : "")
+					+ (children.Count > 0 ? "; children: " + string.Join(", ", children.Select(c => c.name)) : ""));
+			});
+
+			// Old age.
+			Character old = people.FirstOrDefault(c => c != c.homeSettlement?.ruler && !c.isFactionLeader && c.carryComponent.isBeingCarriedBy == null && !c.isDead);
+			if (old != null)
+			{
+				float age = PlusBridge.AgeYears(old);
+				PlusBridge.SetDeathAgeYears(old, age - 0.01f);
+				yield return WaitGameHours(2f, () => old.isDead);
+				Check("an elder past their age of death dies of old age", () =>
+					(old.isDead && ModsLogHas($"{old.name} died of old age at {Mathf.FloorToInt(age)}."), $"{old.name} age {age:F2} dead={old.isDead}"));
+			}
+
+			// A child: lovers of one village (made lovers if none are).
+			Character mother = null;
+			Character father = null;
+			foreach (NPCSettlement v in Villages().OrderByDescending(v => v.residents.Count))
+			{
+				List<Character> adults = v.residents.Where(c => c != null && !c.isDead && c.isNormalCharacter && c.race.IsSapient()
+					&& PlusBridge.LifeStage(c) == "Adult" && c.carryComponent.isBeingCarriedBy == null && c.hasMarker).ToList();
+				mother = adults.FirstOrDefault(c => c.gender == GENDER.FEMALE && PlusBridge.PartnerOf(c) != null);
+				if (mother != null)
+				{
+					father = PlusBridge.PartnerOf(mother);
+					break;
+				}
+				Character f = adults.FirstOrDefault(c => c.gender == GENDER.FEMALE && c.relationshipContainer.GetFirstCharacterWithRelationship(RELATIONSHIP_TYPE.LOVER) == null);
+				Character m = f == null ? null : adults.FirstOrDefault(c => c.gender == GENDER.MALE && c.race == f.race && c.relationshipContainer.GetFirstCharacterWithRelationship(RELATIONSHIP_TYPE.LOVER) == null);
+				if (f != null && m != null)
+				{
+					Guard("make two villagers lovers", () => RelationshipManager.Instance.CreateNewRelationshipBetween(f, m, RELATIONSHIP_TYPE.LOVER));
+					if (PlusBridge.PartnerOf(f) == m)
+					{
+						mother = f;
+						father = m;
+						break;
+					}
+				}
+			}
+			if (mother == null)
+			{
+				Skip("lovers have a child", "no village with a woman and a man of one race who can be lovers");
+				yield break;
+			}
+			NPCSettlement home = (NPCSettlement)mother.homeSettlement;
+			LocationStructure house = mother.homeStructure;
+			_lifeFamily.Add(mother);
+			_lifeFamily.Add(father);
+			PlusBridge.SetConfig("pregnancyDays", 1);
+			PlusBridge.Conceive(mother, father);
+			Check("a woman and her lover can conceive", () => (PlusBridge.IsPregnant(mother), $"{mother.name} and {father.name} of {home.name}"));
+			yield return WaitGameHours(26f, () => !PlusBridge.IsPregnant(mother));
+			Character child = home.residents.FirstOrDefault(c => c != null && PlusBridge.IsChild(c));
+			Check("the child is born in the mother's home", () =>
+				(child != null && child.homeSettlement == home && child.homeStructure == house && ModsLogHas($"of {home.name} had a child: {child.name}."),
+				child == null ? $"no child; pregnant={PlusBridge.IsPregnant(mother)} mother dead={mother.isDead}" : $"{child.name} home {child.homeSettlement?.name}/{child.homeStructure?.name} (mother's {house?.name})"));
+			if (child == null)
+			{
+				PlusBridge.SetConfig("pregnancyDays", 4);
+				yield break;
+			}
+			_lifeFamily.Add(child);
+			SpriteRenderer body = AccessTools.Field(typeof(CharacterMarker), "mainImg").GetValue(child.marker) as SpriteRenderer;
+			Check("a child is their parents' child, drawn smaller, takes no jobs and does not fight", () =>
+				(child.relationshipContainer.GetFirstCharacterWithRelationship(RELATIONSHIP_TYPE.PARENT) != null
+					&& body != null && Mathf.Abs(body.transform.localScale.x - 0.6f) < 0.01f
+					&& !child.limiterComponent.canTakeJobs && !child.characterClass.IsCombatant() && PlusBridge.AgeYears(child) < 0.2f,
+				$"parent={child.relationshipContainer.GetFirstCharacterWithRelationship(RELATIONSHIP_TYPE.PARENT)?.name ?? "none"} scale={body?.transform.localScale.x:F2} canTakeJobs={child.limiterComponent.canTakeJobs} class={child.characterClass.className} age={PlusBridge.AgeYears(child):F2}"));
+			CharacterInfoUI panel = AccessTools.FieldRefAccess<UIManager, CharacterInfoUI>("characterInfoUI")(UIManager.Instance);
+			string label = Guard("open the child's panel", () =>
+			{
+				UIManager.Instance.ShowCharacterInfo(child, centerOnCharacter: true);
+				return (AccessTools.Field(typeof(CharacterInfoUI), "subLbl").GetValue(panel) as TMPro.TMP_Text)?.text;
+			});
+			// For the screenshot: child and mother side by side on the village square, close up.
+			List<LocationGridTile> square = home.cityCenter.passableTiles.Where(t => !t.isOccupied).ToList();
+			LocationGridTile a = square.FirstOrDefault();
+			LocationGridTile b = a?.neighbourList.FirstOrDefault(t => square.Contains(t));
+			Camera cam = InnerMapCameraMove.Instance.camera;
+			float zoom = cam.orthographicSize;
+			if (a != null && b != null && !mother.isDead)
+			{
+				Guard("stand the child by the mother", () =>
+				{
+					CharacterManager.Instance.Teleport(child, a);
+					CharacterManager.Instance.Teleport(mother, b);
+					cam.orthographicSize = 2.5f;
+					cam.transform.position = new Vector3(child.marker.transform.position.x, child.marker.transform.position.y, cam.transform.position.z);
+					return child;
+				});
+			}
+			yield return new WaitForSecondsRealtime(0.5f);
+			yield return Screenshot("child.png");
+			cam.orthographicSize = zoom;
+			Guard("close the child's panel", () => { panel.CloseMenu(); return child; });
+			Check("the character panel gives the age", () => (label == "Child, age 0", $"\"{label}\""));
+
+			// Children don't rule: let the game pick a village ruler 30 times.
+			Character ruler = home.ruler;
+			List<string> picks = new List<string>();
+			Guard("let the game pick a ruler 30 times", () =>
+			{
+				for (int i = 0; i < 30; i++)
+				{
+					home.DesignateNewRuler(willLog: false);
+					picks.Add(home.ruler?.name ?? "none");
+				}
+				if (ruler != null && !ruler.isDead) home.SetRuler(ruler);
+				return picks;
+			});
+			int candidates = home.residents.Count(c => c != null && !c.isDead && c.faction == home.owner && c.gridTileLocation != null && c.gridTileLocation.IsPartOfSettlement(home));
+			Check("the game never picks a child to rule the village", () =>
+				(picks.Count == 30 && !picks.Contains(child.name), $"{candidates} candidates in the village; picked {string.Join(", ", picks.Distinct())}"));
+
+			// Coming of age.
+			PlusBridge.SetAgeYears(child, 3.1f);
+			yield return WaitGameHours(2f, () => !PlusBridge.IsChild(child));
+			Check("a child comes of age: full size, takes jobs, gets a class", () =>
+				(!PlusBridge.IsChild(child) && body != null && Mathf.Abs(body.transform.localScale.x - 1f) < 0.01f && child.limiterComponent.canTakeJobs
+					&& ModsLogHas($"{child.name} has come of age"),
+				$"child={PlusBridge.IsChild(child)} stage={PlusBridge.LifeStage(child)} scale={body?.transform.localScale.x:F2} canTakeJobs={child.limiterComponent.canTakeJobs} class={child.characterClass.className}"));
+			PlusBridge.SetConfig("pregnancyDays", 4);
+
+			// Ages ride inside the save.
+			Character sample = people.FirstOrDefault(c => !c.isDead);
+			float before = PlusBridge.AgeYears(sample);
+			string json = null;
+			yield return SaveAndRead("ruinarch.plus.life.json", (j, e) => json = j);
+			Check("ages are stored inside the player's save file", () => (json != null && json.Contains(sample.persistentID), json == null ? "no life entry" : $"{json.Length} bytes"));
+			if (json != null)
+			{
+				ReplayLoad("ruinarch.plus.life.json", json);
+				Check("ages come back when the save loads", () =>
+					(Mathf.Abs(PlusBridge.AgeYears(sample) - before) < 0.05f, $"{sample.name}: {before:F2} -> {PlusBridge.AgeYears(sample):F2}"));
+			}
 		}
 
 		// ---------------------------------------------------------------------------------
@@ -1862,9 +2091,28 @@ namespace RuinarchDebug
 			}
 		}
 
+		// The game's start-of-game popup ("There are N villagers that must be killed... I'm
+		// ready!") sits in the middle of the screen until clicked: click it, as a player would.
+		private static bool DismissIntroPopup()
+		{
+			foreach (UnityEngine.UI.Button b in FindObjectsOfType<UnityEngine.UI.Button>())
+			{
+				if (b.isActiveAndEnabled && b.interactable && b.GetComponentInChildren<TMPro.TMP_Text>()?.text?.Trim() == "I'm ready!")
+				{
+					b.onClick.Invoke();
+					return true;
+				}
+			}
+			return false;
+		}
+
 		// Saves the real screen next to autotest.log, at the end of this frame.
 		private IEnumerator Screenshot(string file)
 		{
+			if (DismissIntroPopup())
+			{
+				yield return new WaitForSecondsRealtime(1f);
+			}
 			yield return new WaitForEndOfFrame();
 			Texture2D shot = null;
 			try
@@ -2136,7 +2384,13 @@ namespace RuinarchDebug
 					(header == "Who Knows of You" && carrying.Any(l => l.Contains(witness.name) && l.Contains("is carrying news of your") && l.Contains(portal.name)),
 					$"section header={header ?? "none"}; lines: {string.Join(" / ", carrying)}"));
 				LocationGridTile home = witness.homeSettlement.cityCenter.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? witness.homeSettlement.cityCenter.passableTiles.FirstOrDefault();
-				Guard("send the witness home", () => { CharacterManager.Instance.Teleport(witness, home); return witness; });
+				// Out of any party first: a party on a quest leads its members away again.
+				Guard("send the witness home", () =>
+				{
+					witness.partyComponent.currentParty?.RemoveMember(witness);
+					CharacterManager.Instance.Teleport(witness, home);
+					return witness;
+				});
 				yield return WaitGameHours(3f, () => PlusBridge.Knows(faction, portal));
 				Check("back home, the witness teaches it to their faction", () =>
 					(PlusBridge.Knows(faction, portal) && !PlusBridge.Carries(witness, portal),
@@ -2424,7 +2678,8 @@ namespace RuinarchDebug
 				.OrderByDescending(v => v.residents.Count(r => free(v, r))).FirstOrDefault();
 			// Villagers in no party first: taking someone out of an idle party can empty it,
 			// and an empty party disbands.
-			List<Character> people = village?.residents.Where(r => free(village, r)).OrderBy(r => r.partyComponent.hasParty).ToList();
+			// Not the family LifeSuite made (a lover and a child look in on each other).
+			List<Character> people = village?.residents.Where(r => free(village, r) && !_lifeFamily.Contains(r)).OrderBy(r => r.partyComponent.hasParty).ToList();
 			if (people == null || people.Count < 3)
 			{
 				Skip("missing persons", "no village with three free residents: " + string.Join("; ", Villages().Select(v =>
@@ -2796,7 +3051,7 @@ namespace RuinarchDebug
 		{
 			List<Character> members = village.residents.Where(r => r != null && !r.isDead && r.marker != null
 				&& (!r.partyComponent.hasParty || !r.partyComponent.currentParty.isActive)
-				&& r != village.ruler && r.limiterComponent.canMove).Take(max).ToList();
+				&& r != village.ruler && r.limiterComponent.canMove && !PlusBridge.IsChild(r)).Take(max).ToList();
 			if (members.Count < min)
 			{
 				Log($"  only {members.Count} free resident(s) for a party; {quest.partyQuestType} needs {min}");
@@ -2873,6 +3128,28 @@ namespace RuinarchDebug
 			});
 			Try("delete the test save", () => { if (File.Exists(zip)) File.Delete(zip); });
 			got(json, entries);
+		}
+
+		// Every villager death of the run by cause and killer, logged at the end: when the world
+		// empties the test villages, this says what did it (the game's own dangers, or a mod).
+		private static readonly Dictionary<string, int> Deaths = new Dictionary<string, int>();
+
+		[HarmonyPatch(typeof(Character), nameof(Character.Death))]
+		internal static class DeathTally
+		{
+			private static void Prefix(Character __instance, out bool __state) => __state = __instance.isDead;
+
+			private static void Postfix(Character __instance, bool __state, string cause, Character responsibleCharacter, Interrupts.Interrupt interrupt)
+			{
+				if (_running == null || __state || !__instance.isDead || !__instance.isNormalCharacter || !__instance.race.IsSapient())
+				{
+					return;
+				}
+				string by = responsibleCharacter == null ? "" : $" by {(responsibleCharacter.isNormalCharacter ? responsibleCharacter.characterClass.className : responsibleCharacter.race.ToString())}";
+				string key = cause + by + (interrupt != null ? $" ({interrupt.name})" : "") + (__instance.traitContainer.HasTrait("Plagued") ? " [plagued]" : "");
+				Deaths.TryGetValue(key, out int n);
+				Deaths[key] = n + 1;
+			}
 		}
 
 		// A harness save in progress: anything resuming the world now is logged with its caller.
@@ -3051,6 +3328,10 @@ namespace RuinarchDebug
 
 		private void Finish(string reason)
 		{
+			if (Deaths.Count > 0)
+			{
+				Log($"deaths of villagers during the run ({Deaths.Values.Sum()}): " + string.Join(", ", Deaths.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Value}x {kv.Key}")));
+			}
 			Log($"AUTOTEST DONE ({reason}) pass={_pass} fail={_fail} skip={_skip} gameHours={GameHours:F1}");
 			Time.timeScale = 1f;
 			StopAllCoroutines();

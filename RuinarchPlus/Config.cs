@@ -103,6 +103,23 @@ namespace RuinarchPlus
 		public bool tradeEnabled = true;
 		public int tradeAmount = 40;
 
+		// Life cycle (Phase 4): a year is lifeDaysPerYear in-game days. Villagers age; a woman
+		// and her lover of the same race and village may have a child (birthChancePerDay
+		// percent per day, less when food runs short, none in famine; the pregnancy lasts
+		// pregnancyDays). Children are drawn smaller, don't work or fight, and come of age at
+		// the race's adult age; elders die of old age around the race's lifespan. Races other
+		// than Elves use the Human ages.
+		public bool lifeCycleEnabled = true;
+		public int lifeDaysPerYear = 16;
+		public int humanAdultYears = 1;
+		public int humanElderYears = 4;
+		public int humanLifespanYears = 6;
+		public int elfAdultYears = 3;
+		public int elfElderYears = 12;
+		public int elfLifespanYears = 18;
+		public int birthChancePerDay = 6;
+		public int pregnancyDays = 4;
+
 		// Corpse-borne disease. Rotting unburied corpses in a settlement sicken the living
 		// present, scaled by corpse count. Requires corpseDecayEnabled (it reads the decay stage).
 		public bool corpseDiseaseEnabled = true;

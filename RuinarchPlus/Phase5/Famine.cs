@@ -183,7 +183,7 @@ namespace RuinarchPlus.Phase5
 		private static void Challenge(NPCSettlement s, Character ruler, int hours)
 		{
 			Character challenger = Villagers(s)
-				.Where(c => c != ruler && c.faction == s.owner && !c.isBeingSeized && !c.crimeComponent.IsWantedBy(s.owner) && !c.traitContainer.HasTrait("Enslaved")
+				.Where(c => c != ruler && c.faction == s.owner && !c.isBeingSeized && !c.crimeComponent.IsWantedBy(s.owner) && !c.traitContainer.HasTrait("Enslaved") && !Phase4.LifeCycle.IsChild(c)
 					&& c.gridTileLocation != null && c.gridTileLocation.IsPartOfSettlement(s))
 				.OrderBy(c => c.relationshipContainer.GetTotalOpinion(ruler))
 				.ThenByDescending(c => (c.traitContainer.HasTrait("Ambitious") ? 1 : 0) + (c.traitContainer.HasTrait("Authoritative") ? 1 : 0))

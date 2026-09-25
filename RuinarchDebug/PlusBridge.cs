@@ -203,6 +203,30 @@ namespace RuinarchDebug
 			return Plus?.GetType("RuinarchPlus.Phase3.KnowledgePanel")?.GetMethod("Texts", Any)?.Invoke(null, null) as List<string>;
 		}
 
+		// ---- life cycle (Phase 4) ----
+		private static Type LifeType => Plus?.GetType("RuinarchPlus.Phase4.LifeCycle");
+
+		private static object Life(string method, params object[] args) => LifeType?.GetMethod(method, Any)?.Invoke(null, args);
+
+		/// <summary>Age in years, or -1 if unknown (or Ruinarch+ missing).</summary>
+		internal static float AgeYears(Character c) => Life("AgeYears", c) is float f ? f : -1f;
+
+		/// <summary>"Child", "Adult", "Elder" or null.</summary>
+		internal static string LifeStage(Character c) => Life("Stage", c) as string;
+
+		internal static bool IsChild(Character c) => Life("IsChild", c) is bool b && b;
+
+		internal static bool IsPregnant(Character c) => Life("IsPregnant", c) is bool b && b;
+
+		/// <summary>Her lover if the two may have a child now, else null.</summary>
+		internal static Character PartnerOf(Character mother) => Life("PartnerOf", mother) as Character;
+
+		internal static void Conceive(Character mother, Character father) => Life("Conceive", mother, father);
+
+		internal static void SetAgeYears(Character c, float years) => Life("SetAgeYears", c, years);
+
+		internal static void SetDeathAgeYears(Character c, float years) => Life("SetDeathAgeYears", c, years);
+
 		internal static void Forget(Faction faction)
 		{
 			KnowledgeType?.GetMethod("Forget", Any)?.Invoke(null, new object[] { faction });
