@@ -30,6 +30,12 @@ namespace RuinarchPlus.Phase4
 	/// not saved: a save without the mod keeps plain villagers. At the adult age they come of
 	/// age and get a class the game picks for them. Elders past their age of death die of old
 	/// age (the game's plain death, plus an announcement).
+	///
+	/// Dementia: when a villager becomes an elder (or is first met as one), one in three
+	/// (<c>dementiaChance</c>) grows forgetful. Every <c>dementiaForgetDays</c> a forgetful elder
+	/// forgets one of the player's buildings they remember (Phase3/Knowledge.cs); the panel
+	/// says "elder, forgetful". Kept in the same save record, not as a game trait, so a save
+	/// without the mod keeps plain villagers.
 	/// </summary>
 	internal static class LifeCycle
 	{
@@ -41,6 +47,10 @@ namespace RuinarchPlus.Phase4
 			internal long Born;
 			internal long DiesAt;
 			internal bool Child;
+			// Dementia was rolled when they became an elder; if forgetful, the next forgetting.
+			internal bool ElderRolled;
+			internal bool Forgetful;
+			internal long NextForget;
 		}
 
 		private sealed class Pregnancy
@@ -97,6 +107,8 @@ namespace RuinarchPlus.Phase4
 
 		internal static bool IsPregnant(Character c) => c != null && Pregnancies.ContainsKey(c);
 
+		internal static bool IsForgetful(Character c) => c != null && Lives.TryGetValue(c, out Life life) && life.Forgetful;
+
 		/// <summary>"Child", "Adult" or "Elder", or null if the mod does not know the age.</summary>
 		internal static string Stage(Character c)
 		{
@@ -140,6 +152,20 @@ namespace RuinarchPlus.Phase4
 			}
 		}
 
+		/// <summary>Debug menu / test harness: <paramref name="c"/> is forgetful (or not); a
+		/// forgetful one forgets something at the next hourly check.</summary>
+		internal static void SetForgetful(Character c, bool forgetful)
+		{
+			if (Tracked(c) && Lives.TryGetValue(c, out Life life))
+			{
+				life.ElderRolled = true;
+				life.Forgetful = forgetful;
+				life.NextForget = Now;
+			}
+		}
+
+		private static long ForgetInterval => (long)Math.Max(1, RuinarchPlusConfig.Current.dementiaForgetDays) * GameManager.ticksPerDay;
+
 		// ---- hourly ------------------------------------------------------------------------
 
 		internal static void HourlyCheck()
@@ -180,7 +206,9 @@ namespace RuinarchPlus.Phase4
 				if (now >= life.DiesAt)
 				{
 					DieOfAge(c);
+					continue;
 				}
+				Dementia(c, life, now);
 			}
 			foreach (KeyValuePair<Character, Pregnancy> kv in Pregnancies.ToList())
 			{
@@ -199,6 +227,30 @@ namespace RuinarchPlus.Phase4
 			if (GameManager.Instance.Today().tick == 6 * GameManager.ticksPerHour)
 			{
 				DailyConceptions();
+			}
+		}
+
+		private static void Dementia(Character c, Life life, long now)
+		{
+			Stages(c.race, out _, out int elder, out _);
+			if (!life.ElderRolled && now - life.Born >= elder * TicksPerYear)
+			{
+				life.ElderRolled = true;
+				if (UnityEngine.Random.Range(0, 100) < RuinarchPlusConfig.Current.dementiaChance)
+				{
+					life.Forgetful = true;
+					life.NextForget = now + ForgetInterval;
+					Phase2.Curfew.Note("{0} has grown forgetful with age.", c);
+				}
+			}
+			if (life.Forgetful && now >= life.NextForget)
+			{
+				life.NextForget = now + ForgetInterval;
+				Inner_Maps.Location_Structures.LocationStructure forgotten = Phase3.Knowledge.ForgetOne(c);
+				if (forgotten != null)
+				{
+					Phase2.Curfew.Note("{0} is forgetful and no longer remembers {1}.", c, forgotten);
+				}
 			}
 		}
 
@@ -350,7 +402,9 @@ namespace RuinarchPlus.Phase4
 		}
 
 		// ---- persistence -------------------------------------------------------------------
-		// "L|characterId|born|diesAt" per villager, "P|motherId|fatherId|due" per pregnancy.
+		// "L|characterId|born|diesAt|flags|nextForget" per villager (flags: e = dementia rolled,
+		// f = forgetful; saves from before dementia have the first four fields only),
+		// "P|motherId|fatherId|due" per pregnancy.
 
 		private static string Save()
 		{
@@ -359,7 +413,8 @@ namespace RuinarchPlus.Phase4
 			{
 				if (kv.Key != null && !kv.Key.isDead)
 				{
-					file.lives.Add($"L|{kv.Key.persistentID}|{kv.Value.Born}|{kv.Value.DiesAt}");
+					Life l = kv.Value;
+					file.lives.Add($"L|{kv.Key.persistentID}|{l.Born}|{l.DiesAt}|{(l.ElderRolled ? "e" : "")}{(l.Forgetful ? "f" : "")}|{l.NextForget}");
 				}
 			}
 			foreach (KeyValuePair<Character, Pregnancy> kv in Pregnancies)
@@ -386,14 +441,21 @@ namespace RuinarchPlus.Phase4
 				try
 				{
 					string[] f = entry.Split('|');
-					Character c = f.Length == 4 ? CharacterManager.Instance.GetCharacterByPersistentID(f[1]) : null;
+					Character c = f.Length >= 4 ? CharacterManager.Instance.GetCharacterByPersistentID(f[1]) : null;
 					if (c == null)
 					{
 						continue;
 					}
 					if (f[0] == "L")
 					{
-						Lives[c] = new Life { Born = long.Parse(f[2]), DiesAt = long.Parse(f[3]) };
+						Lives[c] = new Life
+						{
+							Born = long.Parse(f[2]),
+							DiesAt = long.Parse(f[3]),
+							ElderRolled = f.Length >= 6 && f[4].Contains("e"),
+							Forgetful = f.Length >= 6 && f[4].Contains("f"),
+							NextForget = f.Length >= 6 ? long.Parse(f[5]) : 0
+						};
 						Stages(c.race, out int adult, out _, out _);
 						Lives[c].Child = Now - Lives[c].Born < adult * TicksPerYear;
 						if (Lives[c].Child)
@@ -415,7 +477,7 @@ namespace RuinarchPlus.Phase4
 					RuinarchPlus.Log?.Warning($"Life cycle: dropped saved record {entry}: {e.Message}");
 				}
 			}
-			RuinarchPlus.Log?.Info($"Life cycle loaded: {Lives.Count} ages, {Children.Count} child(ren), {Pregnancies.Count} pregnancy(ies).");
+			RuinarchPlus.Log?.Info($"Life cycle loaded: {Lives.Count} ages, {Children.Count} child(ren), {Pregnancies.Count} pregnancy(ies), {Lives.Values.Count(l => l.Forgetful)} forgetful.");
 		}
 	}
 
@@ -488,7 +550,7 @@ namespace RuinarchPlus.Phase4
 					return;
 				}
 				int age = Mathf.FloorToInt(LifeCycle.AgeYears(c));
-				string what = stage == "Child" ? "Child" : stage == "Elder" ? ___subLbl.text + ", elder" : ___subLbl.text;
+				string what = stage == "Child" ? "Child" : stage == "Elder" ? ___subLbl.text + ", elder" + (LifeCycle.IsForgetful(c) ? ", forgetful" : "") : ___subLbl.text;
 				___subLbl.text = $"{what}, age {age}" + (LifeCycle.IsPregnant(c) ? ", expecting" : "");
 			}
 			catch (Exception e)

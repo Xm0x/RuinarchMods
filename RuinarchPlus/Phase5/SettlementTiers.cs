@@ -29,6 +29,11 @@ namespace RuinarchPlus.Phase5
 	/// builds the settlement out as it grows. No new <c>SETTLEMENT_TYPE</c>: that one is saved
 	/// and drives culture-specific facility weights. The tier is saved inside the player's
 	/// save (<c>ModData/ruinarch.plus.tiers.json</c>) and shown in the settlement's panel and in its buildings' panels.
+	///
+	/// Capitals: a major faction holding more than one village names one its capital (the
+	/// leader's home village, else its largest) once. A capital is a City (City limits, no
+	/// Town Hall needed) whatever its size and whoever lives or rules there, until it is
+	/// destroyed (no owner or no living villager left); then the faction names a new one.
 	/// </summary>
 	public static class SettlementTiers
 	{
@@ -46,6 +51,8 @@ namespace RuinarchPlus.Phase5
 		internal static ModBuilding TownHallBuilding;
 
 		private static readonly Dictionary<NPCSettlement, Tier> Tiers = new Dictionary<NPCSettlement, Tier>();
+		// Each capital and the faction that named it (so its loss is known after the owner changes).
+		private static readonly Dictionary<NPCSettlement, Faction> Capitals = new Dictionary<NPCSettlement, Faction>();
 		// Each SettlementType's own (culture) limits, captured the first time we see it.
 		private static readonly ConditionalWeakTable<SettlementType, Caps> BaseCaps = new ConditionalWeakTable<SettlementType, Caps>();
 		private static readonly MethodInfo SetMaxDwellings = AccessTools.PropertySetter(typeof(SettlementType), nameof(SettlementType.maxDwellings));
@@ -86,6 +93,8 @@ namespace RuinarchPlus.Phase5
 			return settlement != null && Tiers.TryGetValue(settlement, out Tier t) ? t : Tier.Village;
 		}
 
+		internal static bool IsCapital(NPCSettlement settlement) => settlement != null && Capitals.ContainsKey(settlement);
+
 		private static int Population(NPCSettlement settlement) => settlement.GetNumberOfResidentsThatIsAliveVillager();
 
 		// A settlement keeps a tier down to three quarters of the population that earned it.
@@ -93,6 +102,10 @@ namespace RuinarchPlus.Phase5
 
 		private static Tier Deserved(NPCSettlement settlement, Tier current)
 		{
+			if (IsCapital(settlement))
+			{
+				return Tier.City;
+			}
 			if (TownHall.FindFor(settlement) == null)
 			{
 				return Tier.Village;
@@ -120,6 +133,7 @@ namespace RuinarchPlus.Phase5
 			{
 				return;
 			}
+			UpdateCapitals(settlements);
 			for (int i = 0; i < settlements.Count; i++)
 			{
 				try
@@ -144,9 +158,56 @@ namespace RuinarchPlus.Phase5
 			}
 		}
 
+		// A capital lasts until destroyed; a faction of several villages without one names one.
+		// The first capitals (a new world, a save from before capitals) go to the log only; a
+		// capital named because the old one was destroyed is announced.
+		private static void UpdateCapitals(List<BaseSettlement> settlements)
+		{
+			HashSet<Faction> lost = new HashSet<Faction>();
+			foreach (KeyValuePair<NPCSettlement, Faction> kv in Capitals.ToList())
+			{
+				NPCSettlement c = kv.Key;
+				if (c.owner == null || Population(c) == 0)
+				{
+					Capitals.Remove(c);
+					if (kv.Value != null) lost.Add(kv.Value);
+					RuinarchPlus.Log?.Info($"{c.name} is no longer a capital: it has been destroyed.");
+				}
+			}
+			List<NPCSettlement> villages = settlements.OfType<NPCSettlement>()
+				.Where(v => v.locationType == LOCATION_TYPE.VILLAGE && v.owner != null && v.owner.isMajorFaction && v.settlementType != null && Population(v) > 0)
+				.ToList();
+			foreach (IGrouping<Faction, NPCSettlement> faction in villages.GroupBy(v => v.owner))
+			{
+				if (faction.Count() < 2 || faction.Any(IsCapital))
+				{
+					continue;
+				}
+				NPCSettlement capital = faction.FirstOrDefault(v => faction.Key.leader is Character leader && leader.homeSettlement == v)
+					?? faction.OrderByDescending(Population).First();
+				MakeCapital(capital);
+				if (lost.Contains(faction.Key))
+				{
+					Phase2.Curfew.Announce("{0} is now the capital of " + faction.Key.name + ".", capital);
+				}
+				else
+				{
+					RuinarchPlus.Log?.Info($"{capital.name} is the capital of {faction.Key.name}.");
+				}
+			}
+		}
+
+		private static void MakeCapital(NPCSettlement s)
+		{
+			Capitals[s] = s.owner;
+			// A City from now on, without the "has grown into a City" announcement.
+			Tiers[s] = Tier.City;
+			ApplyCaps(s, Tier.City);
+		}
+
 		internal static bool NeedsTownHall(NPCSettlement s)
 		{
-			return s.owner != null && s.owner.isMajorFaction && s.cityCenter != null
+			return s.owner != null && s.owner.isMajorFaction && s.cityCenter != null && !IsCapital(s)
 				&& Population(s) >= RuinarchPlusConfig.Current.townPopulation
 				&& TownHall.FindFor(s) == null && !ModBuildings.HasPendingFor(s, TownHallBuilding)
 				// The game allows one blueprint job per settlement at a time; wait our turn.
@@ -214,21 +275,14 @@ namespace RuinarchPlus.Phase5
 			}
 		}
 
-		/// <summary>What a settlement is called: "Capital" for the faction leader's home village
-		/// when the faction holds more than one village, else its tier (Village, Town, City).</summary>
+		/// <summary>What a settlement is called: "Capital", else its tier (Village, Town, City).</summary>
 		internal static string Kind(BaseSettlement settlement)
 		{
 			if (!Enabled || !(settlement is NPCSettlement s))
 			{
 				return Tier.Village.ToString();
 			}
-			Faction f = s.owner;
-			if (f != null && f.isMajorFaction && f.leader is Character leader && leader.homeSettlement == s
-				&& f.ownedSettlements.Count(o => o is NPCSettlement { locationType: LOCATION_TYPE.VILLAGE }) > 1)
-			{
-				return "Capital";
-			}
-			return Get(s).ToString();
+			return IsCapital(s) ? "Capital" : Get(s).ToString();
 		}
 
 		/// <summary>The faction line shown under a settlement's name, with what it is:
@@ -261,7 +315,7 @@ namespace RuinarchPlus.Phase5
 		}
 
 		// ---- persistence -------------------------------------------------------------------
-		// One "settlementId|Tier" string per Town or City.
+		// One "settlementId|Tier" string per Town or City, and "settlementId|Capital" per capital.
 
 		private static string Save()
 		{
@@ -273,12 +327,17 @@ namespace RuinarchPlus.Phase5
 					file.tiers.Add(kv.Key.persistentID + "|" + kv.Value);
 				}
 			}
+			foreach (NPCSettlement c in Capitals.Keys)
+			{
+				file.tiers.Add(c.persistentID + "|Capital");
+			}
 			return file.tiers.Count == 0 ? null : JsonUtility.ToJson(file);
 		}
 
 		private static void Load(string json)
 		{
 			Tiers.Clear();
+			Capitals.Clear();
 			if (string.IsNullOrEmpty(json))
 			{
 				return;
@@ -287,14 +346,19 @@ namespace RuinarchPlus.Phase5
 			foreach (string line in file?.tiers ?? new List<string>())
 			{
 				int bar = line.IndexOf('|');
-				if (bar > 0 && LandmarkManager.Instance.GetSettlementByPersistentID(line.Substring(0, bar)) is NPCSettlement s
+				if (bar > 0 && LandmarkManager.Instance.GetSettlementByPersistentID(line.Substring(0, bar)) is NPCSettlement capital
+					&& line.Substring(bar + 1) == "Capital")
+				{
+					MakeCapital(capital);
+				}
+				else if (bar > 0 && LandmarkManager.Instance.GetSettlementByPersistentID(line.Substring(0, bar)) is NPCSettlement s
 					&& Enum.TryParse(line.Substring(bar + 1), out Tier tier))
 				{
 					Tiers[s] = tier;
 					ApplyCaps(s, tier);
 				}
 			}
-			RuinarchPlus.Log?.Info($"Settlement tiers loaded: {Tiers.Count} town(s) and cit(ies).");
+			RuinarchPlus.Log?.Info($"Settlement tiers loaded: {Tiers.Count} town(s) and cit(ies), {Capitals.Count} capital(s).");
 		}
 	}
 

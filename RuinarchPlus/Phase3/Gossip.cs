@@ -9,15 +9,17 @@ namespace RuinarchPlus.Phase3
 	/// <summary>
 	/// Gossip carries places (config: <c>gossipChance</c>, part of <c>knowledgeEnabled</c>).
 	///
-	/// When two villagers meet (one sees the other), the one who knows of the player's
-	/// buildings talks:
-	/// - to someone of their own faction, they pass on news they carry and have not yet
-	///   brought home, so it survives if they die on the way;
-	/// - to someone of another faction that is not hostile to theirs, each building they know
-	///   of (their faction's ledger or their own news) is passed on with a chance of
-	///   <c>gossipChance</c> percent. Enemies don't talk.
+	/// When two villagers meet (one sees the other), the one who remembers the player's
+	/// buildings talks, of what the listener's village does not know yet:
+	/// - to a neighbour (same village), they pass on news they carry and have not yet
+	///   brought home, so it survives if they die on the way. What the village already knows
+	///   is not retold: newcomers are not taught old news;
+	/// - to someone of their faction from another village, they pass on news they carry, and
+	///   each other building they remember with a chance of <c>gossipChance</c> percent;
+	/// - to someone of another faction that is not hostile to theirs, each building they
+	///   remember with a chance of <c>gossipChance</c> percent. Enemies don't talk.
 	/// A listener carries what they heard like a witness (<see cref="Knowledge.Hear"/>): their
-	/// faction knows it once they are home, and a faction that learns of the demons this way
+	/// village knows it once they are home, and a faction that learns of the demons this way
 	/// becomes aware of them. Each pair talks at most once a day.
 	/// </summary>
 	internal static class Gossip
@@ -57,13 +59,14 @@ namespace RuinarchPlus.Phase3
 			}
 			foreach (LocationStructure s in news)
 			{
-				if (Knowledge.Knows(listener.faction, s) || Knowledge.Carries(listener, s))
+				if (Knowledge.Remembers(listener, s) || Knowledge.VillageKnows(listener.homeSettlement as NPCSettlement, s))
 				{
 					continue;
 				}
-				// Kin share what they carry (the ledger is already their faction's); strangers
-				// pass on only some of what they know.
-				if (kin ? Knowledge.Carries(teller, s) : UnityEngine.Random.Range(0, 100) < chance)
+				// Kin share what they carry; beyond that, neighbours don't retell what their
+				// village knows, and everyone else passes on only some of what they remember.
+				bool neighbours = kin && listener.homeSettlement == teller.homeSettlement;
+				if ((kin && Knowledge.Carries(teller, s)) || (!neighbours && UnityEngine.Random.Range(0, 100) < chance))
 				{
 					Knowledge.Hear(listener, s, teller);
 				}

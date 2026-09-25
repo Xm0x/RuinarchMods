@@ -145,7 +145,9 @@ namespace RuinarchPlus.Phase3
 			{
 				return $"{faction.name} know demons are here, but of none of your buildings still standing.";
 			}
-			return $"{faction.name} know of:\n- " + string.Join("\n- ", Knowledge.Names(known));
+			// Where each building is known, and by how many: "- Portal: Mysa (4), Ulric (1)".
+			return $"{faction.name} know of:\n- " + string.Join("\n- ", known.Select(s =>
+				$"{s.name}: " + string.Join(", ", Knowledge.VillagesKnowing(faction, s).Select(v => $"{v.name} ({Knowledge.Rememberers(v, s)})"))));
 		}
 	}
 

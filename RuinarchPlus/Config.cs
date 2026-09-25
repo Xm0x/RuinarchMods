@@ -119,6 +119,11 @@ namespace RuinarchPlus
 		public int elfLifespanYears = 18;
 		public int birthChancePerDay = 6;
 		public int pregnancyDays = 4;
+		// Dementia: when a villager becomes an elder, dementiaChance percent of them grow
+		// forgetful and forget one of the player's buildings they remember every
+		// dementiaForgetDays days (with knowledgeEnabled; knowledge lives in people).
+		public int dementiaChance = 33;
+		public int dementiaForgetDays = 3;
 
 		// Corpse-borne disease. Rotting unburied corpses in a settlement sicken the living
 		// present, scaled by corpse count. Requires corpseDecayEnabled (it reads the decay stage).

@@ -260,6 +260,20 @@ witnessed or been told.** It also addresses why the portal keeps getting found.
   `ruinarch.plus.knowledge.json`; the file is now always written) is migrated at the first
   in-game hour: every aware faction learns all standing player buildings, as the base game
   treated it. *(verified in game)*
+- **Shipped (0.7.0): knowledge lives in people, village by village** (replaces the
+  faction-wide ledger). `Knowledge.Memory` holds what each villager remembers, `Carried` the
+  part not yet told at home. A village knows what its living residents remember and have
+  told; a faction knows what any of its villages knows. Hourly, anyone who remembers and
+  stands in a village of their faction tells it (`TellVillage`: every resident remembers);
+  the report teaches the reporter's village; traders tell and hear per village
+  (`Exchange`); gossip between neighbours does not retell what the village knows, so
+  newcomers (children, migrants) are not taught old news. Counterattacks (destination,
+  neighbour trigger) use their own village's knowledge, on site plus what the party
+  members remember (`PartyKnowledge`); rescue/bounty creation asks the posting village or
+  the quest's creator (`KnowsOf(faction, madeInLocation, questCreator, building)`). A
+  village that knew a building an hour ago and no longer does is announced. The save holds
+  `memory`/`carried` per villager; a 0.6 save's faction-wide `known` list is handed to all
+  villagers of those factions at the first hour. *(verified in game)*
 - **Shipped: rescues and bounty hunts ask the ledger too** (`Phase3/KnowledgeTargets.cs`).
   The game decides three more things about one player building with the faction-wide
   `isAwareOfPlayer`: a Demon Rescue for a villager held inside it
@@ -350,7 +364,7 @@ knowledge).
    ledger facts, so knowledge decays with generations.
 
    **Decided (2026-09-25), first Phase 4 release = births + aging + old-age death**
-   (dementia and memory in the release after):
+   (dementia and memory in the release after; both ship together in 0.7.0):
    - **Calendar:** a year is **16 in-game days**, four seasons of 4 days (as in Songs of
      Syx). A Ruinarch game runs roughly 10 to 40 days, so generations turn over within
      long games. TruePlanet may later bring a longer calendar.
@@ -382,6 +396,18 @@ knowledge).
    or `Faction.DesignateNewLeader` runs, a child reads as `isBeingSeized` (both pickers skip
    it); party quests already skip non-combatants (`CharacterBehaviour.PartyLogic`).
    *(verified in game)*
+
+   **Decided (2026-09-25), memory:** knowledge lives village by village (not faction-wide);
+   only elders with dementia forget, everyone else remembers until death; books and the
+   Library come in the release after.
+
+   **Shipped: dementia** (`LifeCycle.Dementia`, config `dementiaChance` 33,
+   `dementiaForgetDays` 3). Rolled once when a villager becomes an elder (or is first met as
+   one); a forgetful elder forgets one remembered building (`Knowledge.ForgetOne`) every
+   3 days, noted in the event log. Kept in the life record (`L|id|born|diesAt|flags|next`),
+   not as a game trait (the game saves traits by name, so a save without the mod would
+   break); the panel's class line says "elder, forgetful". The game has no dementia-like
+   trait (only Drunk and Psychopath come close). *(verified in game)*
 4. **Library [M to L]:** a structure that *persists* faction knowledge against that decay
    (Phase 3 ledger + Phase 4 aging). Villagers deposit what they learn on return from
    searches/trades; burning it is a real strategic blow.
@@ -440,9 +466,12 @@ knowledge).
    `SETTLEMENT_TYPE` (it is saved and drives culture-specific facility weights). The tier
    is saved (`ModData/ruinarch.plus.tiers.json`), announced in the event log, and named in
    the settlement panel ("Human Empire Town"), in the "Village" line of a building's panel
-   and in the center's description. The faction leader's home village is labelled
-   **Capital** once the faction holds more than one village (a name only, no new rules;
-   TruePlanet's nation capitals build on it). Outpost (a tier *below* a vanilla village)
+   and in the center's description. A major faction holding more than one village
+   names a **Capital** once (the leader's home village, else its largest): a City with City
+   limits and no Town Hall, whatever its size, ruler or residents, until it is destroyed
+   (owner gone or nobody alive in it); then the faction names a new one, announced. Saved
+   as `id|Capital` in the tiers file. TruePlanet's nation capitals build on it.
+   *(verified in game)* Outpost (a tier *below* a vanilla village)
    is left out: it would shrink villages the game generates.
 2. **Food economy & famine [M to L]:** *Famine shipped* (`Phase5/Famine.cs`, config
    `famineEnabled`, `famineHours` 12, `famineLeaveChance` 25). The signal is the game's own
@@ -490,9 +519,9 @@ knowledge).
    carried the trader's pile off), and a trader called away puts them down and picks them up
    again up to 3 times. On delivery (postfix `DepositResourcePile.AfterDepositSuccess`) it is
    announced and the trader exchanges news (`Knowledge.Exchange`). Trips are not saved (the
-   haul job itself is the game's). Messengers as a separate role are not needed: within a
-   faction the ledger is shared once news reaches any of its villages, and between factions
-   traders and gossip carry it. *(verified in game: a trader delivers; the news exchange
+   haul job itself is the game's). Messengers as a separate role are not needed yet: within a
+   faction news reaches another village with anyone who remembers it and comes by, and
+   between factions traders and gossip carry it. *(verified in game: a trader delivers; the news exchange
    between factions has not come up in a test world yet, since test villages trading with
    each other have so far been of one faction)*
 

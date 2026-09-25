@@ -8,7 +8,8 @@ namespace RuinarchPlus.Phase3
 	// Beyond counterattacks, the game decides three more things about one particular player
 	// building with the faction-wide isAwareOfPlayer: once any villager has reported any of
 	// the player's buildings, their faction acts on every other one as if it had seen it.
-	// These patches ask Knowledge.KnowsOf(faction, that building) instead.
+	// These patches ask Knowledge.KnowsOf instead: the village posting the quest, or the one
+	// asking, must know that building.
 
 	internal static class KnowledgeTargets
 	{
@@ -21,7 +22,7 @@ namespace RuinarchPlus.Phase3
 
 		/// <summary>
 		/// A party member looking at their target inside a player building now knows that
-		/// building (their party acts on it; their faction learns it once they are home).
+		/// building (their party acts on it; their village learns it once they are home).
 		/// True if the party may act on it.
 		/// </summary>
 		internal static bool MayActOn(Character member, Character target, LocationStructure held)
@@ -31,7 +32,7 @@ namespace RuinarchPlus.Phase3
 			{
 				Knowledge.Witness(member, held);
 			}
-			return Knowledge.KnowsOf(f, held) || Knowledge.PartySightings(member).Contains(held);
+			return Knowledge.KnowsOf(f, member.homeSettlement, member, held) || Knowledge.PartyKnowledge(member).Contains(held);
 		}
 	}
 
@@ -42,7 +43,7 @@ namespace RuinarchPlus.Phase3
 	[HarmonyPatch(typeof(PartyQuestBoard), nameof(PartyQuestBoard.CreateRescuePartyQuest))]
 	internal static class Knowledge_RescueTarget
 	{
-		private static bool Prefix(PartyQuestBoard __instance, Character targetCharacter)
+		private static bool Prefix(PartyQuestBoard __instance, Character questCreator, BaseSettlement madeInLocation, Character targetCharacter)
 		{
 			try
 			{
@@ -50,7 +51,7 @@ namespace RuinarchPlus.Phase3
 				LocationStructure held = KnowledgeTargets.PlayerStructureOf(targetCharacter);
 				if (!Knowledge.Enabled || held == null || owner == null || !owner.isMajorOrBandits || !owner.isAwareOfPlayer
 					|| owner.factionType.type == FACTION_TYPE.Demons || owner.factionType.type == FACTION_TYPE.Demon_Cult
-					|| Knowledge.KnowsOf(owner, held))
+					|| Knowledge.KnowsOf(owner, madeInLocation, questCreator, held))
 				{
 					return true;
 				}
@@ -93,12 +94,12 @@ namespace RuinarchPlus.Phase3
 	[HarmonyPatch(typeof(PartyQuestBoard), nameof(PartyQuestBoard.CreateBountyHuntPartyQuest))]
 	internal static class Knowledge_BountyTarget
 	{
-		private static bool Prefix(PartyQuestBoard __instance, Character targetCharacter)
+		private static bool Prefix(PartyQuestBoard __instance, Character questCreator, BaseSettlement madeInLocation, Character targetCharacter)
 		{
 			try
 			{
 				LocationStructure held = KnowledgeTargets.PlayerStructureOf(targetCharacter);
-				return !Knowledge.Enabled || held == null || Knowledge.KnowsOf(__instance.owner, held);
+				return !Knowledge.Enabled || held == null || Knowledge.KnowsOf(__instance.owner, madeInLocation, questCreator, held);
 			}
 			catch (Exception e)
 			{

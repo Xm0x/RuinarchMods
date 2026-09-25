@@ -105,6 +105,11 @@ namespace RuinarchDebug
 			return TiersType?.GetMethod("Label", Any)?.Invoke(null, new object[] { settlement, factionLine }) as string;
 		}
 
+		internal static bool IsCapital(NPCSettlement settlement)
+		{
+			return TiersType?.GetMethod("IsCapital", Any)?.Invoke(null, new object[] { settlement }) is bool b && b;
+		}
+
 		internal static LocationStructure TownHallFor(BaseSettlement settlement)
 		{
 			return TownHallType?.GetMethod("FindFor", Any)?.Invoke(null, new object[] { settlement }) as LocationStructure;
@@ -197,6 +202,24 @@ namespace RuinarchDebug
 			return KnowledgeType?.GetMethod("Carries", Any)?.Invoke(null, new object[] { c, structure }) is bool b && b;
 		}
 
+		/// <summary>True if <paramref name="c"/> remembers the structure (told at home or not).</summary>
+		internal static bool Remembers(Character c, LocationStructure structure)
+		{
+			return KnowledgeType?.GetMethod("Remembers", Any)?.Invoke(null, new object[] { c, structure }) is bool b && b;
+		}
+
+		/// <summary>True if the village knows the structure (a living resident remembers it and has told it at home).</summary>
+		internal static bool VillageKnows(NPCSettlement village, LocationStructure structure)
+		{
+			return KnowledgeType?.GetMethod("VillageKnows", Any)?.Invoke(null, new object[] { village, structure }) is bool b && b;
+		}
+
+		/// <summary><paramref name="c"/> sees the structure (as when it comes into view).</summary>
+		internal static void Witness(Character c, LocationStructure structure)
+		{
+			KnowledgeType?.GetMethod("Witness", Any)?.Invoke(null, new object[] { c, structure });
+		}
+
 		/// <summary>The "Who Knows of You" bookmark section's lines as shown, or null.</summary>
 		internal static List<string> KnowledgePanelLines()
 		{
@@ -226,6 +249,11 @@ namespace RuinarchDebug
 		internal static void SetAgeYears(Character c, float years) => Life("SetAgeYears", c, years);
 
 		internal static void SetDeathAgeYears(Character c, float years) => Life("SetDeathAgeYears", c, years);
+
+		internal static bool IsForgetful(Character c) => Life("IsForgetful", c) is bool b && b;
+
+		/// <summary>Make <paramref name="c"/> forgetful (they forget something at the next hour) or not.</summary>
+		internal static void SetForgetful(Character c, bool forgetful) => Life("SetForgetful", c, forgetful);
 
 		internal static void Forget(Faction faction)
 		{

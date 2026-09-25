@@ -260,6 +260,8 @@ namespace RuinarchDebug
 			if (Runs("MigrationSuite")) { yield return MigrationSuite(); }
 			// A measurement that burns a village down: only when asked for by name.
 			if (_only.Contains("FireProbe")) { yield return FireProbe(); }
+			// Kills everyone in a capital: only when asked for by name.
+			if (_only.Contains("CapitalLossSuite")) { yield return CapitalLossSuite(); }
 
 			Finish("done");
 		}
@@ -378,7 +380,7 @@ namespace RuinarchDebug
 			}
 			else
 			{
-				Guard("kill a creature in a village with a graveyard", () => SpawnAndKill(graveyardOnly, SUMMON_TYPE.Wolf));
+				Guard("kill a creature in a village with a graveyard", () => SpawnAndKill(graveyardOnly, CarcassFor(graveyardOnly)));
 				string planned = $"{graveyardOnly.name} has dead nobody will bury: queued a Mass Grave blueprint";
 				yield return WaitGameHours(6f, () => ModsLogHas(planned) || PitCount(graveyardOnly) > 0);
 				Check("a village with a Cemetery still plans a Mass Grave for a creature's carcass", () =>
@@ -501,7 +503,8 @@ namespace RuinarchDebug
 			else
 			{
 				Check("villagers build a Mass Grave from materials", () =>
-					(pit != null, pit != null ? $"built after {GameHours - start:F1}h" : $"not built within 120h (blueprint seen={queued}, pending={PlusBridge.HasPendingBlueprint(village)})"));
+					(pit != null, pit != null ? $"built after {GameHours - start:F1}h" : $"not built within 120h (blueprint seen={queued}, pending={PlusBridge.HasPendingBlueprint(village)}); "
+						+ string.Join(", ", village.residents.Where(r => r != null && !r.isDead).Select(r => $"{r.name}[{r.currentJob?.jobType.ToString() ?? "-"}{(r.needsComponent.isStarving ? " starving" : "")}{(r.gridTileLocation != null && r.gridTileLocation.IsPartOfSettlement(village) ? "" : " away")}{(PlusBridge.IsHunting(r) ? " hunting" : "")}]"))));
 			}
 			if (buildText == null || ownGraveyard)
 			{
@@ -580,7 +583,7 @@ namespace RuinarchDebug
 			// 4. A creature carcass in the village is disposed of in the pit.
 			int hauledBeforeCreature = PlusBridge.HauledTotal;
 			int absorbedBeforeCreature = PlusBridge.AbsorbedTotal;
-			Character beast = Guard("spawn creature", () => SpawnAndKill(village, SUMMON_TYPE.Wolf));
+			Character beast = Guard("spawn creature", () => SpawnAndKill(village, CarcassFor(village)));
 			if (beast == null)
 			{
 				Fail("creature disposal", "could not spawn a creature");
@@ -608,7 +611,7 @@ namespace RuinarchDebug
 			else
 			{
 				int hauledBeforeOut = PlusBridge.HauledTotal;
-				Character far = Guard("spawn creature outside", () => SpawnAndKillAt(outside, SUMMON_TYPE.Wolf));
+				Character far = Guard("spawn creature outside", () => SpawnAndKillAt(outside, CarcassFor(village)));
 				if (far != null && !(far.race.IsSkinnable() && village.HasStructureOfTypeThatIsAssigned(STRUCTURE_TYPE.HUNTER_LODGE)))
 				{
 					float d = outside.GetDistanceTo(pit.tiles.First());
@@ -823,10 +826,19 @@ namespace RuinarchDebug
 				// gain on top of whatever else applies.
 				int withBody = Gain(true);
 				float m = PlusBridge.MigrationMultiplier(village, out string w);
-				int homesFactor = w != null && w.Contains("abandoned home") ? int.Parse(w.Split(' ')[0]) : 0;
-				int expected = (int)(vanilla * Math.Pow(0.5, homesFactor + 1));
-				Check("an unburied body in the village halves migration", () =>
-					(withBody == expected && w != null && w.Contains("1 unburied body"), $"gain {withBody}, expected {expected} (vanilla {vanilla}); x{m:0.##} {w}"));
+				// A village the world had already emptied (x0, "mostly abandoned") draws no
+				// settlers whatever else happens: no halving left to see.
+				if (w != null && w.Contains("mostly abandoned"))
+				{
+					Skip("an unburied body in the village halves migration", $"{village.name} is already mostly abandoned: x{m:0.##} {w}");
+				}
+				else
+				{
+					int homesFactor = w != null && w.Contains("abandoned home") ? int.Parse(w.Split(' ')[0]) : 0;
+					int expected = (int)(vanilla * Math.Pow(0.5, homesFactor + 1));
+					Check("an unburied body in the village halves migration", () =>
+						(withBody == expected && w != null && w.Contains("1 unburied body"), $"gain {withBody}, expected {expected} (vanilla {vanilla}); x{m:0.##} {w}"));
+				}
 			}
 			else
 			{
@@ -917,7 +929,7 @@ namespace RuinarchDebug
 				yield break;
 			}
 			int hauledBefore = PlusBridge.HauledTotal;
-			Character beast = Guard("spawn creature", () => SpawnAndKill(village, SUMMON_TYPE.Wolf));
+			Character beast = Guard("spawn creature", () => SpawnAndKill(village, CarcassFor(village)));
 			if (beast == null)
 			{
 				yield break;
@@ -1058,7 +1070,9 @@ namespace RuinarchDebug
 				Skip("settlement tiers", "RuinarchPlus (with tiers) not loaded");
 				yield break;
 			}
-			NPCSettlement village = Villages().Where(v => PlusBridge.TownHallFor(v) == null && HasRoomFor(v, STRUCTURE_TYPE.TAVERN))
+			CapitalChecks();
+			// A capital is a City without a Town Hall: the Town steps need an ordinary village.
+			NPCSettlement village = Villages().Where(v => !PlusBridge.IsCapital(v) && PlusBridge.TownHallFor(v) == null && HasRoomFor(v, STRUCTURE_TYPE.TAVERN))
 				.OrderByDescending(Villagers).FirstOrDefault();
 			if (village == null)
 			{
@@ -1130,10 +1144,7 @@ namespace RuinarchDebug
 				UIManager.Instance.settlementInfoUI.CloseMenu();
 				return text;
 			});
-			// A faction leader's home village, in a faction of several villages, is its Capital.
-			bool capital = village.owner?.leader is Character leader && leader.homeSettlement == village
-				&& village.owner.ownedSettlements.Count(o => o is NPCSettlement { locationType: LOCATION_TYPE.VILLAGE }) > 1;
-			Check("the settlement panel names the tier", () => (panel != null && panel.EndsWith(capital ? " Capital" : " Town"), $"\"{panel}\" (capital={capital})"));
+			Check("the settlement panel names the tier", () => (panel != null && panel.EndsWith(" Town"), $"\"{panel}\""));
 			// The center's building panel: the "Village" line says what the village is now.
 			string[] center = Guard("open the center's building panel", () =>
 			{
@@ -1155,8 +1166,8 @@ namespace RuinarchDebug
 			yield return Screenshot("centerpanel.png");
 			Guard("close the building panel", () => { UIManager.Instance.structureInfoUI.CloseMenu(); return village; });
 			Check("the center's building panel names what the village is", () =>
-				(center != null && center[0] == (capital ? "Capital" : "Town") && center[1] != null && center[1].Contains("Town Center"),
-				$"header=\"{center?[0]}\" (capital={capital}) description=\"{center?[1]}\""));
+				(center != null && center[0] == "Town" && center[1] != null && center[1].Contains("Town Center"),
+				$"header=\"{center?[0]}\" description=\"{center?[1]}\""));
 
 			// The center's Residents tab lists the whole village (a Ruinarch+ fix: nobody lives
 			// in the center itself); a dwelling's lists its own household, as in the base game.
@@ -1184,6 +1195,14 @@ namespace RuinarchDebug
 			yield return SaveAndRead("ruinarch.plus.tiers.json", (j, e) => saved = j);
 			Check("the tier is stored inside the player's save file", () =>
 				(saved != null && saved.Contains(village.persistentID + "|Town"), saved ?? "no tiers entry"));
+			NPCSettlement capitalCity = GridMap.Instance.mainRegion.settlementsInRegion.OfType<NPCSettlement>().FirstOrDefault(PlusBridge.IsCapital);
+			if (capitalCity != null && saved != null)
+			{
+				ReplayLoad("ruinarch.plus.tiers.json", saved);
+				Check("a capital is still the capital after the save loads", () =>
+					(saved.Contains(capitalCity.persistentID + "|Capital") && PlusBridge.IsCapital(capitalCity) && PlusBridge.Tier(capitalCity) == "City" && PlusBridge.Tier(village) == "Town",
+					$"{capitalCity.name}: capital={PlusBridge.IsCapital(capitalCity)} tier={PlusBridge.Tier(capitalCity)}; {village.name} tier={PlusBridge.Tier(village)}"));
+			}
 
 			// 3. A City, which it keeps down to three quarters of the mark, then back to a Town.
 			// One under the count: a villager dying in the meantime must not undo the step. The
@@ -1223,6 +1242,96 @@ namespace RuinarchDebug
 		}
 
 		private static int Villagers(NPCSettlement v) => v.GetNumberOfResidentsThatIsAliveVillager();
+
+		// A creature for the Mass Grave's carcass checks. A village with a Hunter Lodge skins
+		// skinnable carcasses (wolves) as in the base game, so it gets a Scorpion instead.
+		private static SUMMON_TYPE CarcassFor(NPCSettlement village) =>
+			village.HasStructureOfTypeThatIsAssigned(STRUCTURE_TYPE.HUNTER_LODGE) ? SUMMON_TYPE.Scorpion : SUMMON_TYPE.Wolf;
+
+		// A capital lasts until it is destroyed (nobody left alive in it). Then it is a village
+		// again and its faction, if it still holds several villages, names a new one.
+		private IEnumerator CapitalLossSuite()
+		{
+			NPCSettlement capital = GridMap.Instance.mainRegion.settlementsInRegion.OfType<NPCSettlement>()
+				.Where(PlusBridge.IsCapital).OrderByDescending(c => c.owner.ownedSettlements.Count(o => o is NPCSettlement { locationType: LOCATION_TYPE.VILLAGE })).FirstOrDefault();
+			if (capital == null)
+			{
+				Skip("a destroyed capital is a village again", "no capital in this world: " + string.Join("; ", Villages().Select(Describe)));
+				yield break;
+			}
+			Faction faction = capital.owner;
+			Log($"capital loss: {Describe(capital)} of {faction.name}");
+			// Ruled by someone else first: still the capital.
+			Character ruler = capital.ruler;
+			Guard("take the ruler away", () => { capital.SetRuler(null); return capital; });
+			yield return WaitGameHours(2f, null);
+			Check("a capital stays the capital whoever rules it", () =>
+				(PlusBridge.IsCapital(capital) && PlusBridge.Tier(capital) == "City", $"ruler {ruler?.name ?? "none"} -> {capital.ruler?.name ?? "none"}; capital={PlusBridge.IsCapital(capital)} tier={PlusBridge.Tier(capital)}"));
+			foreach (Character r in capital.residents.Where(r => r != null && !r.isDead).ToList())
+			{
+				Guard("kill " + r.name, () => { r.Death("autotest"); return r; });
+			}
+			yield return WaitGameHours(2f, () => !PlusBridge.IsCapital(capital));
+			List<NPCSettlement> left = GridMap.Instance.mainRegion.settlementsInRegion.OfType<NPCSettlement>()
+				.Where(v => v != capital && v.locationType == LOCATION_TYPE.VILLAGE && v.owner == faction && Villagers(v) > 0).ToList();
+			Check("a destroyed capital is a village again", () =>
+				(!PlusBridge.IsCapital(capital) && PlusBridge.Tier(capital) == "Village", $"{capital.name}: alive={Villagers(capital)} capital={PlusBridge.IsCapital(capital)} tier={PlusBridge.Tier(capital)}"));
+			if (left.Count < 2)
+			{
+				Skip("the faction names a new capital", $"{faction.name} holds {left.Count} village(s) now (a capital needs a faction of several)");
+				yield break;
+			}
+			NPCSettlement next = left.FirstOrDefault(PlusBridge.IsCapital);
+			Check("the faction names a new capital", () =>
+				(next != null && left.Count(PlusBridge.IsCapital) == 1 && PlusBridge.Tier(next) == "City" && ModsLogHas($"{next.name} is now the capital of {faction.name}"),
+				$"{faction.name}: {string.Join(", ", left.Select(v => $"{v.name} capital={PlusBridge.IsCapital(v)} tier={PlusBridge.Tier(v)}"))}"));
+		}
+
+		// Every major faction of several villages has one capital (named at the first hour of
+		// the world): a City whatever its size and whoever rules it, called Capital in panels.
+		private void CapitalChecks()
+		{
+			List<IGrouping<Faction, NPCSettlement>> factions = GridMap.Instance.mainRegion.settlementsInRegion.OfType<NPCSettlement>()
+				.Where(v => v.locationType == LOCATION_TYPE.VILLAGE && v.owner != null && v.owner.isMajorFaction && Villagers(v) > 0)
+				.GroupBy(v => v.owner).Where(g => g.Count() > 1).ToList();
+			if (factions.Count == 0)
+			{
+				Skip("a faction of several villages has one capital, a City", "no major faction holds two villages: " + string.Join("; ", Villages().Select(Describe)));
+				return;
+			}
+			Check("a faction of several villages has one capital, a City", () =>
+			{
+				List<string> bad = new List<string>();
+				List<string> seen = new List<string>();
+				foreach (IGrouping<Faction, NPCSettlement> f in factions)
+				{
+					List<NPCSettlement> capitals = f.Where(PlusBridge.IsCapital).ToList();
+					foreach (NPCSettlement c in capitals)
+					{
+						seen.Add($"{c.name} of {f.Key.name}: tier={PlusBridge.Tier(c)} label=\"{PlusBridge.TierLabel(c, "")}\" villagers={Villagers(c)} townHall={PlusBridge.TownHallFor(c) != null}");
+					}
+					if (capitals.Count != 1 || PlusBridge.Tier(capitals[0]) != "City" || PlusBridge.TierLabel(capitals[0], "") != "Capital")
+					{
+						bad.Add($"{f.Key.name}: {capitals.Count} capital(s)");
+					}
+				}
+				return (bad.Count == 0, string.Join("; ", bad.Concat(seen)));
+			});
+			NPCSettlement capital = factions.SelectMany(f => f).FirstOrDefault(PlusBridge.IsCapital);
+			if (capital == null)
+			{
+				return;
+			}
+			string description = Guard("open the capital center's building panel", () =>
+			{
+				UIManager.Instance.ShowStructureInfo(capital.cityCenter);
+				string text = (AccessTools.Field(typeof(StructureInfoUI), "cityCenterDescriptionLbl").GetValue(UIManager.Instance.structureInfoUI) as TMPro.TMP_Text)?.text;
+				UIManager.Instance.structureInfoUI.CloseMenu();
+				return text;
+			});
+			Check("a capital's center is described as a City Center", () =>
+				(description != null && description.Contains("City Center") && !description.Contains("Village Center"), $"{capital.name}: \"{description}\""));
+		}
 
 		private static bool HasGraveyard(NPCSettlement v) => v.HasStructure(STRUCTURE_TYPE.CEMETERY) || v.HasStructure(STRUCTURE_TYPE.CULT_TEMPLE);
 
@@ -1642,8 +1751,140 @@ namespace RuinarchDebug
 			PlusBridge.SetConfig("lifeCycleEnabled", true);
 			yield return WaitGameHours(1f, null);
 			yield return LifeChecks();
+			yield return MemoryChecks();
 			PlusBridge.SetConfig("lifeCycleEnabled", false);
 			PlusBridge.SetConfig("pregnancyDays", 4);
+		}
+
+		private static List<Character> Sapients(NPCSettlement v)
+		{
+			return v.residents.Where(c => c != null && !c.isDead && c.isNormalCharacter && c.race.IsSapient()).ToList();
+		}
+
+		// Knowledge lives in people (Phase 3 memory, Phase 4 dementia): news comes home to one
+		// village, reaches the faction's other villages only with someone who remembers it,
+		// and a village whose last rememberers forget no longer knows (announced).
+		private IEnumerator MemoryChecks()
+		{
+			LocationStructure portal = PlayerManager.Instance.player.playerSettlement.GetFirstStructureOfType(STRUCTURE_TYPE.THE_PORTAL);
+			Faction faction = FactionManager.Instance.allFactions.Where(f => f != null && f.isMajorNonPlayer)
+				.OrderByDescending(f => Villages().Count(v => v.owner == f && Sapients(v).Count >= 2)).FirstOrDefault();
+			List<NPCSettlement> villages = Villages().Where(v => v.owner == faction && Sapients(v).Count >= 2).ToList();
+			if (portal == null || villages.Count == 0)
+			{
+				Skip("memory", portal == null ? "no Portal" : "no village with two villagers");
+				yield break;
+			}
+			bool aware = faction.isAwareOfPlayer;
+			NPCSettlement home = villages[0];
+			PlusBridge.Forget(faction);
+
+			if (villages.Count >= 2)
+			{
+				NPCSettlement other = villages[1];
+				Character witness = Sapients(home).FirstOrDefault(c => !_lifeFamily.Contains(c) && c.hasMarker && c.carryComponent.isBeingCarriedBy == null
+					&& c != home.ruler && !c.isFactionLeader);
+				LocationGridTile homeTile = home.cityCenter.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? home.cityCenter.passableTiles.FirstOrDefault();
+				LocationGridTile otherTile = other.cityCenter.passableTiles.FirstOrDefault(t => !t.isOccupied) ?? other.cityCenter.passableTiles.FirstOrDefault();
+				if (witness != null && homeTile != null && otherTile != null)
+				{
+					Guard("a villager sees the Portal and is sent home", () =>
+					{
+						witness.partyComponent.currentParty?.RemoveMember(witness);
+						PlusBridge.Witness(witness, portal);
+						CharacterManager.Instance.Teleport(witness, homeTile);
+						return witness;
+					});
+					yield return WaitGameHours(2f, () => PlusBridge.VillageKnows(home, portal));
+					Check("news brought home is known in that village, not in the faction's others", () =>
+						(PlusBridge.VillageKnows(home, portal) && !PlusBridge.VillageKnows(other, portal) && PlusBridge.Knows(faction, portal)
+							&& Sapients(home).All(r => PlusBridge.Remembers(r, portal)),
+						$"{home.name} knows={PlusBridge.VillageKnows(home, portal)} ({Sapients(home).Count(r => PlusBridge.Remembers(r, portal))} of {Sapients(home).Count} remember); {other.name} knows={PlusBridge.VillageKnows(other, portal)}"));
+					Guard("the witness walks into another village of the faction", () =>
+					{
+						witness.partyComponent.currentParty?.RemoveMember(witness);
+						CharacterManager.Instance.Teleport(witness, otherTile);
+						return witness;
+					});
+					yield return WaitGameHours(2f, () => PlusBridge.VillageKnows(other, portal));
+					Check("someone who remembers tells the faction's other village they stand in", () =>
+						(PlusBridge.VillageKnows(other, portal) && ModsLogHas($"{witness.name} brought word of {portal.name} to {other.name}"),
+						$"{other.name} knows={PlusBridge.VillageKnows(other, portal)}; {witness.name} at {witness.gridTileLocation?.localPlace} in {witness.currentSettlement?.name ?? "the wild"}"));
+				}
+				else
+				{
+					Skip("news is known village by village", $"no free villager or square tile in {home.name} / {other.name}");
+				}
+			}
+			else
+			{
+				Skip("news is known village by village", $"{faction.name} has only one village with two villagers");
+			}
+
+			// Dementia: an adult who becomes an elder may grow forgetful (certain here); the
+			// panel says so; the flag rides inside the save.
+			PlusBridge.SetConfig("dementiaChance", 100);
+			Character elder = Sapients(home).FirstOrDefault(c => !_lifeFamily.Contains(c) && PlusBridge.LifeStage(c) == "Adult" && !PlusBridge.IsForgetful(c));
+			if (elder != null)
+			{
+				PlusBridge.SetAgeYears(elder, elder.race == RACE.ELVES ? 12.2f : 4.2f);
+				yield return WaitGameHours(2f, () => PlusBridge.IsForgetful(elder));
+				Check("an adult who becomes an elder may grow forgetful", () =>
+					(PlusBridge.IsForgetful(elder) && ModsLogHas($"{elder.name} has grown forgetful with age."), $"{elder.name} stage={PlusBridge.LifeStage(elder)} forgetful={PlusBridge.IsForgetful(elder)}"));
+				CharacterInfoUI panel = AccessTools.FieldRefAccess<UIManager, CharacterInfoUI>("characterInfoUI")(UIManager.Instance);
+				string label = Guard("open the elder's panel", () =>
+				{
+					UIManager.Instance.ShowCharacterInfo(elder, centerOnCharacter: false);
+					return (AccessTools.Field(typeof(CharacterInfoUI), "subLbl").GetValue(panel) as TMPro.TMP_Text)?.text;
+				});
+				Guard("close the elder's panel", () => { panel.CloseMenu(); return elder; });
+				Check("the character panel says an elder is forgetful", () => (label != null && label.Contains(", elder, forgetful, age "), $"\"{label}\""));
+				string json = null;
+				yield return SaveAndRead("ruinarch.plus.life.json", (j, e) => json = j);
+				if (json != null)
+				{
+					PlusBridge.SetForgetful(elder, false);
+					ReplayLoad("ruinarch.plus.life.json", json);
+					Check("dementia comes back when the save loads", () => (PlusBridge.IsForgetful(elder), $"{elder.name} forgetful after load={PlusBridge.IsForgetful(elder)}"));
+				}
+			}
+			else
+			{
+				Skip("an adult who becomes an elder may grow forgetful", $"no adult in {home.name}");
+			}
+			PlusBridge.SetConfig("dementiaChance", 33);
+
+			// Forgetting: every villager of the faction grows forgetful (so nobody from another of
+			// its villages walks in and tells it again); each forgets the one building they
+			// know, and the village no longer knowing it is announced.
+			PlusBridge.Forget(faction);
+			PlusBridge.Learn(faction, portal);
+			yield return WaitGameHours(1.1f, null);
+			List<Character> residents = Sapients(home);
+			List<Character> everyone = faction.ownedSettlements.OfType<NPCSettlement>().SelectMany(Sapients).ToList();
+			foreach (Character r in everyone)
+			{
+				PlusBridge.SetForgetful(r, true);
+			}
+			yield return WaitGameHours(3f, () => !PlusBridge.VillageKnows(home, portal) && ModsLogHas($"Nobody in {home.name} remembers {portal.name} any more."));
+			Check("forgetful villagers forget, and a village that no longer remembers is announced", () =>
+				(!PlusBridge.VillageKnows(home, portal) && ModsLogHas($"Nobody in {home.name} remembers {portal.name} any more.")
+					&& residents.Any(r => ModsLogHas($"{r.name} is forgetful and no longer remembers {portal.name}.")),
+				$"{home.name} knows={PlusBridge.VillageKnows(home, portal)} ({residents.Count(r => PlusBridge.Remembers(r, portal))} of {residents.Count} remember)"
+					+ (villages.Count >= 2 ? $"; {villages[1].name} knows={PlusBridge.VillageKnows(villages[1], portal)}" : "")));
+			foreach (Character r in everyone)
+			{
+				PlusBridge.SetForgetful(r, false);
+			}
+			if (elder != null)
+			{
+				PlusBridge.SetForgetful(elder, false);
+			}
+
+			// Leave the world as found (see KnowledgeSuite).
+			PlusBridge.Forget(faction);
+			CallOffCounterattacks(faction);
+			Guard("restore the faction's awareness", () => { faction.SetIsAwareOfPlayer(aware); return faction; });
 		}
 
 		// The couple and child LifeSuite made: later suites leave them be.
@@ -2644,6 +2885,12 @@ namespace RuinarchDebug
 				yield return WaitGameHours(2f, () => PlusBridge.Knows(faction, portal));
 				Check("loading a save from before the ledger: aware factions know the player's buildings", () =>
 					(emptied && PlusBridge.Knows(faction, portal), $"emptied by the load={emptied}; {faction.name} knows the Portal an hour later={PlusBridge.Knows(faction, portal)}"));
+				// A 0.6 save: one faction-wide ledger, handed to the faction's villages at the first hour.
+				ReplayLoad("ruinarch.plus.knowledge.json", $"{{\"known\":[\"{faction.persistentID}/{portal.persistentID}\"]}}");
+				bool cleared = !PlusBridge.Knows(faction, portal);
+				yield return WaitGameHours(2f, () => PlusBridge.Knows(faction, portal));
+				Check("loading a 0.6 save: the faction's knowledge goes to its villagers", () =>
+					(cleared && PlusBridge.Knows(faction, portal), $"emptied by the load={cleared}; known an hour later={PlusBridge.Knows(faction, portal)}"));
 				// Back to what this world really knows (other aware factions were given everything too).
 				ReplayLoad("ruinarch.plus.knowledge.json", json);
 			}
@@ -2763,13 +3010,23 @@ namespace RuinarchDebug
 					.Select(w => w.name).ToList();
 				Log($"  {who.name}: state={PlusBridge.MissingState(who) ?? "untracked"} lastSeen={PlusBridge.MissingLastSeen(who) ?? "-"} seenBy=[{string.Join(", ", seers)}] inHome={who.IsInHomeSettlement()}");
 			}
-			Check("an unseen resident is reported missing", () =>
+			// Someone may come across the captive first and free them or carry them home (the
+			// base game's reaction to a restrained ally): then nobody misses them, rightly.
+			bool captiveFound = PlusBridge.MissingState(captive) == "Seen" && (captive.IsInHomeSettlement() || !captive.traitContainer.HasTrait("Restrained"));
+			if (captiveFound)
+			{
+				foreach (string name in new[] { "an unseen resident is reported missing", "the missing notice links to the person", "a captive left where they were seen is found and freed" })
+				{
+					Skip(name, $"{captive.name} was come across before anyone missed them (last seen {PlusBridge.MissingLastSeen(captive)}, home={captive.IsInHomeSettlement()}, restrained={captive.traitContainer.HasTrait("Restrained")})");
+				}
+			}
+			else Check("an unseen resident is reported missing", () =>
 			{
 				string s = PlusBridge.MissingState(captive);
 				bool announced = ModsLogHas($"{captive.name} of {village.name} has gone missing");
 				return ((s == "Missing" || s == "Searching") && announced, $"state={s ?? "untracked"} announced={announced}");
 			});
-			Check("the missing notice links to the person", () =>
+			if (!captiveFound) Check("the missing notice links to the person", () =>
 			{
 				// Read the notification as shown, then resolve its first link the way the game's
 				// EventLabel does on click: "Type|persistentID" looked up in the game database.
@@ -2854,7 +3111,7 @@ namespace RuinarchDebug
 					}
 				}
 			}
-			Check("a captive left where they were seen is found and freed", () =>
+			if (!captiveFound) Check("a captive left where they were seen is found and freed", () =>
 			{
 				bool freed = !captive.traitContainer.HasTrait("Restrained");
 				bool announced = ModsLogHas($"{captive.name} of {village.name} has been found.");
