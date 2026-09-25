@@ -37,7 +37,7 @@ namespace RuinarchPlus.Phase4
 	/// says "elder, forgetful". Kept in the same save record, not as a game trait, so a save
 	/// without the mod keeps plain villagers.
 	/// </summary>
-	internal static class LifeCycle
+	internal static partial class LifeCycle
 	{
 		private const string SaveId = "ruinarch.plus.life";
 		private const float ChildScale = 0.6f;
@@ -108,7 +108,7 @@ namespace RuinarchPlus.Phase4
 			return c != null && Lives.TryGetValue(c, out Life life) ? (Now - life.Born) / (float)TicksPerYear : -1f;
 		}
 
-		/// <summary>The Age row of the character panel: "3, elder" / "0, child" / "Unknown".</summary>
+		/// <summary>The Age row of the character panel: "3, elder" / "0, child" / "1, young" / "Unknown".</summary>
 		internal static string AgeText(Character c)
 		{
 			string stage = Enabled ? Stage(c) : null;
@@ -117,23 +117,24 @@ namespace RuinarchPlus.Phase4
 				return "Unknown";
 			}
 			int age = Mathf.FloorToInt(AgeYears(c));
-			return stage == "Child" ? $"{age}, child" : stage == "Elder" ? $"{age}, elder" : age.ToString();
+			return stage == "Child" ? $"{age}, child" : stage == "Young" ? $"{age}, young" : stage == "Elder" ? $"{age}, elder" : age.ToString();
 		}
 
 		internal static bool IsPregnant(Character c) => c != null && Pregnancies.ContainsKey(c);
 
 		internal static bool IsForgetful(Character c) => c != null && Lives.TryGetValue(c, out Life life) && life.Forgetful;
 
-		/// <summary>"Child", "Adult" or "Elder", or null if the mod does not know the age.</summary>
+		/// <summary>"Child", "Adult" or "Elder" ("Young" for a creature), or null if the mod does
+		/// not know the age.</summary>
 		internal static string Stage(Character c)
 		{
 			float age = AgeYears(c);
-			if (age < 0)
+			if (age < 0 || !c.isNormalCharacter && (!CreaturesEnabled || !IsCreature(c)))
 			{
 				return null;
 			}
-			Stages(c.race, out int adult, out int elder, out _);
-			return age < adult ? "Child" : age < elder ? "Adult" : "Elder";
+			Stages(c, out float adult, out float elder, out _);
+			return age < adult ? c.isNormalCharacter ? "Child" : "Young" : age < elder ? "Adult" : "Elder";
 		}
 
 		private static bool Tracked(Character c)
@@ -141,11 +142,14 @@ namespace RuinarchPlus.Phase4
 			return c != null && !c.isDead && c.isNormalCharacter && c.race.IsSapient();
 		}
 
+		/// <summary>Anyone with an age: a villager or a creature.</summary>
+		private static bool Aged(Character c) => Tracked(c) || IsCreature(c);
+
 		/// <summary>Debug menu / test harness: make <paramref name="c"/> this old (years); their
 		/// age of death moves with them. Takes effect at the next hourly check.</summary>
 		internal static void SetAgeYears(Character c, float years)
 		{
-			if (!Tracked(c))
+			if (!Aged(c))
 			{
 				return;
 			}
@@ -161,7 +165,7 @@ namespace RuinarchPlus.Phase4
 		/// <summary>Debug menu / test harness: <paramref name="c"/> dies of age at this age (years).</summary>
 		internal static void SetDeathAgeYears(Character c, float years)
 		{
-			if (Tracked(c) && Lives.TryGetValue(c, out Life life))
+			if (Aged(c) && Lives.TryGetValue(c, out Life life))
 			{
 				life.DiesAt = life.Born + (long)(years * TicksPerYear);
 			}
@@ -185,34 +189,37 @@ namespace RuinarchPlus.Phase4
 
 		internal static void HourlyCheck()
 		{
-			if (!Enabled)
+			if (!Enabled || !CreaturesEnabled)
 			{
-				if (Children.Count > 0)
+				foreach (Character c in (Enabled ? Young : Children.Concat(Young)).ToList())
 				{
-					foreach (Character c in Children.ToList())
-					{
-						SetChild(c, false);
-					}
+					SetChild(c, false);
 				}
-				return;
+				if (!Enabled)
+				{
+					return;
+				}
 			}
 			long now = Now;
+			List<Character> creatures = new List<Character>();
 			foreach (Character c in CharacterManager.Instance.allCharacters.ToList())
 			{
-				if (!Tracked(c))
+				bool creature = CreaturesEnabled && IsCreature(c);
+				if (!Tracked(c) && !creature)
 				{
 					continue;
 				}
 				if (!Lives.TryGetValue(c, out Life life))
 				{
-					life = NewLife(c, newborn: false);
+					// Creatures the world began with get an age; later ones are born now.
+					life = NewLife(c, newborn: creature && !_seedCreatures);
 				}
-				Stages(c.race, out int adult, out _, out _);
-				bool child = now - life.Born < adult * TicksPerYear;
-				if (child != Children.Contains(c))
+				Stages(c, out float adult, out _, out _);
+				bool child = now - life.Born < (long)(adult * TicksPerYear);
+				if (child != (Children.Contains(c) || Young.Contains(c)))
 				{
 					SetChild(c, child);
-					if (!child && life.Child)
+					if (!child && life.Child && !creature)
 					{
 						ComeOfAge(c);
 					}
@@ -223,8 +230,16 @@ namespace RuinarchPlus.Phase4
 					DieOfAge(c);
 					continue;
 				}
-				Dementia(c, life, now);
+				if (creature)
+				{
+					creatures.Add(c);
+				}
+				else
+				{
+					Dementia(c, life, now);
+				}
 			}
+			_seedCreatures = false;
 			foreach (KeyValuePair<Character, Pregnancy> kv in Pregnancies.ToList())
 			{
 				Character mother = kv.Key;
@@ -239,9 +254,14 @@ namespace RuinarchPlus.Phase4
 					GiveBirth(mother, kv.Value.Father);
 				}
 			}
-			if (GameManager.Instance.Today().tick == 6 * GameManager.ticksPerHour)
+			bool morning = GameManager.Instance.Today().tick == 6 * GameManager.ticksPerHour;
+			if (morning)
 			{
 				DailyConceptions();
+			}
+			if (CreaturesEnabled)
+			{
+				CreatureGroups(creatures, morning);
 			}
 		}
 
@@ -271,14 +291,14 @@ namespace RuinarchPlus.Phase4
 
 		private static Life NewLife(Character c, bool newborn)
 		{
-			Stages(c.race, out int adult, out int elder, out int lifespan);
+			Stages(c, out float adult, out float elder, out float lifespan);
 			long year = TicksPerYear;
 			// A personal age of death: the lifespan, give or take a fifth.
 			long diesAtAge = (long)(lifespan * year * UnityEngine.Random.Range(0.8f, 1.2f));
 			// Someone already grown: four in five in their adult years, the rest elders (not at
 			// death's door: at most nine tenths of the way to their age of death).
-			long adultAge = adult * year;
-			long elderAge = Math.Min(elder * year, diesAtAge);
+			long adultAge = (long)(adult * year);
+			long elderAge = Math.Min((long)(elder * year), diesAtAge);
 			long age = newborn ? 0
 				: UnityEngine.Random.value < 0.8f || elderAge >= diesAtAge
 					? adultAge + (long)(UnityEngine.Random.value * Math.Max(0, elderAge - adultAge))
@@ -290,13 +310,14 @@ namespace RuinarchPlus.Phase4
 
 		private static void SetChild(Character c, bool child)
 		{
+			HashSet<Character> small = c.isNormalCharacter ? Children : Young;
 			if (child)
 			{
-				Children.Add(c);
+				small.Add(c);
 			}
 			else
 			{
-				Children.Remove(c);
+				small.Remove(c);
 			}
 			// Redraw at the new size (the game's own marker scale, patched below).
 			if (c.visuals != null && c.hasMarker)
@@ -317,6 +338,7 @@ namespace RuinarchPlus.Phase4
 			Lives.Remove(c);
 			Pregnancies.Remove(c);
 			Children.Remove(c);
+			Young.Remove(c);
 			DyingOfAge = true;
 			try
 			{
@@ -326,7 +348,15 @@ namespace RuinarchPlus.Phase4
 			{
 				DyingOfAge = false;
 			}
-			Phase2.Curfew.Announce("{0} died of old age at " + age + ".", c);
+			// A creature's death goes to the log only.
+			if (c.isNormalCharacter)
+			{
+				Phase2.Curfew.Announce("{0} died of old age at " + age + ".", c);
+			}
+			else
+			{
+				Phase2.Curfew.Note("{0} died of old age at " + age + ".", c);
+			}
 		}
 
 		// ---- births ------------------------------------------------------------------------
@@ -425,9 +455,10 @@ namespace RuinarchPlus.Phase4
 		}
 
 		// ---- persistence -------------------------------------------------------------------
-		// "L|characterId|born|diesAt|flags|nextForget" per villager (flags: e = dementia rolled,
-		// f = forgetful; saves from before dementia have the first four fields only),
-		// "P|motherId|fatherId|due" per pregnancy.
+		// "L|characterId|born|diesAt|flags|nextForget" per villager or creature (flags: e =
+		// dementia rolled, f = forgetful; saves from before dementia have the first four fields
+		// only), "P|motherId|fatherId|due" per pregnancy, "G|group|size" per creature group and
+		// "V|2" once creatures are aged (older files: creatures get an age at the first hour).
 
 		private static string Save()
 		{
@@ -447,7 +478,12 @@ namespace RuinarchPlus.Phase4
 					file.lives.Add($"P|{kv.Key.persistentID}|{kv.Value.Father?.persistentID ?? ""}|{kv.Value.Due}");
 				}
 			}
-			return file.lives.Count == 0 ? null : JsonUtility.ToJson(file);
+			if (file.lives.Count == 0)
+			{
+				return null;
+			}
+			SaveCreatures(file.lives);
+			return JsonUtility.ToJson(file);
 		}
 
 		private static void Load(string json)
@@ -455,6 +491,9 @@ namespace RuinarchPlus.Phase4
 			Lives.Clear();
 			Pregnancies.Clear();
 			Children.Clear();
+			Young.Clear();
+			Groups.Clear();
+			_seedCreatures = true;
 			if (string.IsNullOrEmpty(json))
 			{
 				return;
@@ -464,6 +503,10 @@ namespace RuinarchPlus.Phase4
 				try
 				{
 					string[] f = entry.Split('|');
+					if (LoadCreatures(f))
+					{
+						continue;
+					}
 					Character c = f.Length >= 4 ? CharacterManager.Instance.GetCharacterByPersistentID(f[1]) : null;
 					if (c == null)
 					{
@@ -479,11 +522,11 @@ namespace RuinarchPlus.Phase4
 							Forgetful = f.Length >= 6 && f[4].Contains("f"),
 							NextForget = f.Length >= 6 ? long.Parse(f[5]) : 0
 						};
-						Stages(c.race, out int adult, out _, out _);
-						Lives[c].Child = Now - Lives[c].Born < adult * TicksPerYear;
+						Stages(c, out float adult, out _, out _);
+						Lives[c].Child = Now - Lives[c].Born < (long)(adult * TicksPerYear);
 						if (Lives[c].Child)
 						{
-							Children.Add(c);
+							(c.isNormalCharacter ? Children : Young).Add(c);
 						}
 					}
 					else if (f[0] == "P")
@@ -500,7 +543,7 @@ namespace RuinarchPlus.Phase4
 					RuinarchPlus.Log?.Warning($"Life cycle: dropped saved record {entry}: {e.Message}");
 				}
 			}
-			RuinarchPlus.Log?.Info($"Life cycle loaded: {Lives.Count} ages, {Children.Count} child(ren), {Pregnancies.Count} pregnancy(ies), {Lives.Values.Count(l => l.Forgetful)} forgetful.");
+			RuinarchPlus.Log?.Info($"Life cycle loaded: {Lives.Count} ages, {Children.Count} child(ren), {Young.Count} young creature(s), {Groups.Count} creature group(s), {Pregnancies.Count} pregnancy(ies), {Lives.Values.Count(l => l.Forgetful)} forgetful.");
 		}
 	}
 
@@ -529,8 +572,8 @@ namespace RuinarchPlus.Phase4
 		}
 	}
 
-	// Children are drawn smaller: the game's own marker scale (not saved; the game applies it
-	// whenever it redraws the marker).
+	// Children and creatures' young are drawn smaller: the game's own marker scale (not saved;
+	// the game applies it whenever it redraws the marker).
 	[HarmonyPatch(typeof(CharacterVisuals), "get_markerVisualScale")]
 	internal static class LifeCycle_ChildScale
 	{
@@ -538,7 +581,7 @@ namespace RuinarchPlus.Phase4
 
 		private static void Postfix(CharacterVisuals __instance, ref Vector2 __result)
 		{
-			if (LifeCycle.IsChild(Owner(__instance)))
+			if (LifeCycle.IsSmall(Owner(__instance)))
 			{
 				__result *= 0.6f;
 			}

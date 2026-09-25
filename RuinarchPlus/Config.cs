@@ -126,6 +126,11 @@ namespace RuinarchPlus
 		// dementiaForgetDays days (with knowledgeEnabled; knowledge lives in people).
 		public int dementiaChance = 33;
 		public int dementiaForgetDays = 3;
+		// Creatures (with lifeCycleEnabled): living natural creatures, wild or tamed (not the
+		// player's), have an age and die of old age; the young are drawn smaller. Kinds the game
+		// never replaces (trolls, orcs, goblins, kobolds, centaurs, mothmen, wurms, unicorns,
+		// scorpions) have young now and then, up to the size their group had.
+		public bool creatureLifeEnabled = true;
 
 		// Corpse-borne disease. Rotting unburied corpses in a settlement sicken the living
 		// present, scaled by corpse count. Requires corpseDecayEnabled (it reads the decay stage).

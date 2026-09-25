@@ -1997,9 +1997,141 @@ namespace RuinarchDebug
 			yield return WaitGameHours(1f, null);
 			yield return LifeChecks();
 			yield return MemoryChecks();
+			yield return CreatureChecks();
 			PlusBridge.SetConfig("lifeCycleEnabled", false);
 			PlusBridge.SetConfig("pregnancyDays", 4);
 		}
+
+		// Creatures age (Phase 4 creature life): the world's creatures start with ages, old
+		// ones die of age, the young are drawn smaller, and kinds the game never replaces
+		// refill their groups up to the size they had, never past it; all of it saved.
+		private IEnumerator CreatureChecks()
+		{
+			List<Character> creatures = CharacterManager.Instance.allCharacters.Where(PlusBridge.IsCreature).ToList();
+			if (creatures.Count == 0)
+			{
+				Skip("creatures have ages", "no living natural creature in the world");
+				yield break;
+			}
+			List<string> stages = creatures.Select(c => PlusBridge.LifeStage(c) ?? "none").ToList();
+			Check("the world's creatures have ages, most of them grown", () =>
+				(stages.All(s => s != "none") && stages.Count(s => s != "Young") * 2 >= stages.Count,
+				$"{creatures.Count} creatures: " + string.Join(", ", stages.GroupBy(s => s).Select(g => $"{g.Key} {g.Count()}"))));
+
+			// The young are drawn smaller, and the creature panel's Age row says so.
+			Summon pup = creatures.OfType<Summon>().FirstOrDefault(c => c.hasMarker && c.gridTileLocation != null && c.adultSummonType == SUMMON_TYPE.None && c.race != RACE.DRAGON);
+			float pupAge = -1f;
+			if (pup == null)
+			{
+				Skip("a creature's young is drawn smaller and its panel says young", "no creature on the map");
+			}
+			else
+			{
+				float span = PlusBridge.CreatureLifespan(pup.race);
+				SpriteRenderer pupBody = AccessTools.Field(typeof(CharacterMarker), "mainImg").GetValue(pup.marker) as SpriteRenderer;
+				PlusBridge.SetAgeYears(pup, span / 2f);
+				yield return WaitGameHours(2f, () => !PlusBridge.IsSmall(pup));
+				float grown = pupBody != null ? pupBody.transform.localScale.x : -1f;
+				PlusBridge.SetAgeYears(pup, 0f);
+				yield return WaitGameHours(2f, () => PlusBridge.IsSmall(pup));
+				float small = pupBody != null ? pupBody.transform.localScale.x : -1f;
+				MonsterInfoUI monsterPanel = AccessTools.FieldRefAccess<UIManager, MonsterInfoUI>("monsterInfoUI")(UIManager.Instance);
+				string[] row = Guard("open the young creature's panel", () => { UIManager.Instance.ShowCharacterInfo(pup); return AgeRow(monsterPanel); });
+				Guard("close the panel", () => { monsterPanel.CloseMenu(); return pup; });
+				Check("a creature's young is drawn smaller and its panel says young", () =>
+					(PlusBridge.LifeStage(pup) == "Young" && grown > 0f && Mathf.Abs(small / grown - 0.6f) < 0.02f && row != null && row[1] == "0, young",
+					$"{pup.name} ({pup.race}): stage={PlusBridge.LifeStage(pup)} scale {grown:F2} -> {small:F2} row={(row == null ? "none" : row[1])}"));
+				PlusBridge.SetAgeYears(pup, span / 2f);
+				pupAge = PlusBridge.AgeYears(pup);
+			}
+
+			// Old age: a creature past its age of death dies at the next hour.
+			Character old = creatures.FirstOrDefault(c => c != pup && !c.isDead && c.hasMarker && !PlusBridge.IsBreeder(c.race));
+			if (old == null)
+			{
+				Skip("a creature dies of old age", "no second creature on the map");
+			}
+			else
+			{
+				string oldName = old.name;
+				PlusBridge.SetAgeYears(old, 30f);
+				PlusBridge.SetDeathAgeYears(old, 30f);
+				yield return WaitGameHours(2f, () => old.isDead);
+				Check("a creature dies of old age", () =>
+					(old.isDead && ModsLogHas($"{oldName} died of old age at 30."), $"{oldName} ({old.race}) dead={old.isDead}"));
+			}
+
+			// Kinds the game never replaces: a group with a grown pair refills up to its size.
+			// Genders are a coin toss, so a group may be all one sex (it then never refills):
+			// the test makes one of the largest group the other sex.
+			IGrouping<string, Character> group = creatures.Where(c => !c.isDead && PlusBridge.IsBreeder(c.race)).GroupBy(PlusBridge.GroupOf)
+				.Where(g => g.Key != null && g.Count() >= 2).OrderByDescending(g => g.Count()).FirstOrDefault();
+			string key = group?.Key;
+			int size = PlusBridge.GroupSize(key);
+			List<Character> Members() => CharacterManager.Instance.allCharacters.Where(c => PlusBridge.IsCreature(c) && PlusBridge.GroupOf(c) == key).ToList();
+			if (group == null)
+			{
+				Skip("a creature group never grows past the size it had", "no group of two or more of a kind the game never replaces; kinds here: "
+					+ string.Join(", ", creatures.GroupBy(c => c.race).Select(g => $"{g.Key} {g.Count()}")));
+			}
+			else
+			{
+				GENDER? lone = group.All(c => c.gender == GENDER.FEMALE) ? GENDER.MALE : group.All(c => c.gender == GENDER.MALE) ? GENDER.FEMALE : (GENDER?)null;
+				if (lone != null)
+				{
+					Character changed = group.Last();
+					Guard("make one of the group the other sex", () => { AccessTools.Field(typeof(Character), "_gender").SetValue(changed, lone.Value); return changed; });
+				}
+				Character father = group.First(c => c.gender == GENDER.MALE);
+				Character mother = group.First(c => c.gender == GENDER.FEMALE);
+				float half = PlusBridge.CreatureLifespan(mother.race) / 2f;
+				PlusBridge.SetAgeYears(father, half);
+				PlusBridge.SetAgeYears(mother, half);
+				// Filled to its size first (it may have lost some already), then it must not grow.
+				for (int i = 0; i < MaxGroupFill && Members().Count < size; i++)
+				{
+					Guard("let the group fill up", () => PlusBridge.BreedNow());
+				}
+				int full = Members().Count;
+				List<Summon> extra = Guard("breed a group at its size", () => PlusBridge.BreedNow());
+				Check("a creature group never grows past the size it had", () =>
+					(size >= 2 && Members().Count == full && (extra == null || extra.All(y => PlusBridge.GroupOf(y) != key)),
+					$"{key}: size {size}, {full} -> {Members().Count}"));
+				Character victim = Members().FirstOrDefault(c => c != father && c != mother);
+				if (victim == null)
+				{
+					Skip("a creature group that lost one has a young of its kind, home and faction", $"{key} is only its pair");
+				}
+				else
+				{
+					Guard("kill one of the group", () => { victim.Death("autotest"); return victim; });
+					List<Summon> born = Guard("let the group breed", () => PlusBridge.BreedNow());
+					Summon young = born?.FirstOrDefault(y => PlusBridge.GroupOf(y) == key);
+					Check("a creature group that lost one has a young of its kind, home and faction", () =>
+						(young != null && young.summonType == ((Summon)mother).summonType && young.faction == mother.faction && PlusBridge.LifeStage(young) == "Young"
+							&& PlusBridge.IsSmall(young) && young.hasMarker && Members().Count == full && ModsLogHas($"had a young: {young.name}"),
+						young == null ? $"{key}: no young ({born?.Count ?? 0} born elsewhere)"
+							: $"{young.name} ({young.summonType}) group={PlusBridge.GroupOf(young)} faction={young.faction?.name} stage={PlusBridge.LifeStage(young)} small={PlusBridge.IsSmall(young)}; {Members().Count} of {size}"));
+				}
+			}
+
+			// Creature ages and group sizes ride inside the save.
+			string json = null;
+			yield return SaveAndRead("ruinarch.plus.life.json", (j, e) => json = j);
+			Check("creature ages and group sizes are stored inside the player's save file", () =>
+				(json != null && json.Contains("V|2") && (key == null || json.Contains("\"G|")) && (pup == null || json.Contains(pup.persistentID)),
+				json == null ? "no life entry" : $"{json.Length} bytes"));
+			if (json != null)
+			{
+				ReplayLoad("ruinarch.plus.life.json", json);
+				Check("creature ages and group sizes come back when the save loads", () =>
+					((pup == null || Mathf.Abs(PlusBridge.AgeYears(pup) - pupAge) < 0.05f) && PlusBridge.GroupSize(key) == size,
+					$"{pup?.name}: {pupAge:F2} -> {(pup == null ? -1f : PlusBridge.AgeYears(pup)):F2}; {key}: size {size} -> {PlusBridge.GroupSize(key)}"));
+			}
+		}
+
+		// A group refills one young per breeding at most; its size is at most 6.
+		private const int MaxGroupFill = 6;
 
 		private static List<Character> Sapients(NPCSettlement v)
 		{
@@ -2137,40 +2269,50 @@ namespace RuinarchDebug
 
 			// Cultists (Demon Worship, on the player's side) remember but do not count: a village
 			// whose every rememberer is a cultist does not know. Within one frame, then undone.
+			// Not in the faction leader's village: a leader who turns cultist takes the whole
+			// faction into a Demon Cult (FactionManager.FactionLeaderCultistProcessing).
 			PlusBridge.Learn(faction, portal);
-			List<Character> converts = Sapients(home).Where(r => PlusBridge.Remembers(r, portal) && !r.traitContainer.HasTrait("Demon Cultist")).ToList();
-			bool knewBefore = PlusBridge.VillageKnows(home, portal);
-			// Only the trait: it is what makes someone a cultist on the player's side. Changing the
-			// religion as well would make a faction with a religion ideology exile them
-			// (ReligionComponent.ProcessOnChangeReligion). The trait brings Nocturnal; undone too.
-			HashSet<Character> nocturnal = new HashSet<Character>(converts.Where(r => r.traitContainer.HasTrait("Nocturnal")));
-			Guard("make everyone who remembers a cultist", () =>
+			NPCSettlement cultHome = villages.FirstOrDefault(v => !Sapients(v).Contains(faction.leader as Character) && Sapients(v).Any(r => PlusBridge.Remembers(r, portal)));
+			if (cultHome == null)
 			{
-				foreach (Character r in converts)
-				{
-					r.traitContainer.AddTrait(r, "Demon Cultist");
-				}
-				return home;
-			});
-			bool knewAsCult = PlusBridge.VillageKnows(home, portal);
-			bool allied = converts.All(r => r.isAlliedWithPlayer);
-			Guard("turn them back", () =>
+				Skip("what cultists remember does not count for their village", $"{faction.name}'s only villages with news are the leader's");
+			}
+			else
 			{
-				foreach (Character r in converts)
+				List<Character> converts = Sapients(cultHome).Where(r => PlusBridge.Remembers(r, portal) && !r.traitContainer.HasTrait("Demon Cultist")).ToList();
+				bool knewBefore = PlusBridge.VillageKnows(cultHome, portal);
+				// Only the trait: it is what makes someone a cultist on the player's side. Changing
+				// the religion as well would make a faction with a religion ideology exile them
+				// (ReligionComponent.ProcessOnChangeReligion). The trait brings Nocturnal; undone too.
+				HashSet<Character> nocturnal = new HashSet<Character>(converts.Where(r => r.traitContainer.HasTrait("Nocturnal")));
+				Guard("make everyone who remembers a cultist", () =>
 				{
-					r.traitContainer.RemoveTrait(r, "Demon Cultist");
-					if (!nocturnal.Contains(r))
+					foreach (Character r in converts)
 					{
-						r.traitContainer.RemoveTrait(r, "Nocturnal");
+						r.traitContainer.AddTrait(r, "Demon Cultist");
 					}
-				}
-				return home;
-			});
-			bool knewAfter = PlusBridge.VillageKnows(home, portal);
-			Check("what cultists remember does not count for their village", () =>
-				(converts.Count > 0 && knewBefore && allied && !knewAsCult && knewAfter,
-				$"{home.name}: {converts.Count} remember; knows before={knewBefore}, all cultists (allied={allied})={knewAsCult}, turned back={knewAfter}; "
-					+ string.Join(", ", converts.Select(r => $"{r.name}[allied={r.isAlliedWithPlayer} cultist={r.traitContainer.HasTrait("Demon Cultist")} religion={r.religionComponent.religion} faction={r.faction?.name} home={r.homeSettlement?.name} remembers={PlusBridge.Remembers(r, portal)} carries={PlusBridge.Carries(r, portal)}]"))));
+					return cultHome;
+				});
+				bool knewAsCult = PlusBridge.VillageKnows(cultHome, portal);
+				bool allied = converts.All(r => r.isAlliedWithPlayer);
+				Guard("turn them back", () =>
+				{
+					foreach (Character r in converts)
+					{
+						r.traitContainer.RemoveTrait(r, "Demon Cultist");
+						if (!nocturnal.Contains(r))
+						{
+							r.traitContainer.RemoveTrait(r, "Nocturnal");
+						}
+					}
+					return cultHome;
+				});
+				bool knewAfter = PlusBridge.VillageKnows(cultHome, portal);
+				Check("what cultists remember does not count for their village", () =>
+					(converts.Count > 0 && knewBefore && allied && !knewAsCult && knewAfter,
+					$"{cultHome.name}: {converts.Count} remember; knows before={knewBefore}, all cultists (allied={allied})={knewAsCult}, turned back={knewAfter}; "
+						+ string.Join(", ", converts.Select(r => $"{r.name}[allied={r.isAlliedWithPlayer} cultist={r.traitContainer.HasTrait("Demon Cultist")} faction={r.faction?.name} home={r.homeSettlement?.name} remembers={PlusBridge.Remembers(r, portal)}]"))));
+			}
 
 			// Leave the world as found (see KnowledgeSuite).
 			PlusBridge.Forget(faction);
@@ -2306,8 +2448,8 @@ namespace RuinarchDebug
 			Check("the character panel gives the age", () => (label == "Child, age 0", $"\"{label}\""));
 			Check("the panel's Info tab has an Age row", () =>
 				(childRow != null && childRow[0] == "Age" && childRow[1] == "0, child", childRow == null ? "no Age row" : $"\"{childRow[0]}\": \"{childRow[1]}\""));
-			// Someone the life cycle does not follow (a creature, a demon): "Unknown".
-			Character ageless = GridMap.Instance.mainRegion.charactersAtLocation.FirstOrDefault(c => c != null && !c.isDead && c.hasMarker && PlusBridge.AgeYears(c) < 0f);
+			// Someone with no age at all (undead, a demon, a construct, the player's minion): "Unknown".
+			Character ageless = GridMap.Instance.mainRegion.charactersAtLocation.FirstOrDefault(c => c != null && !c.isDead && c.hasMarker && PlusBridge.LifeStage(c) == null && !PlusBridge.IsCreature(c));
 			if (ageless == null)
 			{
 				Skip("a character without an age shows it as unknown", "no living character outside the life cycle on the map");

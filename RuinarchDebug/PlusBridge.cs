@@ -264,7 +264,7 @@ namespace RuinarchDebug
 		/// <summary>Age in years, or -1 if unknown (or Ruinarch+ missing).</summary>
 		internal static float AgeYears(Character c) => Life("AgeYears", c) is float f ? f : -1f;
 
-		/// <summary>"Child", "Adult", "Elder" or null.</summary>
+		/// <summary>"Child", "Adult", "Elder", "Young" (a creature) or null.</summary>
 		internal static string LifeStage(Character c) => Life("Stage", c) as string;
 
 		internal static bool IsChild(Character c) => Life("IsChild", c) is bool b && b;
@@ -284,6 +284,27 @@ namespace RuinarchDebug
 
 		/// <summary>Make <paramref name="c"/> forgetful (they forget something at the next hour) or not.</summary>
 		internal static void SetForgetful(Character c, bool forgetful) => Life("SetForgetful", c, forgetful);
+
+		/// <summary>A living natural creature (not the player's) that has an age.</summary>
+		internal static bool IsCreature(Character c) => Life("IsCreature", c) is bool b && b;
+
+		/// <summary>Drawn smaller: a child or a creature's young.</summary>
+		internal static bool IsSmall(Character c) => Life("IsSmall", c) is bool b && b;
+
+		/// <summary>A creature's breeding group ("kind/place"), or null.</summary>
+		internal static string GroupOf(Character c) => Life("GroupOf", c) as string;
+
+		internal static int GroupSize(string group) => Life("GroupSize", group) is int n ? n : 0;
+
+		/// <summary>Every breeding group with room and a pair has a young now.</summary>
+		internal static List<Summon> BreedNow() => Life("BreedNow") as List<Summon> ?? new List<Summon>();
+
+		/// <summary>A creature kind's lifespan in years, or -1.</summary>
+		internal static float CreatureLifespan(RACE race) =>
+			LifeType?.GetField("CreatureLifespans", Any)?.GetValue(null) is Dictionary<RACE, float> d && d.TryGetValue(race, out float years) ? years : -1f;
+
+		/// <summary>A kind the game never replaces, which has young of its own.</summary>
+		internal static bool IsBreeder(RACE race) => LifeType?.GetField("Breeders", Any)?.GetValue(null) is HashSet<RACE> h && h.Contains(race);
 
 		internal static void Forget(Faction faction)
 		{

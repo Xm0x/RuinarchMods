@@ -53,6 +53,7 @@ migration, growing settlements, famine, hunting and trade). These change the gam
 |---------|--------------------|
 | **Migration follows a village's fortunes** | Settlers no longer pour into a village in crisis. Nobody moves in during a plague or a famine, while the village is under attack, or once more of its homes stand abandoned than lived in; otherwise each abandoned home (beyond the couple a growing village keeps spare) and each unburied body in the streets halves the pull; and every resident who dies sets the "Incoming Migrants" meter back. A village of ten reduced to one stops drawing settlers. Hover the migration meter to see why. Your Induce Migration power still works as before. |
 | **Villagers are born, grow up, grow old and die** | A year is 16 in-game days. Everyone has an age, shown under their name ("Farmer, age 3", "Child, age 0", "elder") and in an Age row on the Info tab of every character's panel ("Unknown" for those without one); villagers already there when a game starts are adults, some of them elders. A woman and her lover of the same race and village may have a child (rarely: about once a year per couple, half as often when food runs short, never in famine); she is expecting for a season (4 days) and the child is born in their home. Children are drawn smaller, don't work, don't fight and are never picked to rule. Humans come of age at 1 and Elves at 3, then take up a trade the game picks for them. Elders die of old age: Humans around 6 (5 to 7), Elves around 18. |
+| **Creatures grow old too** | Wild and tamed creatures (animals and living monsters, not undead, demons, golems or your minions) have an age in the same years and die of old age: rabbits, rats and chickens after about 2 years, wolves, boars, pigs, sheep, scorpions and spiders 4, bears, trolls, orcs, goblins and kobolds 6, centaurs, harpies, tritons and mothmen 8, wyverns, wurms and unicorns 12, dragons 40. The young are drawn smaller for the first quarter of their life; the Age row shows "0, young" or "5, elder". Those the world began with have random ages; the ones the game spawns or hatches later are born then. The game already replaces game animals, den beasts and egg layers; the kinds it never replaces (trolls, orcs, goblins, kobolds, centaurs, mothmen, wurms, unicorns, scorpions) have young of their own, about once a year, while their group is smaller than it was. Old age and births go to the event log only. |
 | **Memory fades with the people** | What a village knows of you lives in its people, and dies with them. One elder in three grows forgetful ("elder, forgetful" in their panel) and forgets one of your buildings every 3 days. Children and newcomers are not told old news, so once everyone in a village who remembers a building is dead or has forgotten it, the village no longer knows it ("Nobody in Mysa remembers your Portal any more." in the event log), unless someone who remembers comes by and tells it again. Outlive the witnesses and your buildings are forgotten. Needs `knowledgeEnabled`. |
 
 ## Phase 5: Settlements & Economy (in progress)
@@ -87,6 +88,7 @@ your `Mods/RuinarchPlus/` folder:
     "migrationHealthEnabled": true,
     "lifeCycleEnabled": true,
     "lifeDaysPerYear": 16,
+    "creatureLifeEnabled": true,
     "settlementTiersEnabled": true,
     "townPopulation": 20,
     "cityPopulation": 40,
@@ -124,6 +126,7 @@ your `Mods/RuinarchPlus/` folder:
 | `pregnancyDays` | `4` | Days from conceiving to the birth. |
 | `dementiaChance` | `33` | Percent of villagers who grow forgetful when they become elders. `0` turns dementia off. |
 | `dementiaForgetDays` | `3` | A forgetful elder forgets one of your buildings every this many days. |
+| `creatureLifeEnabled` | `true` | Creatures age, die of old age and (kinds the game never replaces) have young. Needs `lifeCycleEnabled`. |
 | `settlementTiersEnabled` | `true` | Villages that grow build a Town Hall and become Towns and Cities, with room for more buildings. Set `false` for vanilla. |
 | `townPopulation` | `20` | Living villagers a village needs to build a Town Hall and become a Town. |
 | `cityPopulation` | `40` | Living villagers a Town needs to become a City. |

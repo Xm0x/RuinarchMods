@@ -408,6 +408,26 @@ knowledge).
    not as a game trait (the game saves traits by name, so a save without the mod would
    break); the panel's class line says "elder, forgetful". The game has no dementia-like
    trait (only Drunk and Psychopath come close). *(verified in game)*
+
+   **Shipped: creature life** (`Phase4/CreatureLife.cs`, config `creatureLifeEnabled`, with
+   `lifeCycleEnabled`). Living natural creatures, wild or tamed (never the player's minions;
+   undead, demons, constructs, elementals, spirits have no age), age in the same years:
+   lifespan 2 (rabbit, rat, chicken, mink), 4 (pig, sheep, boar, wolf, moonwalker, scorpion,
+   spiders), 6 (bear, troll, orc, goblin, kobold), 8 (centaur, harpy, triton, mothman), 12
+   (wyvern, wurm, unicorn), 40 (dragon), give or take a fifth; young for the first quarter
+   (drawn at 60%, not the game's own young kinds Small Spider/Wyvernling), elders from three
+   quarters. The world's first creatures get a random age (life file marker `V|2`; older
+   files age them at the first hour); anything the game spawns or hatches later is born then;
+   one the game grows up (`CharacterManager.SpawnNewMonsterInstanceFrom`) keeps its age and
+   is grown. Old-age deaths and births go to the log only. The game already renews game
+   animals (`GameFeature`, up to 6 pig/sheep/chicken per hunting area), den beasts
+   (`AnimalBurrow`: wolf, bear, boar, rabbit, mink, moonwalker) and egg layers (spiders,
+   wyverns, harpies), so only kinds it never replaces breed: troll, orc, goblin, kobold,
+   centaur, mothman, wurm, unicorn, scorpion. A group (one kind sharing a home structure,
+   territory or village) keeps the size it had when first seen (2 to 6, `G|kind/place|size`)
+   and, below it, with a grown male and female, has a young about once a year (1 in
+   `lifeDaysPerYear` per day), born where the mother stands with her home, territory and
+   faction.
 4. **Library [M to L]:** a structure that *persists* faction knowledge against that decay
    (Phase 3 ledger + Phase 4 aging). Villagers deposit what they learn on return from
    searches/trades; burning it is a real strategic blow.
