@@ -36,7 +36,7 @@ graph LR
 
 Because the map is small and the base game is character-scale, the **civilization-scale**
 end of the vision (planet map, nations, capitals, travel portals) is split into a
-**separate sister mod, `TruePlanet`** (Phase 7). Ruinarch+ stays a "deepen what's here"
+**separate sister mod, `TruePlanet`**. Ruinarch+ stays a "deepen what's here"
 mod; TruePlanet is the "replace the world" mod. They're designed to stack.
 
 ---
@@ -50,8 +50,9 @@ mod; TruePlanet is the "replace the world" mod. They're designed to stack.
 | **3** | **Knowledge & Fog of War** | villagers only know what they've seen; gossip; search parties; portal secrecy | **L** | new knowledge model |
 | **4** | **Living Population** | birth, aging, natural death, dementia/knowledge-loss, migration rework | **L to XL** | mostly net-new |
 | **5** | **Settlements & Economy** | growth tiers, famine, unrest, hunters, traders (all shipped) | **L to XL** | new progression + economy |
-| **6** | **War & Diplomacy** | training grounds, standing armies, real wars, curfews/borders | **L** | extends warfare |
-| **7** | **TruePlanet** (sister mod) | planet-scale world, nations & capitals, religion + language, travel portals | **XL** | separate mod |
+| **6** | **War & Diplomacy** | night watch (shipped); levies, kingdom borders and diplomacy moved to TruePlanet | **L** | extends warfare |
+| **7** | **The Blight** | corruption that spreads by itself, Blight Hearts, villagers fighting back | **L** | spec `docs/specs/2026-10-02-blight-design.md` |
+| **sister mod** | **TruePlanet** | planet-scale world, large kingdoms, wars, divisions, religion + language, travel portals | **XL** | separate mod |
 
 ---
 
@@ -628,16 +629,24 @@ warfare is short-lived, partly because populations are tiny (Phases 4 and 5).
   never ran: a queued job only runs when it ranks at least as high as the highest behaviour).
   Hunters and traders are never picked from the guards, and a villager away hunting or
   trading is not named a guard (a guard sent off as a trader once left a City unwatched).
-  Saved in `ModData/ruinarch.plus.watch.json`. *(verification pending)*
-- **Levies [L]:** a nation at war calls fighters up; they march off-region, and
-  win/lose/die (feeding Phase 4 population).
-- **Curfews & closed borders [M]:** the settlement-curfew from Phase 2 escalates to
-  kingdom-level border closure during war/plague.
-- **Diplomacy [L]:** alliances, territory trade, war declarations the player can scheme into.
+  Saved in `ModData/ruinarch.plus.watch.json`. *(verified in game, shipped in 0.10.0)*
+- **Moved to TruePlanet (owner, 2026-10-02):** levies, kingdom-level border closure and
+  diplomacy. They are about large kingdoms and wars, which TruePlanet defines; built here on
+  today's small worlds they would be redone.
 
 ---
 
-## 8. PHASE 7: TruePlanet  *(separate sister mod, XL)*
+## 8. PHASE 7: The Blight
+
+Corruption that spreads by itself: Blight Hearts grow it and feed on deaths, Blight Seed,
+carriers and rotting bodies carry it further, it creeps onto village ground and withers
+crops, and villagers escalate from cleaning to purge parties and fire until a village may be
+abandoned. Full design: `docs/specs/2026-10-02-blight-design.md` (approved 2026-10-02).
+Ships in two slices, 0.11.0 and 0.12.0.
+
+---
+
+## 9. TruePlanet  *(separate sister mod, XL)*
 
 This is a **world-generation replacement**, correctly its own mod:
 
@@ -659,7 +668,10 @@ This is a **world-generation replacement**, correctly its own mod:
   Ruinarch+'s 16-day year. Held back from Ruinarch+ because it depends on the world's lore
   (what a year is on the planet), which TruePlanet defines.
 
-TruePlanet depends on Ruinarch+ Phases 3 to 6 being in place to feel alive; it ships last.
+TruePlanet also takes over levies, kingdom borders, diplomacy and the map borders of Phase 3.
+Design in progress (owner, 2026-10-02): many provinces (one playable map each) instead of one
+huge map; provinces with the player's working minions run in full, the rest of the planet on
+a summary simulation; a rotatable 3D planet view.
 
 **Another sister mod, later: a performance mod.** Optimisations that change what the player
 sees belong there, not in Ruinarch+ (which only fixes outright waste, like the wall-rescan
@@ -671,7 +683,7 @@ damage, so it is a player's choice.
 
 ---
 
-## 9. Naming & packaging
+## 10. Naming & packaging
 
 - Display name **Ruinarch+**; mod id `ruinarch.plus` (namespace `RuinarchPlus`, since `+`
   isn't file-safe). Sister mod: **TruePlanet** (`trueplanet`).
