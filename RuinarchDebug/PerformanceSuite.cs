@@ -7,6 +7,9 @@ using HarmonyLib;
 using Inner_Maps.Location_Structures;
 using Locations.Settlements;
 using UnityEngine;
+using Inner_Maps;
+using Traits;
+using UnityEngine.UI;
 
 namespace RuinarchDebug
 {
@@ -46,6 +49,7 @@ namespace RuinarchDebug
 			}
 			PerformanceListenerChecks("");
 			yield return DisconnectReachesTileObjects("");
+			yield return MinimapRedrawChecks();
 
 			// Characters also listen (CrimeComponent); jobs must be live and listed once.
 			yield return WaitGameHours(2f, null);
@@ -136,14 +140,105 @@ namespace RuinarchDebug
 			// Spread across the list: early world-generation objects and recent ones.
 			List<TileObject> picks = new[] { 0, all.Count / 3, all.Count * 2 / 3, all.Count - 1 }
 				.Select(i => all[i]).Where(t => t != null && t.gridTileLocation != null).Distinct().ToList();
+			// One with a trait that keeps the default handler: it drops the character from its
+			// responsible characters (the mod must not skip such tile objects).
+			bool Plain(Trait tr) => tr.GetType().GetMethod(DisconnectCharacterKey, new[] { typeof(IPointOfInterest), typeof(Character) })?.DeclaringType == typeof(Trait);
+			TileObject traited = all.FirstOrDefault(t => t?.gridTileLocation != null && t.traitContainer != null && t.traitContainer.allTraitsAndStatuses.Values.Any(Plain));
+			Trait trait = traited?.traitContainer.allTraitsAndStatuses.Values.First(Plain);
 			if (!Try("mark tile objects as assumed by the villager", () => picks.ForEach(t => t.AddCharacterThatAlreadyAssumed(victim))))
 			{
 				yield break;
 			}
+			Try("make the villager responsible for a tile object's trait", () =>
+			{
+				if (trait == null) return;
+				if (trait.responsibleCharacters == null) AccessTools.Property(typeof(Trait), nameof(Trait.responsibleCharacters)).SetValue(trait, new List<Character>());
+				trait.responsibleCharacters.Add(victim);
+			});
 			yield return null;
 			Try("send the disconnect signal", () => SignalHandler<Character>.Broadcast(DisconnectCharacterKey, victim));
 			Check(name, () => (picks.Count > 0 && picks.All(t => !t.HasCharacterAlreadyAssumed(victim)),
 				$"{victim.name}: {string.Join(", ", picks.Select(t => $"{t.name}={(t.HasCharacterAlreadyAssumed(victim) ? "kept" : "dropped")}"))}"));
+			if (trait == null)
+			{
+				Skip("a disconnected character is dropped from tile objects' traits" + when, "no tile object with a plain trait");
+			}
+			else
+			{
+				Check("a disconnected character is dropped from tile objects' traits" + when, () => (!trait.responsibleCharacters.Contains(victim),
+					$"{traited.name} {trait.name}: responsible {string.Join(", ", trait.responsibleCharacters.Select(c => c.name))}"));
+			}
+		}
+
+		// The minimap camera draws only when its picture changes, and not while hidden.
+		private IEnumerator MinimapRedrawChecks()
+		{
+			InnerTileMap map = GridMap.Instance.mainRegion.innerMap;
+			Camera mini = map.minimapCamera;
+			MinimapUIController ui = UIManager.Instance.sidebarUIController.minimapUIController;
+			var view = AccessTools.Field(typeof(MinimapUIController), "m_minimapUIView");
+			RawImage image = (view?.GetValue(ui) as MinimapUIView)?.UIModel?.minimapImage?.rawImage;
+			if (mini == null || image == null)
+			{
+				Skip("moving the view redraws the minimap", "no minimap camera or panel");
+				yield break;
+			}
+			bool wasShown = image.isActiveAndEnabled;
+			Try("show the minimap", () => ui.ShowUI());
+			yield return new WaitForSecondsRealtime(0.5f);
+
+			int frames = 0, drawn = 0;
+			float end = Time.realtimeSinceStartup + 2f;
+			while (Time.realtimeSinceStartup < end)
+			{
+				yield return new WaitForEndOfFrame();
+				frames++;
+				if (mini.enabled) drawn++;
+			}
+			Check("the minimap camera draws only when its picture changes", () => (drawn * 2 < frames, $"drew on {drawn} of {frames} frames"));
+
+			Camera main = InnerMapCameraMove.Instance.camera;
+			Vector3 home = main.transform.position;
+			yield return new WaitForEndOfFrame();
+			long before = MinimapHash(mini);
+			Try("move the view", () => InnerMapCameraMove.Instance.MoveCameraForMinimap(home + new Vector3(map.width / 3f, 0f, 0f)));
+			for (int i = 0; i < 5; i++) yield return null;
+			yield return new WaitForEndOfFrame();
+			long after = MinimapHash(mini);
+			Check("moving the view redraws the minimap", () => (before != after, $"picture {before:X} -> {after:X}, view {home} -> {main.transform.position}"));
+			Try("move the view back", () => InnerMapCameraMove.Instance.MoveCameraForMinimap(home));
+
+			Try("hide the minimap", () => ui.HideUI());
+			yield return null;
+			int hiddenDraws = 0;
+			end = Time.realtimeSinceStartup + 1.5f;
+			while (Time.realtimeSinceStartup < end)
+			{
+				yield return new WaitForEndOfFrame();
+				if (mini.enabled) hiddenDraws++;
+			}
+			Check("a hidden minimap is not drawn", () => (hiddenDraws == 0, $"drew on {hiddenDraws} frames while hidden"));
+			if (wasShown) Try("show the minimap again", () => ui.ShowUI());
+		}
+
+		private static long MinimapHash(Camera mini)
+		{
+			RenderTexture rt = mini.targetTexture;
+			RenderTexture old = RenderTexture.active;
+			var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+			try
+			{
+				RenderTexture.active = rt;
+				tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+				long h = 17;
+				foreach (Color32 c in tex.GetPixels32()) h = h * 31 + (c.r | c.g << 8 | c.b << 16);
+				return h;
+			}
+			finally
+			{
+				RenderTexture.active = old;
+				UnityEngine.Object.Destroy(tex);
+			}
 		}
 	}
 }

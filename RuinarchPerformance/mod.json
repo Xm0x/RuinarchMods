@@ -1,9 +1,9 @@
 {
   "id": "ruinarch.performance",
   "name": "Performance Mod",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Xm0x",
-  "description": "Makes Ruinarch faster on big maps and in long games without changing how it plays: unsubscribing from the game's signals no longer scans a list with an entry for every tree and rock, and finished jobs stop leaving listeners behind.",
+  "description": "Makes Ruinarch faster on big maps and in long games without changing how it plays: no list scans over every tree and rock, finished jobs stop leaving listeners behind, removing a dead creature no longer stalls the game, the minimap only redraws when it changes, and fast screens get their full frame rate.",
   "loader": "RuinarchModLoader",
   "loaderApi": 1,
   "type": "code",
