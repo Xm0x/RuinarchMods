@@ -1857,11 +1857,22 @@ namespace RuinarchDebug
 				}
 				return ruler;
 			});
-			Check("a ruler most villagers dislike is held against", () =>
+			// The rule is judged by the adults inside the village (at least 3 besides the ruler);
+			// after the death above a small village may have too few at home.
+			BringResidentsHome(village);
+			int judges = adults(village).Count(c => c != ruler);
+			if (judges < 3)
 			{
-				List<string> r = PlusBridge.UnrestReasons(village);
-				return (r.Contains("their rule"), string.Join(", ", r));
-			});
+				Skip("a ruler most villagers dislike is held against", $"only {judges} adult(s) besides the ruler at home");
+			}
+			else
+			{
+				Check("a ruler most villagers dislike is held against", () =>
+				{
+					List<string> r = PlusBridge.UnrestReasons(village);
+					return (r.Contains("their rule"), $"judges at home={judges}: {string.Join(", ", r)}");
+				});
+			}
 
 			// 2. Restless, with the reasons named.
 			float restlessAt = PlusBridge.Config("unrestRestless") is int rr ? rr : 24;
