@@ -247,6 +247,7 @@ namespace RuinarchDebug
 			FreshWorldChecks();
 			// Early, while villagers are out walking; leaves the camera as it found it.
 			if (Runs("PerformanceSuite")) { yield return Safe("PerformanceSuite", PerformanceSuite()); }
+			if (Runs("ModSettingsSuite")) { yield return Safe("ModSettingsSuite", ModSettingsSuite()); }
 			if (Runs("TemplateSuite")) { yield return Safe("TemplateSuite", TemplateSuite()); }
 			if (Runs("BlightSuite")) { yield return Safe("BlightSuite", BlightSuite()); }
 			if (Runs("FireWallTest")) { yield return Safe("FireWallTest", FireWallTest()); }
