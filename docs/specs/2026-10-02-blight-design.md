@@ -121,10 +121,11 @@ within a few tiles of its border. The response escalates:
 
 ## Framework and loader work
 
-- **`ModContent.RegisterSpell`** (new): registers a player spell with a stable id-based skill
-  type, the way `RegisterStructure` does for buildings. Needed for Blight Seed; future spells
-  reuse it. Ships in RuinarchModLoader 0.7.0, which Ruinarch+ then requires.
-- No loader change is needed for the Heart (existing `RegisterStructure` with `Skill`).
+- **Loader 0.7.0**: registered demonic buildings get a copied `PlayerSkillData` asset,
+  deferred build-skill construction, native skill initialization and borrowed-prefab
+  placement/destruction support. Required for the Heart in slice 1.
+- **`ModContent.RegisterSpell`** (planned): registers a player spell with a stable
+  id-based skill type. Needed for Blight Seed in slice 2, not implemented by loader 0.7.0.
 
 ## Config (`config.json`)
 
@@ -136,7 +137,7 @@ level, `blightSeedDays`, `blightCarriers`, `blightFromCorpses`, `blightInVillage
 
 1. **0.11.0**: Blight Heart with growth and levels by feeding, spreading into village ground,
    withering crops, cleanup at scale (Notice and Alarm), fire cleanses, config, save.
-2. **0.12.0**: Blight Seed (with loader 0.7.0), carriers, the dead, cultists, Purge parties,
+2. **0.12.0**: Blight Seed (with a later loader spell API), carriers, the dead, cultists, Purge parties,
    Despair (famine, unrest, migration), village tooltips.
 
 Each slice: harness suite `BlightSuite` (growth rate and cap, no growth on water/Portal/

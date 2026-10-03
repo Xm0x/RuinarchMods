@@ -132,6 +132,11 @@ namespace RuinarchPlus.Phase5
 			{
 				list.Add(new KeyValuePair<string, float>(st.Losses.Count == 1 ? "a lost building" : $"{st.Losses.Count} lost buildings", Math.Min(1.5f, 0.5f * st.Losses.Count)));
 			}
+			float blight = Phase7.BlightResponse.Grievance(s);
+			if (blight > 0f)
+			{
+				list.Add(new KeyValuePair<string, float>("the blight", blight));
+			}
 			Character ruler = s.ruler;
 			List<Character> judges = people.Where(c => c != ruler && !Phase4.LifeCycle.IsChild(c)).ToList();
 			if (ruler != null && judges.Count >= 3 && judges.Count(c => c.relationshipContainer.GetTotalOpinion(ruler) < 0) * 2 > judges.Count)

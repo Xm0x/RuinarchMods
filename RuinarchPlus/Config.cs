@@ -115,6 +115,22 @@ namespace RuinarchPlus
 		// Night watch (Phase 6): a Town or City with 4+ fighters keeps one guard per 8 residents
 		// (1 to 3) on the night schedule; at night they walk the village and attack hostiles.
 		public bool nightWatchEnabled = true;
+		// The Blight (Phase 7): Blight Hearts, a demonic building, grow corruption by
+		// themselves. Every hour each Heart corrupts blightGrowthPerHour tiles (by level) at the
+		// edge of the corruption it stands in, within blightReach tiles of it, and at most
+		// blightTilesPerHour across the whole map. Deaths on a Heart's blight feed it:
+		// blightFeedPerLevel deaths take it to level 2, twice as many to level 3. The blight
+		// may cover a village's open ground (blightInVillages): crops there wither, but it never
+		// counts for summoning or building. Fire on corrupted ground cleanses it
+		// (blightFireCleanses). Up to blightHeartLimit Hearts at a time.
+		public bool blightEnabled = true;
+		public int blightTilesPerHour = 60;
+		public int blightHeartLimit = 3;
+		public int[] blightReach = { 6, 9, 13 };
+		public int[] blightGrowthPerHour = { 3, 5, 8 };
+		public int blightFeedPerLevel = 4;
+		public bool blightInVillages = true;
+		public bool blightFireCleanses = true;
 
 		// Life cycle (Phase 4): a year is lifeDaysPerYear in-game days. Villagers age; a woman
 		// and her lover of the same race and village may have a child (birthChancePerDay

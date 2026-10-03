@@ -48,11 +48,13 @@ RuinarchPlus/
   Phase5/SettlementTiers.cs  Village, Town, City
   Phase5/TownHall.cs         the Town Hall building
   Phase5/Famine.cs           famine: starving villages, people moving away
+  Phase7/                    Blight Hearts, spreading corruption, village response and fire
   RuinarchPlus-DESIGN.md     design notes and roadmap
 RuinarchDebug/
   DebugMenu.cs               in-game overlay
   AutoTest.cs                unattended in-game test harness
   TemplateSuite.cs           template export, rebuilding, packs and native construction checks
+  BlightSuite.cs             blight growth, village rules, crops, feeding, save and fire checks
   PlusBridge.cs              reaches Ruinarch+ by reflection (no hard dependency)
 tools/
   publish-workshop.sh        uploads a mod as a new version of its Steam Workshop item
@@ -94,7 +96,7 @@ Ruinarch+ is also published as Workshop item
 release uploads the new version there too:
 
 ```bash
-tools/publish-workshop.sh RuinarchPlus 3811868047 "Ruinarch+ 0.10.1: <what changed>"
+tools/publish-workshop.sh RuinarchPlus 3811868047 "Ruinarch+ 0.11.0: <what changed>"
 ```
 
 The script builds the mod into a clean folder (the DLL, `mod.json`, `README.md` and any

@@ -1,7 +1,7 @@
 {
   "id": "ruinarch.plus",
   "name": "Ruinarch+",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "author": "Xm0x",
   "description": "Bug fixes, rotting corpses, a Mass Grave village building, a plague curfew with closed borders, factions that only attack what they know about, news that travels on foot and by gossip, records of your buildings kept in homes and Libraries, villages that search for their missing, migration that follows a village's fortunes, villages that grow into Towns and Cities, famine, unrest and uprisings (brawls, assassination plots, jailed rulers, civil wars), hunters and traders, and a night watch. Each change is checked against the decompiled game source.",
   "loader": "RuinarchModLoader",

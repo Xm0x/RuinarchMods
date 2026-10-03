@@ -226,6 +226,31 @@ namespace RuinarchDebug
 
 		internal static bool IsGuard(Character c) => WatchType?.GetMethod("IsGuard", Any)?.Invoke(null, new object[] { c }) is bool b && b;
 
+		private static Type BlightHeartType => Plus?.GetType("RuinarchPlus.Phase7.BlightHeart");
+
+		private static Type BlightEngineType => Plus?.GetType("RuinarchPlus.Phase7.BlightEngine");
+
+		internal static bool BlightAvailable => BlightHeartType != null && BlightEngineType != null;
+
+		/// <summary>Corrupt <paramref name="t"/> the way the blight does; false if the rules refuse it.</summary>
+		internal static bool BlightCorrupt(LocationGridTile t) => BlightEngineType?.GetMethod("Corrupt", Any)?.Invoke(null, new object[] { t }) is bool b && b;
+
+		/// <summary>Redraw blighted village tiles now (the blight does it once an hour).</summary>
+		internal static void BlightFlush() => BlightEngineType?.GetMethod("Flush", Any)?.Invoke(null, null);
+
+		/// <summary>Standing Blight Hearts.</summary>
+		internal static List<LocationStructure> BlightHearts() => (BlightHeartType?.GetMethod("All", Any)?.Invoke(null, null) as System.Collections.IEnumerable)?.Cast<LocationStructure>().ToList() ?? new List<LocationStructure>();
+
+		internal static int BlightLevel(LocationStructure heart) => BlightHeartType?.GetProperty("Level", Any)?.GetValue(heart) is int n ? n : -1;
+
+		internal static int BlightReach(LocationStructure heart) => BlightHeartType?.GetProperty("Reach", Any)?.GetValue(heart) is int n ? n : -1;
+
+		/// <summary>The Heart's patch as of its last hourly refresh.</summary>
+		internal static HashSet<LocationGridTile> BlightPatch(LocationStructure heart) => BlightHeartType?.GetField("Patch", Any)?.GetValue(heart) as HashSet<LocationGridTile> ?? new HashSet<LocationGridTile>();
+
+		/// <summary>What the blight would write into a save right now.</summary>
+		internal static string BlightSave() => BlightHeartType?.GetMethod("Save", Any)?.Invoke(null, null) as string;
+
 		/// <summary>Whether <paramref name="village"/> counts as hungry (sends hunters).</summary>
 		internal static bool IsHungry(NPCSettlement village)
 		{

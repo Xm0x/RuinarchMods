@@ -644,6 +644,11 @@ crops, and villagers escalate from cleaning to purge parties and fire until a vi
 abandoned. Full design: `docs/specs/2026-10-02-blight-design.md` (approved 2026-10-02).
 Ships in two slices, 0.11.0 and 0.12.0.
 
+Slice 1 (0.11.0) implements Hearts, growth and death-fed levels, village blight and
+withering crops, Notice and Alarm, unrest and fire cleansing. It needs loader 0.7.0's
+registered demonic-building support. Seed, carriers, corpses, cultists, Purge, Despair and
+village tooltips remain in slice 2.
+
 ---
 
 ## 9. TruePlanet  *(separate sister mod, XL)*

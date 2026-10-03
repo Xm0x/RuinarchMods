@@ -247,6 +247,7 @@ namespace RuinarchDebug
 			FreshWorldChecks();
 			// Early, while villagers are out walking; leaves the camera as it found it.
 			if (Runs("TemplateSuite")) { yield return Safe("TemplateSuite", TemplateSuite()); }
+			if (Runs("BlightSuite")) { yield return Safe("BlightSuite", BlightSuite()); }
 			if (Runs("FireWallTest")) { yield return Safe("FireWallTest", FireWallTest()); }
 			if (Runs("PathLineTest")) { yield return Safe("PathLineTest", PathLineTest()); }
 			if (Runs("ExploitSuite")) { yield return Safe("ExploitSuite", ExploitSuite()); }
@@ -318,6 +319,29 @@ namespace RuinarchDebug
 				string n = t.LocalizedStructureName();
 				string e = t.ToStringEnum();
 				return (n == "Mass Grave" && e == "MASS_GRAVE", $"LocalizedStructureName='{n}' ToStringEnum='{e}'");
+			});
+			// The game's save serializer writes enums by name; a virtual value has none, so a
+			// saved Library or Heart came back as type 0 and the whole load stalled.
+			Check("a virtual structure type survives the game's save serializer", () =>
+			{
+				var saved = new SaveDataManMadeStructure { structureType = Ruinarch.ModContent.ModContent.StructureTypeFor("ruinarch.plus.library") };
+				var serializer = new FullSerializer.fsSerializer();
+				serializer.TrySerialize(saved, out FullSerializer.fsData data).AssertSuccessWithoutWarnings();
+				SaveDataManMadeStructure loaded = null;
+				serializer.TryDeserialize(FullSerializer.fsJsonParser.Parse(FullSerializer.fsJsonPrinter.CompressedJson(data)), ref loaded);
+				return (loaded != null && loaded.structureType == saved.structureType && (int)saved.structureType != 0,
+					$"saved {(int)saved.structureType} as {data.AsDictionary["structureType"]}, loaded {(int?)loaded?.structureType}");
+			});
+			// Saves from before that fix hold type 0; the framework finds the building again by
+			// its saved name ("<noun> <type>", or type first in some languages).
+			Check("a structure saved without its type is recognised by its name", () =>
+			{
+				var find = AccessTools.Method(AccessTools.TypeByName("Ruinarch.ModContent.StructureNames"), "FromSavedName");
+				string Id(string name) => (find.Invoke(null, new object[] { name }) as Ruinarch.ModContent.StructureRegistration)?.Id ?? "none";
+				var cases = new[] { ("Painted Library", "ruinarch.plus.library"), ("Library Painted", "ruinarch.plus.library"),
+					("Old Town Hall", "ruinarch.plus.town_hall"), ("Quiet Mass Grave", "ruinarch.plus.mass_grave"), ("Painted Workshop", "none") };
+				var wrong = cases.Where(c => Id(c.Item1) != c.Item2).Select(c => $"{c.Item1} -> {Id(c.Item1)}").ToList();
+				return (wrong.Count == 0, wrong.Count == 0 ? $"{cases.Length} names" : string.Join(", ", wrong));
 			});
 			// Freshly generated villages must count as healthy, or migration would be throttled
 			// from day one. (A world can start with a village already under attack or plagued:
@@ -2197,6 +2221,12 @@ namespace RuinarchDebug
 					else if (overthrown && delivered && !stillHeld && friends > 0 && ModsLogHas($"{old.name}, once ruler of {jv.name}, has escaped the prison."))
 					{
 						Skip(jailCheck, "a friend freed them: " + detail);
+					}
+					// Someone from outside the village released them (a Kobold once did, with the
+					// game's own release action): the village itself still left them tied.
+					else if (overthrown && delivered && !stillHeld && HeldUntied.By(old) is Character by && by.homeSettlement != jv)
+					{
+						Skip(jailCheck, $"{by.name}, not of {jv.name}, released them: " + detail);
 					}
 					else if (overthrown && !stillHeld && ModsLogHasSince(jailMark, $"{old.name}, once ruler of {jv.name}, is no longer of its faction and is let go."))
 					{
@@ -5873,8 +5903,11 @@ namespace RuinarchDebug
 		internal static class HeldUntied
 		{
 			private static readonly Dictionary<Character, string> Last = new Dictionary<Character, string>();
+			private static readonly Dictionary<Character, Character> Releaser = new Dictionary<Character, Character>();
 
 			internal static string How(Character c) => c != null && Last.TryGetValue(c, out string how) ? how : null;
+
+			internal static Character By(Character c) => c != null && Releaser.TryGetValue(c, out Character by) ? by : null;
 
 			private static void Prefix(Traits.ITraitable sourceCharacter, Character removedBy)
 			{
@@ -5886,6 +5919,7 @@ namespace RuinarchDebug
 					}
 					string caller = string.Join(" < ", new System.Diagnostics.StackTrace().GetFrames().Skip(2).Take(10).Select(f => f.GetMethod()?.DeclaringType?.Name + "." + f.GetMethod()?.Name));
 					Last[c] = caller;
+					Releaser[c] = removedBy;
 					_running.Log($"  held ex-ruler untied: {c.name} ({PlusBridge.HeldState(c)}, {c.characterClass?.className}) by {removedBy?.name ?? "nobody"} (friend={removedBy != null && removedBy.relationshipContainer.IsFriendsWith(c)}) in {c.currentStructure?.name ?? "the wild"} via {caller}");
 				}
 				catch

@@ -5,9 +5,9 @@ A bug-fix and gameplay mod for **Ruinarch**, built on the
 against the decompiled game source.
 
 It follows the [Ruinarch+ roadmap](RuinarchPlus-DESIGN.md). Shipped so far: the Phase 1
-bug fixes, and the first features of Phases 2 to 6 (death and decay, knowledge, gossip and
+bug fixes, and the first features of Phases 2 to 7 (death and decay, knowledge, gossip and
 records, migration, growing settlements, famine, unrest and uprisings, hunting and trade, a
-night watch). These change the game by default; each one can be switched off in
+night watch, and spreading blight). These change the game by default; each can be switched off in
 `config.json`.
 
 ## What it fixes
@@ -74,6 +74,19 @@ night watch). These change the game by default; each one can be switched off in
 | Feature | What you'll notice |
 |---------|--------------------|
 | **Night watch** | The game watches its villages by day (the morning patrol) but never at night. Now a Town or City (or a capital) with at least four fighters keeps a night watch: one guard for every eight residents, up to three, its best fighters, never the ruler. Guards sleep by day and at night walk the village ready to fight, so a monster or a demon that slips in after dark meets someone awake. Guards are never sent hunting or trading. A guard who dies, leaves or is needed elsewhere is replaced. Switch off with `nightWatchEnabled`. |
+
+## Phase 7: The Blight
+
+| Feature | What you'll notice |
+|---------|--------------------|
+| **Blight Heart** | A demonic building in your Build menu, using the Crypt's look and mana cost. Each hour it grows corruption at the edge of its connected patch. Deaths on that patch feed it through three levels, increasing its reach, growth and HP. Its description shows level, feeding and patch size. Destroying the Heart stops its growth but leaves the corruption; its build charge returns. |
+| **Village blight** | Corruption can creep onto streets, yards and fields, but not building interiors, walls, water, mountains or the Portal's ground and neighbors. Crops wither and cannot be replanted until cleaned. Other village objects stay. Village blight never provides ground for your summons, minions, demonic buildings or further manual corruption. |
+| **Notice and Alarm** | Nearby blight brings cleaners. At 30 affected tiles, a village raises the alarm, tells its kingdom about you and sends several cleaners, prioritizing its own ground. Divine Church villagers purify faster. Blight also adds unrest. |
+| **Fire cleanses** | When a fire ends on corrupted ground, the blight is removed there, including when the burning object or tree burns away. Fire retains the game's normal spread and damage. Bare corrupted ground is not itself flammable; burn something on it. Your demonic buildings are not cleansed by this rule. |
+
+Growth shares one map-wide hourly cap. Heart levels and feeding travel inside the game's
+save alongside the game's own saved buildings and corruption. Blight Seed, carriers,
+corpse spreading and purge parties are not included in 0.11.0.
 
 ## Optional QOL (config)
 
@@ -157,6 +170,14 @@ your `Mods/RuinarchPlus/` folder:
 | `tradeEnabled` | `true` | Villages with food to spare send traders to villages that need it. |
 | `tradeAmount` | `40` | Food one trader carries. |
 | `nightWatchEnabled` | `true` | Towns and Cities keep a night watch of their fighters. Set `false` for none. |
+| `blightEnabled` | `true` | Enables Heart construction, spreading blight and the escalated village response. Existing buildings and corruption remain when switched off. |
+| `blightTilesPerHour` | `60` | Maximum new tiles corrupted per hour across all Hearts. |
+| `blightHeartLimit` | `3` | Maximum simultaneous Hearts under normal charge rules. |
+| `blightReach` | `[6,9,13]` | Reach in tiles for each of the three Heart levels. |
+| `blightGrowthPerHour` | `[3,5,8]` | Maximum tiles each Heart adds per hour, before the shared cap. |
+| `blightFeedPerLevel` | `4` | Deaths needed for level 2; twice this number for level 3. |
+| `blightInVillages` | `true` | Allows blight to spread onto village open ground. |
+| `blightFireCleanses` | `true` | Fires cleanse corrupted ground when they end. |
 | `corpseDiseaseEnabled` | `true` | Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
 | `corpseDiseaseChancePerCorpse` | `3` | Percent infection chance, per rotting corpse, per in-game hour, per nearby villager. |
 
@@ -164,7 +185,7 @@ Edit the file and relaunch for changes to take effect.
 
 ## Install
 
-1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.5.0 or newer** (older versions cannot add Ruinarch+'s Write and Read actions or store its data in your save). Its installer patches your `Assembly-CSharp.dll` and puts `0Harmony.dll` and `Ruinarch.ModContent.dll` (which Ruinarch+ needs) in `Mods/`. Loader v0.6.0 and newer need Ruinarch+ 0.10.1 or newer.
+1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.7.0 or newer**. Ruinarch+ 0.11.0 needs its registered demonic-building support; older loaders cannot grant the Blight Heart. Its installer patches your local `Assembly-CSharp.dll` with the loader startup call and installs the framework in `Mods/`. If you already use loader 0.6.0 or newer, the main-menu Update notice can install 0.7.0.
 2. Either subscribe to [Ruinarch+ on the Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047) (Steam keeps it up to date), or download `RuinarchPlus-<version>.zip` from the [releases](https://github.com/Xm0x/RuinarchMods/releases) and unzip it into your game's `Mods/` folder, so you get `Mods/RuinarchPlus/`. Use one or the other: when both are present, the local copy wins.
 3. Launch. Check `Mods/mods.log`; you should see a line like:
    ```
@@ -185,6 +206,14 @@ tools/build-mod.sh /path/to/RuinarchMods/RuinarchPlus
 
 Each fix is one `[HarmonyPatch]` class under `Fixes/`, with a comment citing the
 exact game method and behaviour it corrects.
+
+## Version history
+
+- **0.11.0**: Blight Hearts, death-fed levels, spreading corruption, withering fields,
+  village Notice and Alarm, unrest and fire cleansing. Requires loader 0.7.0, which also
+  fixes saves with a Library, Town Hall or Mass Grave that stopped loading partway
+  (older saves load again).
+- **0.10.1**: package manifest compatible with loader 0.6.0 and Steam Workshop distribution.
 
 ## Notes
 
