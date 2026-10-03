@@ -1,8 +1,8 @@
 # TruePlanet, part 1: the planet and its provinces
 
-Status: DRAFT for the owner's review (2026-10-03). Nothing is implemented. Choices marked
-**(default)** were made while the owner was away and need a yes or a change; the questions
-at the end are the ones only the owner can answer.
+Status: DRAFT; owner answered the open questions (2026-10-03, recorded under "Owner
+decisions"). Nothing is implemented. Remaining choices marked **(default)** were made by the
+author and stand unless the owner changes them.
 
 TruePlanet is a separate mod (id `trueplanet`, namespace `TruePlanet`, folder
 `RuinarchMods/TruePlanet/`). It does not need Ruinarch+; both can be installed together.
@@ -147,13 +147,13 @@ committing).
 ### 4. Travel Portals
 
 A demonic building registered through the loader's framework (as Ruinarch+ does with the
-Blight Heart), buildable on corrupted ground. Once built, it lists the neighbouring
-provinces; choosing one opens that province (first visit: the player places a new Portal
+Blight Heart), buildable on corrupted ground. Once built, it lists every land province of
+the planet; choosing one opens that province (first visit: the player places a new Portal
 there). A province is "held" while the player's Portal in it stands.
 
 ### 5. What travels with the player
 
-**(default)**: mana, Spirit Energy, chaos orbs, and the list of unlocked powers and
+Mana, Spirit Energy, chaos orbs, and the list of unlocked powers and
 buildings are planet-wide: they follow the player into every province. Minions, summons,
 demonic buildings and corruption stay in the province where they are. (Moving minions
 between provinces is part 2.)
@@ -161,7 +161,9 @@ between provinces is part 2.)
 ### 6. Losing
 
 Losing the Portal of one province loses that province (it becomes un-held; its save stays
-on the planet). The native game-over happens only when the last held province falls.
+on the planet). The player can take it back by building a Travel Portal to it again from
+a held province: the province reopens from its save and the player places a new Portal.
+The native game-over happens only when the last held province falls.
 
 ### 7. Saving
 
@@ -226,15 +228,12 @@ features (or separate mods), not TruePlanet. Recorded here with what the source 
   game's 26 villager classes (the game's class files carry per-race sprite sets: default
   and elven today), which is the largest cost.
 
-## Questions for the owner
+## Owner decisions (2026-10-03)
 
-1. **One province live at a time** (approach 1) with a loading screen when switching:
-   acceptable? Your earlier note wanted every province with working minions to run in full,
-   which only approach 2 gives.
-2. **Planet-wide resources** (section 5): mana and unlocks follow the player; minions stay.
-   Right split?
-3. **Losing** (section 6): one province's Portal lost = that province lost, game over only
-   when all are lost. Right?
-4. **Province size**: largest Huge (32x20, about twice the game's largest; 52 fps measured
-   at 4x), bigger ones after a performance pass. Acceptable?
-5. **Travel Portals only to neighbouring provinces** in part 1, or to any province?
+1. One province live at a time, with a loading screen when switching: yes.
+2. Mana and unlocks follow the player; minions, buildings and corruption stay: yes.
+3. Losing a province's Portal loses only that province; game over when the last falls;
+   the player can always rebuild a Portal there.
+4. Largest province Huge (32x20) for now. Performance becomes a separate mod
+   ("Performance Mod"), investigated first; bigger provinces wait for its results.
+5. Travel Portals reach any province, not only neighbours.
