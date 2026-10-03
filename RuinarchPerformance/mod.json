@@ -1,0 +1,12 @@
+{
+  "id": "ruinarch.performance",
+  "name": "Performance Mod",
+  "version": "0.1.0",
+  "author": "Xm0x",
+  "description": "Makes Ruinarch faster on big maps and in long games without changing how it plays: unsubscribing from the game's signals no longer scans a list with an entry for every tree and rock, and finished jobs stop leaving listeners behind.",
+  "loader": "RuinarchModLoader",
+  "loaderApi": 1,
+  "type": "code",
+  "entryAssembly": "RuinarchPerformance.dll",
+  "entryType": "RuinarchPerformance.RuinarchPerformance"
+}

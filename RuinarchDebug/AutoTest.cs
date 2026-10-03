@@ -246,6 +246,7 @@ namespace RuinarchDebug
 
 			FreshWorldChecks();
 			// Early, while villagers are out walking; leaves the camera as it found it.
+			if (Runs("PerformanceSuite")) { yield return Safe("PerformanceSuite", PerformanceSuite()); }
 			if (Runs("TemplateSuite")) { yield return Safe("TemplateSuite", TemplateSuite()); }
 			if (Runs("BlightSuite")) { yield return Safe("BlightSuite", BlightSuite()); }
 			if (Runs("FireWallTest")) { yield return Safe("FireWallTest", FireWallTest()); }
@@ -301,6 +302,8 @@ namespace RuinarchDebug
 			if (_only.Contains("CapitalLossSuite")) { yield return Safe("CapitalLossSuite", CapitalLossSuite()); }
 			// A survey of the world's Book Shelves: only when asked for by name.
 			if (_only.Contains("ShelfProbe")) { yield return Safe("ShelfProbe", ShelfProbe()); }
+			// Replaces the world with a reload of its save: only when asked for by name.
+			if (_only.Contains("PerformanceReloadSuite")) { yield return Safe("PerformanceReloadSuite", PerformanceReloadSuite()); }
 
 			Finish("done");
 		}

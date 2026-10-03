@@ -13,6 +13,7 @@ replaced or recompiled.
 | Mod | What it does |
 |---|---|
 | **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew that closes a village's borders, factions that only attack what they know about and news that travels on foot and by gossip, villages that search for their missing, migration that follows a village's fortunes, villages that grow into Towns and Cities around a Town Hall, famine and the unrest it brings, hunters and traders. Every feature can be switched off in `config.json`. |
+| **[Performance Mod](RuinarchPerformance/README.md)** | Makes the game faster on big maps and in long games without changing how it plays. Works with or without Ruinarch+. |
 | **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
 
 ## Art
@@ -50,11 +51,16 @@ RuinarchPlus/
   Phase5/Famine.cs           famine: starving villages, people moving away
   Phase7/                    Blight Hearts, spreading corruption, village response and fire
   RuinarchPlus-DESIGN.md     design notes and roadmap
+RuinarchPerformance/
+  RuinarchPerformance.cs     entry point
+  TileObjectListeners.cs     tile objects behind one signal listener
+  JobCrimeListeners.cs       finished jobs drop their crime listener
 RuinarchDebug/
   DebugMenu.cs               in-game overlay
   AutoTest.cs                unattended in-game test harness
   TemplateSuite.cs           template export, rebuilding, packs and native construction checks
   BlightSuite.cs             blight growth, village rules, crops, feeding, save and fire checks
+  PerformanceSuite.cs        Performance Mod checks (signal lists, disconnects, reload)
   PlusBridge.cs              reaches Ruinarch+ by reflection (no hard dependency)
 tools/
   publish-workshop.sh        uploads a mod as a new version of its Steam Workshop item
