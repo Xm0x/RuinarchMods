@@ -163,6 +163,7 @@ namespace RuinarchDebug
 			Log("boot: waiting for main menu");
 			yield return WaitReal(() => MainMenuUI.Instance != null && WorldSettings.Instance != null, 180f, "main menu");
 			yield return new WaitForSecondsRealtime(5f);
+			if (Runs("ModSettingsSuite")) { yield return Safe("ModSettingsSuite (main menu)", ModsTabChecks("menu")); }
 			if (!Try("open world settings", () => MainMenuUI.Instance.OnClickPlayGame()))
 			{
 				yield break;

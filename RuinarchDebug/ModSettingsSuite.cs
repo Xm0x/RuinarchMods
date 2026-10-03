@@ -6,6 +6,8 @@ using System.Linq;
 using Newtonsoft.Json.Linq;
 using Ruinarch.Modding;
 using UnityEngine;
+using UnityEngine.UI;
+using SettingsManager = Settings.SettingsManager;
 
 namespace RuinarchDebug
 {
@@ -32,7 +34,34 @@ namespace RuinarchDebug
 		private IEnumerator ModSettingsSuite()
 		{
 			SettingsFileChecks();
+			yield return ModsTabChecks("game");
 			yield break;
+		}
+
+		// The Mods tab, driven like a player: open Settings, pick the tab, pick a mod, click a box.
+		private IEnumerator ModsTabChecks(string where)
+		{
+			SettingsManager sm = SettingsManager.Instance;
+			if (!Try($"open Settings ({where})", () => sm.OpenSettings())) yield break;
+			yield return null;
+			Transform root = sm.settingsGO.transform;
+			Toggle tab = root.Find("Tabs/Mods Tab")?.GetComponent<Toggle>();
+			GameObject panel = root.Find("Mods Options")?.gameObject;
+			Check($"the Settings window has a Mods tab ({where})", () => (tab != null && panel != null, $"tab={tab != null} panel={panel != null}"));
+			if (tab == null || panel == null) { sm.CloseSettings(); yield break; }
+			tab.isOn = true;
+			yield return null;
+			Toggle[] entries = panel.GetComponentsInChildren<Toggle>(true).Where(t => t.name.StartsWith("Mod: ")).ToArray();
+			string[] listed = entries.Select(t => t.name.Substring(5)).OrderBy(n => n).ToArray();
+			string[] registered = RegisteredSettings.All.Select(s => s.ModId).OrderBy(n => n).ToArray();
+			Check($"the Mods tab lists exactly the mods with settings ({where})", () =>
+				(panel.activeInHierarchy && listed.SequenceEqual(registered), $"shown={panel.activeInHierarchy} listed=[{string.Join(", ", listed)}] registered=[{string.Join(", ", registered)}]"));
+			yield return Screenshot($"settings-mods-{where}.png");
+			Toggle gameplay = root.Find("Tabs/Gameplay Tab")?.GetComponent<Toggle>();
+			if (gameplay != null) gameplay.isOn = true;
+			yield return null;
+			Check($"another tab hides the Mods panel ({where})", () => (!panel.activeSelf, $"panel active={panel.activeSelf}"));
+			sm.CloseSettings();
 		}
 
 		// The loader's settings file handling, on a test class and a scratch folder.
