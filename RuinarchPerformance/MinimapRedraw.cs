@@ -15,6 +15,7 @@ namespace RuinarchPerformance
 	/// texture is lost. Here the camera draws on those frames only, and only while the minimap
 	/// is shown; once a second it draws anyway, for anything else on that layer. Clicking the
 	/// minimap works as before: it uses the camera's projection, which needs no drawing.
+	/// Switched off in the settings, the camera draws every frame as in the base game.
 	/// </summary>
 	internal static class MinimapRedraw
 	{
@@ -62,6 +63,12 @@ namespace RuinarchPerformance
 			{
 				Camera camera = __instance.minimapCamera;
 				if (camera == null) return;
+				if (!RuinarchPerformance.Settings.minimapRedraw)
+				{
+					camera.enabled = true;   // the base game: draw every frame
+					_changed = true;
+					return;
+				}
 				bool shown = Shown();
 				SpriteRenderer rect = ViewRect(__instance);
 				bool moved = rect != null && (rect.transform.position != _rectPosition || rect.size != _rectSize);

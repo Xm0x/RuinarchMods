@@ -43,6 +43,30 @@ hidden it does not draw at all. It looks and works the same.
 that refreshes faster (165 Hz, 240 Hz), the mod raises the cap to the screen's rate. It
 never lowers it, and vertical sync, if you switch it on in the game's options, still wins.
 
+## Settings
+
+Open the game's Settings window and pick the **Mods** tab, then **Performance Mod**.
+
+Frame rate:
+
+- **Match screen refresh rate** (on): on a screen faster than 144 Hz, the frame rate cap
+  follows the screen. Vertical sync in the Graphics tab still comes first.
+- **Frame rate cap** (144, from 30 to 360): the highest frame rate while matching the
+  screen is off. Vertical sync in the Graphics tab still comes first.
+
+Fixes:
+
+- **Minimap redraws only when it changes** (on): off, the minimap is drawn every frame,
+  as in the base game.
+- **Tile objects share one signal listener** (on): removing a creature or building no
+  longer checks every tree and rock on the map. Needs a restart.
+- **Finished jobs drop their crime listener** (on): jobs stop leaving listeners behind
+  that slow the game down over a long game. Needs a restart.
+
+The first three take effect at once. The two listener fixes take effect the next time you
+start the game; until then the tab shows "Restart to apply" next to them. The values are
+saved in `Mods/settings/ruinarch.performance.json`.
+
 ## Measured
 
 Version 0.1.0, in one world, switching the fixes off and on again (60 seconds each, 4x
@@ -74,12 +98,12 @@ with the number of objects in the world.
 ## Install
 
 1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases),
-   v0.6.0 or newer.
+   v0.8.0 or newer (the settings need it).
 2. Copy the `RuinarchPerformance` folder into your game's `Mods/` folder, so you get
    `Mods/RuinarchPerformance/`.
 3. Launch. `Mods/mods.log` should have a line like:
    ```
-   [ruinarch.performance] Performance Mod v0.2.0: tile-object signal table, job crime-listener cleanup, minimap redraw on change and frame cap active
+   [ruinarch.performance] Performance Mod v0.3.0: tile-object signal table on, job crime-listener cleanup on, minimap redraw on change on, frame cap matches the screen
    ```
 
 ## Build from source

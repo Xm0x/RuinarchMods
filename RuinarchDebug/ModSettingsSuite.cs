@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Ruinarch.Modding;
 using UnityEngine;
@@ -34,11 +35,13 @@ namespace RuinarchDebug
 		private IEnumerator ModSettingsSuite()
 		{
 			SettingsFileChecks();
+			yield return PerformanceSettingsChecks();
 			yield return ModsTabChecks("game");
-			yield break;
 		}
 
-		// The Mods tab, driven like a player: open Settings, pick the tab, pick a mod, click a box.
+		// The Mods tab, driven like a player: open Settings, pick the Mods tab, check the list
+		// matches the registered mods, pick the Performance Mod, click its minimap checkbox and
+		// check the setting and its file follow, click it back, then switch to another tab.
 		private IEnumerator ModsTabChecks(string where)
 		{
 			SettingsManager sm = SettingsManager.Instance;
@@ -55,13 +58,86 @@ namespace RuinarchDebug
 			string[] listed = entries.Select(t => t.name.Substring(5)).OrderBy(n => n).ToArray();
 			string[] registered = RegisteredSettings.All.Select(s => s.ModId).OrderBy(n => n).ToArray();
 			Check($"the Mods tab lists exactly the mods with settings ({where})", () =>
-				(panel.activeInHierarchy && listed.SequenceEqual(registered), $"shown={panel.activeInHierarchy} listed=[{string.Join(", ", listed)}] registered=[{string.Join(", ", registered)}]"));
-			yield return Screenshot($"settings-mods-{where}.png");
+				(panel.activeInHierarchy && registered.Length > 0 && listed.SequenceEqual(registered), $"shown={panel.activeInHierarchy} listed=[{string.Join(", ", listed)}] registered=[{string.Join(", ", registered)}]"));
+
+			RegisteredSettings perf = SettingsOf("ruinarch.performance");
+			if (perf == null) Skip($"clicking a checkbox in the Mods tab changes the setting and its file ({where})", "the Performance Mod has no settings registered");
+			else
+			{
+				Toggle entry = entries.FirstOrDefault(t => t.name == "Mod: ruinarch.performance");
+				if (entry != null) entry.isOn = true;
+				yield return null;
+				Toggle box = panel.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Setting: minimapRedraw" && t.gameObject.activeInHierarchy)?.GetComponentInChildren<Toggle>(true);
+				SettingField f = FieldOf(perf, "minimapRedraw");
+				bool before = (bool)perf.Get(f);
+				if (box != null) box.isOn = !box.isOn;
+				bool after = (bool)perf.Get(f);
+				bool file = (bool)SavedJson(perf)["minimapRedraw"];
+				Check($"clicking a checkbox in the Mods tab changes the setting and its file ({where})", () =>
+					(box != null && after == !before && file == after && RuinarchPerformanceMinimap() == after, $"row={box != null} {before} -> {after}, file {file}"));
+				if (box != null) box.isOn = !box.isOn;
+				yield return null;
+				yield return Screenshot($"settings-mods-{where}.png");
+				Check($"clicking it again puts it back ({where})", () =>
+					((bool)perf.Get(f) == before && (bool)SavedJson(perf)["minimapRedraw"] == before, $"now {perf.Get(f)}, file {SavedJson(perf)["minimapRedraw"]}"));
+			}
 			Toggle gameplay = root.Find("Tabs/Gameplay Tab")?.GetComponent<Toggle>();
 			if (gameplay != null) gameplay.isOn = true;
 			yield return null;
 			Check($"another tab hides the Mods panel ({where})", () => (!panel.activeSelf, $"panel active={panel.activeSelf}"));
 			sm.CloseSettings();
+		}
+
+		// The Performance Mod's own object, read by reflection (the mod's static Settings).
+		private static bool RuinarchPerformanceMinimap()
+		{
+			object o = AccessTools.Field(AccessTools.TypeByName("RuinarchPerformance.RuinarchPerformance"), "Settings")?.GetValue(null);
+			return o != null && (bool)AccessTools.Field(o.GetType(), "minimapRedraw").GetValue(o);
+		}
+
+		// The Performance Mod's real settings: a live one (frame cap) applies at once and raises
+		// Changed; a restart-only one is saved and pending while the running game keeps its fix.
+		private IEnumerator PerformanceSettingsChecks()
+		{
+			RegisteredSettings perf = SettingsOf("ruinarch.performance");
+			if (perf == null)
+			{
+				Skip("changing the frame rate cap applies at once and is saved", "the Performance Mod has no settings registered");
+				yield break;
+			}
+			SettingField match = FieldOf(perf, "matchScreen"), cap = FieldOf(perf, "frameRateCap");
+			object oldMatch = perf.Get(match), oldCap = perf.Get(cap);
+			int before = Application.targetFrameRate;
+			var raised = new List<string>();
+			Action<string> onChanged = n => raised.Add(n);
+			perf.Handle.Changed += onChanged;
+			perf.Set(match, false);
+			perf.Set(cap, 60);
+			int after = Application.targetFrameRate;
+			JObject saved = SavedJson(perf);
+			Check("changing the frame rate cap applies at once, is saved and raises Changed", () =>
+				(after == 60 && (int)saved["frameRateCap"] == 60 && !(bool)saved["matchScreen"] && raised.Contains("frameRateCap") && raised.Contains("matchScreen"),
+				 $"targetFrameRate {before} -> {after}; file matchScreen={saved["matchScreen"]} cap={saved["frameRateCap"]}; raised=[{string.Join(",", raised)}]"));
+			perf.Set(cap, oldCap);
+			perf.Set(match, oldMatch);
+			Check("putting the frame rate settings back restores the cap", () => (Application.targetFrameRate == before, $"{Application.targetFrameRate}, was {before}"));
+
+			SettingField table = FieldOf(perf, "tileObjectListeners");
+			raised.Clear();
+			int tableBefore = PerfBridge.TableCount;
+			perf.Set(table, false);
+			saved = SavedJson(perf);
+			bool pending = perf.RestartPending(table);
+			bool objectKept = (bool)table.Field.GetValue(perf.Target);
+			bool patched = Harmony.GetPatchInfo(AccessTools.Method(typeof(TileObject), "SubscribeListeners"))?.Prefixes.Any(p => p.owner == "ruinarch.performance") == true;
+			yield return WaitGameHours(0.5f, null);
+			Check("a restart-only setting is saved and announced but leaves the running game alone", () =>
+				(!(bool)saved["tileObjectListeners"] && pending && objectKept && patched && raised.Contains("tileObjectListeners") && PerfBridge.TableCount > 0,
+				 $"file={saved["tileObjectListeners"]} pending={pending} object={objectKept} patched={patched} raised=[{string.Join(",", raised)}] table {tableBefore} -> {PerfBridge.TableCount}"));
+			perf.Set(table, true);
+			perf.Handle.Changed -= onChanged;
+			Check("setting it back clears the restart note", () =>
+				(!perf.RestartPending(table) && (bool)SavedJson(perf)["tileObjectListeners"], $"pending={perf.RestartPending(table)}"));
 		}
 
 		// The loader's settings file handling, on a test class and a scratch folder.
