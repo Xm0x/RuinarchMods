@@ -101,8 +101,12 @@ with the number of objects in the world.
 
 1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases),
    v0.8.0 or newer (the settings need it).
-2. Copy the `RuinarchPerformance` folder into your game's `Mods/` folder, so you get
-   `Mods/RuinarchPerformance/`.
+2. Either subscribe to the Performance Mod on the
+   [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3813240118)
+   (Steam keeps it up to date), or download `RuinarchPerformance-<version>.zip` from the
+   [releases](https://github.com/Xm0x/RuinarchMods/releases) and unzip it into your game's
+   `Mods/` folder, so you get `Mods/RuinarchPerformance/`. Use one or the other: when both
+   are present, the local copy wins.
 3. Launch. `Mods/mods.log` should have a line like:
    ```
    [ruinarch.performance] Performance Mod v0.3.0: tile-object signal table on, job crime-listener cleanup on, minimap redraw on change on, frame cap matches the screen

@@ -103,11 +103,14 @@ the release gate.
 ## Releasing on the Steam Workshop
 
 Ruinarch+ is also published as Workshop item
-[3811868047](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047). Each
+[3811868047](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047), and the
+Performance Mod as
+[3813240118](https://steamcommunity.com/sharedfiles/filedetails/?id=3813240118). Each
 release uploads the new version there too:
 
 ```bash
-tools/publish-workshop.sh RuinarchPlus 3811868047 "Ruinarch+ 0.11.0: <what changed>"
+tools/publish-workshop.sh RuinarchPlus 3811868047 "Ruinarch+ 0.12.0: <what changed>"
+tools/publish-workshop.sh RuinarchPerformance 3813240118 "Performance Mod 0.3.0: <what changed>"
 ```
 
 The script builds the mod into a clean folder (the DLL, `mod.json`, `README.md` and any
@@ -118,5 +121,10 @@ the files and the change note change; the title, description, images and visibil
 as they were set on the item's Steam page. It needs Steam running and logged in as the
 item's owner, the game closed, and the RuinarchModLoader checkout next to this repo (or
 `RUIN_LOADER_DIR`), built and installed in the game.
+
+For a mod that is not on the Workshop yet, pass `new` instead of an item id. The script
+creates a public item titled with the mod's `mod.json` name and tagged `RuinarchModLoader`
+(the tag the loader's own Workshop upload uses). Its description says the mod needs the
+loader and then gives the `mod.json` description. The new item's id is printed; add it here.
 
 This repo holds source only: no game binaries or assets.
