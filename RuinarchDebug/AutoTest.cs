@@ -237,7 +237,7 @@ namespace RuinarchDebug
 			// Corpse-borne plague is not under test; left on, it slowly empties the
 			// villages the later tests need. The life cycle neither: old age kills the villagers
 			// a test follows (a captive died of it mid-search). LifeSuite turns it on for its
-			// own checks. In memory only: config.json is untouched.
+			// own checks. In memory only: Mods/settings/ruinarch.plus.json is untouched.
 			PlusBridge.SetConfig("corpseDiseaseEnabled", false);
 			PlusBridge.SetConfig("lifeCycleEnabled", false);
 			// Unrest neither: the harness's own killings and wrecking would set villages rising

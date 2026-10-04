@@ -18,7 +18,8 @@ namespace RuinarchPlus
 			Log = context.Logger;
 			Log.Info($"{context.Info.name} v{context.Info.version} loading...");
 			ModDir = context.ModDirectory;
-			RuinarchPlusConfig.Load(context.ModDirectory);
+			SettingsMigration.Migrate(System.IO.Path.Combine(context.ModDirectory, "config.json"), context.Settings.FilePath, Log);
+			RuinarchPlusConfig.Current = context.Settings.Register<RuinarchPlusConfig>();
 
 			var harmony = new Harmony(context.Info.id);
 			harmony.PatchAll(typeof(RuinarchPlus).Assembly);

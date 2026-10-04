@@ -8,7 +8,7 @@ It follows the [Ruinarch+ roadmap](RuinarchPlus-DESIGN.md). Shipped so far: the 
 bug fixes, and the first features of Phases 2 to 7 (death and decay, knowledge, gossip and
 records, migration, growing settlements, famine, unrest and uprisings, hunting and trade, a
 night watch, and spreading blight). These change the game by default; each can be switched off in
-`config.json`.
+the game's Settings window, on the Mods tab.
 
 ## What it fixes
 
@@ -88,40 +88,19 @@ Growth shares one map-wide hourly cap. Heart levels and feeding travel inside th
 save alongside the game's own saved buildings and corruption. Blight Seed, carriers,
 corpse spreading and purge parties are not included in 0.11.0.
 
-## Optional QOL (config)
+## Options
 
-On first launch the mod writes **`config.json`** next to `RuinarchPlus.dll` in
-your `Mods/RuinarchPlus/` folder:
+Change the options in the game: open **Settings**, pick the **Mods** tab, then **Ruinarch+**.
+A change applies at once, in the menu or during a game. The options are saved in
+`Mods/settings/ruinarch.plus.json`.
 
-```json
-{
-    "disableTutorial": false,
-    "corpseDecayEnabled": true,
-    "corpseDecayDays": 3,
-    "massGraveBurialEnabled": true,
-    "massGraveFallbackHours": 12,
-    "curfewEnabled": true,
-    "knowledgeEnabled": true,
-    "missingPersonsEnabled": true,
-    "missingAfterHours": 24,
-    "searchSweepHours": 6,
-    "searchRetryHours": 24,
-    "searchMaxAttempts": 3,
-    "migrationHealthEnabled": true,
-    "lifeCycleEnabled": true,
-    "lifeDaysPerYear": 16,
-    "creatureLifeEnabled": true,
-    "recordsEnabled": true,
-    "settlementTiersEnabled": true,
-    "townPopulation": 20,
-    "cityPopulation": 40,
-    "famineEnabled": true,
-    "famineHours": 12,
-    "famineLeaveChance": 25,
-    "corpseDiseaseEnabled": true,
-    "corpseDiseaseChancePerCorpse": 3
-}
-```
+If you used Ruinarch+ 0.11 or older, your options were in `Mods/RuinarchPlus/config.json`.
+The first start of 0.12 moves them to `Mods/settings/ruinarch.plus.json` by itself and renames
+the old file `config.json.migrated`, so you keep every value.
+
+The names below are the ones in the settings file. `blightReach` and `blightGrowthPerHour`
+are lists, so they are not in the Settings window; change them in the file while the game is
+closed.
 
 | Flag | Default | Effect |
 |------|---------|--------|
@@ -181,11 +160,12 @@ your `Mods/RuinarchPlus/` folder:
 | `corpseDiseaseEnabled` | `true` | Rotting corpses in a settlement spread plague to nearby villagers. Requires `corpseDecayEnabled`. |
 | `corpseDiseaseChancePerCorpse` | `3` | Percent infection chance, per rotting corpse, per in-game hour, per nearby villager. |
 
-Edit the file and relaunch for changes to take effect.
+The Settings window keeps every number inside the range its slider allows; the settings file
+is held to the same ranges when the game starts.
 
 ## Install
 
-1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.7.0 or newer**. Ruinarch+ 0.11.0 needs its registered demonic-building support; older loaders cannot grant the Blight Heart. Its installer patches your local `Assembly-CSharp.dll` with the loader startup call and installs the framework in `Mods/`. If you already use loader 0.6.0 or newer, the main-menu Update notice can install 0.7.0.
+1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.8.0 or newer**. Ruinarch+ 0.12.0 puts its options in the game's Settings window, which needs loader 0.8.0; older loaders refuse to load it. Its installer patches your local `Assembly-CSharp.dll` with the loader startup call and installs the framework in `Mods/`. If you already use loader 0.6.0 or newer, the main-menu Update notice can install 0.8.0.
 2. Either subscribe to [Ruinarch+ on the Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047) (Steam keeps it up to date), or download `RuinarchPlus-<version>.zip` from the [releases](https://github.com/Xm0x/RuinarchMods/releases) and unzip it into your game's `Mods/` folder, so you get `Mods/RuinarchPlus/`. Use one or the other: when both are present, the local copy wins.
 3. Launch. Check `Mods/mods.log`; you should see a line like:
    ```
@@ -209,6 +189,8 @@ exact game method and behaviour it corrects.
 
 ## Version history
 
+- **0.12.0**: options in the game's Settings window (Mods tab), saved in Mods/settings/; the
+  old config.json moves there by itself. Requires loader 0.8.0.
 - **0.11.0**: Blight Hearts, death-fed levels, spreading corruption, withering fields,
   village Notice and Alarm, unrest and fire cleansing. Requires loader 0.7.0, which also
   fixes saves with a Library, Town Hall or Mass Grave that stopped loading partway

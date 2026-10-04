@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Ruinarch.Modding;
@@ -36,6 +37,7 @@ namespace RuinarchDebug
 		{
 			SettingsFileChecks();
 			yield return PerformanceSettingsChecks();
+			PlusMigrationChecks();
 			yield return ModsTabChecks("game");
 		}
 
@@ -81,6 +83,7 @@ namespace RuinarchDebug
 				Check($"clicking it again puts it back ({where})", () =>
 					((bool)perf.Get(f) == before && (bool)SavedJson(perf)["minimapRedraw"] == before, $"now {perf.Get(f)}, file {SavedJson(perf)["minimapRedraw"]}"));
 			}
+			yield return PlusPageChecks(entries, panel, where);
 			Toggle gameplay = root.Find("Tabs/Gameplay Tab")?.GetComponent<Toggle>();
 			if (gameplay != null) gameplay.isOn = true;
 			yield return null;
@@ -93,6 +96,72 @@ namespace RuinarchDebug
 		{
 			object o = AccessTools.Field(AccessTools.TypeByName("RuinarchPerformance.RuinarchPerformance"), "Settings")?.GetValue(null);
 			return o != null && (bool)AccessTools.Field(o.GetType(), "minimapRedraw").GetValue(o);
+		}
+
+		// Ruinarch+ 0.11 kept config.json (JsonUtility) in its folder; the first start of 0.12 moves it.
+		// Works in its own folder under RuinarchDebug, never on the player's real files.
+		private void PlusMigrationChecks()
+		{
+			Type config = AccessTools.TypeByName("RuinarchPlus.RuinarchPlusConfig");
+			MethodInfo migrate = AccessTools.Method(AccessTools.TypeByName("RuinarchPlus.SettingsMigration"), "Migrate");
+			if (config == null || migrate == null)
+			{
+				Skip("an old Ruinarch+ config.json moves to Mods/settings with its values", "Ruinarch+ with settings is not loaded");
+				return;
+			}
+			string dir = Path.Combine(ModLoader.ModsRoot, "RuinarchDebug", "migration-test");
+			try
+			{
+				if (Directory.Exists(dir)) Directory.Delete(dir, true);
+				Directory.CreateDirectory(dir);
+				string old = Path.Combine(dir, "config.json");
+				string target = Path.Combine(dir, "settings", "ruinarch.plus.json");
+				var log = new ModLogger("ruinarch.debug", ModLoader.LogFile);
+				object custom = Activator.CreateInstance(config);
+				AccessTools.Field(config, "gossipChance").SetValue(custom, 7);
+				AccessTools.Field(config, "corpseDecayDays").SetValue(custom, 1.5f);
+				AccessTools.Field(config, "curfewEnabled").SetValue(custom, false);
+				File.WriteAllText(old, JsonUtility.ToJson(custom, true));
+				bool moved = (bool)migrate.Invoke(null, new object[] { old, target, log });
+				object loaded = Activator.CreateInstance(config);
+				RegisteredSettings.Create(loaded, "ruinarch.plus", "Ruinarch+", target, log, null);
+				int gossip = (int)AccessTools.Field(config, "gossipChance").GetValue(loaded);
+				float decay = (float)AccessTools.Field(config, "corpseDecayDays").GetValue(loaded);
+				bool curfew = (bool)AccessTools.Field(config, "curfewEnabled").GetValue(loaded);
+				Check("an old Ruinarch+ config.json moves to Mods/settings with its values", () =>
+					(moved && gossip == 7 && decay == 1.5f && !curfew && !File.Exists(old) && File.Exists(old + ".migrated"),
+					 $"moved={moved} gossip={gossip} decay={decay} curfew={curfew} old left={File.Exists(old)} renamed={File.Exists(old + ".migrated")}"));
+				bool again = (bool)migrate.Invoke(null, new object[] { old, target, log });
+				Check("the migration runs once", () => (!again, $"second run moved={again}"));
+			}
+			finally
+			{
+				if (Directory.Exists(dir)) Directory.Delete(dir, true);
+			}
+			RegisteredSettings plus = SettingsOf("ruinarch.plus");
+			Check("Ruinarch+ shows its options in the Mods tab, none restart-only", () =>
+				(plus != null && plus.Fields.Count == 57 && plus.Fields.All(f => !f.RequiresRestart) && plus.Fields.All(f => f.Section != null),
+				 $"registered={plus != null} shown={plus?.Fields.Count} restart={plus?.Fields.Count(f => f.RequiresRestart)} unsectioned={plus?.Fields.Count(f => f.Section == null)}"));
+		}
+
+		// The Ruinarch+ page: one row per option, scrolled partway down for a screenshot.
+		private IEnumerator PlusPageChecks(Toggle[] entries, GameObject panel, string where)
+		{
+			Toggle entry = entries.FirstOrDefault(t => t.name == "Mod: ruinarch.plus");
+			if (entry == null) { Skip($"the Ruinarch+ page shows all its options ({where})", "Ruinarch+ is not listed"); yield break; }
+			entry.isOn = true;
+			yield return null;
+			int rows = panel.GetComponentsInChildren<Transform>(false).Count(t => t.name.StartsWith("Setting: "));
+			int sections = panel.GetComponentsInChildren<Transform>(false).Count(t => t.name.StartsWith("Section: "));
+			ScrollRect scroll = panel.GetComponentsInChildren<ScrollRect>(false).FirstOrDefault(s => s.content != null && s.content.GetComponentsInChildren<Transform>(false).Any(t => t.name.StartsWith("Setting: ")));
+			Canvas.ForceUpdateCanvases();
+			if (scroll != null) scroll.verticalNormalizedPosition = 0.6f;
+			yield return null;
+			yield return null;
+			yield return Screenshot($"settings-mods-plus-{where}.png");
+			Check($"the Ruinarch+ page shows all its options ({where})", () =>
+				(rows == 57 && sections == 11 && scroll != null && scroll.content.rect.height > ((RectTransform)scroll.viewport).rect.height,
+				 $"rows={rows} sections={sections} scroll={scroll != null} content={scroll?.content.rect.height} viewport={(scroll?.viewport as RectTransform)?.rect.height}"));
 		}
 
 		// The Performance Mod's real settings: a live one (frame cap) applies at once and raises
