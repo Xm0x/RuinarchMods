@@ -242,6 +242,8 @@ namespace RuinarchDebug
 				return;
 			}
 			object old = plus.Get(limit);
+			// Set saves the whole live Ruinarch+ object, which holds the harness's run-only values.
+			byte[] file = File.Exists(plus.FilePath) ? File.ReadAllBytes(plus.FilePath) : null;
 			try
 			{
 				int was = (int)old, other = was == 7 ? 8 : 7;
@@ -255,7 +257,40 @@ namespace RuinarchDebug
 			finally
 			{
 				if (!Equals(plus.Get(limit), old)) plus.Set(limit, old);
+				if (file != null) File.WriteAllBytes(plus.FilePath, file);
 			}
+		}
+
+		// The player's settings files as they were when the run began, put back when it ends:
+		// checks that save a mod's settings save its whole live object, run-only values included.
+		private readonly Dictionary<string, byte[]> _settingsFiles = new Dictionary<string, byte[]>();
+
+		private void SnapshotSettings()
+		{
+			string dir = Path.Combine(ModLoader.ModsRoot, "settings");
+			if (!Directory.Exists(dir)) return;
+			foreach (string path in Directory.GetFiles(dir, "*.json"))
+			{
+				_settingsFiles[path] = File.ReadAllBytes(path);
+				Log($"settings file kept for the end of the run: {Path.GetFileName(path)}");
+			}
+		}
+
+		private void RestoreSettings()
+		{
+			foreach (KeyValuePair<string, byte[]> kv in _settingsFiles)
+			{
+				try
+				{
+					File.WriteAllBytes(kv.Key, kv.Value);
+					Log($"settings file put back: {Path.GetFileName(kv.Key)}");
+				}
+				catch (Exception e)
+				{
+					Log($"settings file {Path.GetFileName(kv.Key)} could not be put back: {e.Message}");
+				}
+			}
+			_settingsFiles.Clear();
 		}
 
 		// The loader's settings file handling, on a test class and a scratch folder.

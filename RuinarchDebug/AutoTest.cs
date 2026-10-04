@@ -106,6 +106,7 @@ namespace RuinarchDebug
 			// the test run and mirror game errors/exceptions into autotest.log.
 			Debug.unityLogger.logEnabled = true;
 			Application.logMessageReceived += OnGameLog;
+			SnapshotSettings();
 			StartCoroutine(Run());
 		}
 
@@ -113,6 +114,9 @@ namespace RuinarchDebug
 		{
 			Application.logMessageReceived -= OnGameLog;
 		}
+
+		// Every way out of a run that does not pass through Finish still puts the files back.
+		private void OnApplicationQuit() => RestoreSettings();
 
 		private void OnGameLog(string condition, string stackTrace, LogType type)
 		{
@@ -237,7 +241,9 @@ namespace RuinarchDebug
 			// Corpse-borne plague is not under test; left on, it slowly empties the
 			// villages the later tests need. The life cycle neither: old age kills the villagers
 			// a test follows (a captive died of it mid-search). LifeSuite turns it on for its
-			// own checks. In memory only: Mods/settings/ruinarch.plus.json is untouched.
+			// own checks. Meant for this run only: any check that saves Ruinarch+ settings writes
+			// these values into Mods/settings/ruinarch.plus.json too, so the harness puts every
+			// settings file back at the end of the run (RestoreSettings).
 			PlusBridge.SetConfig("corpseDiseaseEnabled", false);
 			PlusBridge.SetConfig("lifeCycleEnabled", false);
 			// Unrest neither: the harness's own killings and wrecking would set villages rising
@@ -5865,6 +5871,7 @@ namespace RuinarchDebug
 				Log($"deaths of villagers during the run ({Deaths.Values.Sum()}): " + string.Join(", ", Deaths.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Value}x {kv.Key}")));
 			}
 			Log($"AUTOTEST DONE ({reason}) pass={_pass} fail={_fail} skip={_skip} gameHours={GameHours:F1}");
+			RestoreSettings();
 			Time.timeScale = 1f;
 			StopAllCoroutines();
 			Application.Quit();
