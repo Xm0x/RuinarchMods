@@ -86,7 +86,7 @@ the game's Settings window, on the Mods tab.
 
 Growth shares one map-wide hourly cap. Heart levels and feeding travel inside the game's
 save alongside the game's own saved buildings and corruption. Blight Seed, carriers,
-corpse spreading and purge parties are not included in 0.11.0.
+corpse spreading and purge parties are not included yet; they are planned for 0.13.0.
 
 ## Options
 

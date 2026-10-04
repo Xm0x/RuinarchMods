@@ -642,7 +642,8 @@ Corruption that spreads by itself: Blight Hearts grow it and feed on deaths, Bli
 carriers and rotting bodies carry it further, it creeps onto village ground and withers
 crops, and villagers escalate from cleaning to purge parties and fire until a village may be
 abandoned. Full design: `docs/specs/2026-10-02-blight-design.md` (approved 2026-10-02).
-Ships in two slices, 0.11.0 and 0.12.0.
+Ships in two slices, 0.11.0 and 0.13.0 (0.12.0 moved Ruinarch+'s options into the game's
+Settings window).
 
 Slice 1 (0.11.0) implements Hearts, growth and death-fed levels, village blight and
 withering crops, Notice and Alarm, unrest and fire cleansing. It needs loader 0.7.0's

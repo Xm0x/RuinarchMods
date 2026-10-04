@@ -137,7 +137,7 @@ level, `blightSeedDays`, `blightCarriers`, `blightFromCorpses`, `blightInVillage
 
 1. **0.11.0**: Blight Heart with growth and levels by feeding, spreading into village ground,
    withering crops, cleanup at scale (Notice and Alarm), fire cleanses, config, save.
-2. **0.12.0**: Blight Seed (with a later loader spell API), carriers, the dead, cultists, Purge parties,
+2. **0.13.0**: Blight Seed (with a later loader spell API), carriers, the dead, cultists, Purge parties,
    Despair (famine, unrest, migration), village tooltips.
 
 Each slice: harness suite `BlightSuite` (growth rate and cap, no growth on water/Portal/

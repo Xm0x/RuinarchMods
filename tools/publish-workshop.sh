@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Upload a mod as a new version of its existing Steam Workshop item.
+# Upload a mod to the Steam Workshop: a new version of its existing item, or a new item.
 #
-# Usage: tools/publish-workshop.sh <mod-src-dir> <workshop-item-id> [change note]
+# Usage: tools/publish-workshop.sh <mod-src-dir> <workshop-item-id|new> [change note]
 #   e.g. tools/publish-workshop.sh RuinarchPlus 3811868047 "Ruinarch+ 0.10.1"
+#        tools/publish-workshop.sh RuinarchPerformance new "Performance Mod 0.3.0"
 #
 # Builds the mod into a clean folder (DLL, mod.json, README.md, art/audio/bundles; never a
 # player's config.json or logs), then launches Ruinarch through Steam once with the
 # WorkshopPublish release tool installed. The tool uploads the folder through the game's
-# own Steam session and quits. Only the files and the change note change: the item's
-# title, description, images and visibility stay as set on Steam.
+# own Steam session and quits. For an existing item only the files and the change note
+# change: the item's title, description, images and visibility stay as set on Steam.
+# "new" creates a public item titled with the mod.json name, tagged RuinarchModLoader, whose
+# description says it needs the loader, followed by the mod.json description; the new
+# item's id is printed.
 #
 # Needs Steam running and logged in as the item's owner, the game closed, and a
 # RuinarchModLoader checkout next to this repo (or RUIN_LOADER_DIR) with the loader built
@@ -18,9 +22,10 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 loader="${RUIN_LOADER_DIR:-$here/../../RuinarchModLoader}"
 source "$loader/tools/env.sh"
 
-src="$(cd "${1:?usage: publish-workshop.sh <mod-src-dir> <workshop-item-id> [change note]}" && pwd)"
-item="${2:?workshop item id required}"
-[[ "$item" =~ ^[0-9]+$ ]] || { echo "item id must be a number" >&2; exit 2; }
+src="$(cd "${1:?usage: publish-workshop.sh <mod-src-dir> <workshop-item-id|new> [change note]}" && pwd)"
+item="${2:?workshop item id or new required}"
+[ "$item" = new ] && item=0
+[[ "$item" =~ ^[0-9]+$ ]] || { echo "item id must be a number or new" >&2; exit 2; }
 name="$(basename "$src")"
 version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$src/mod.json")"
 note="${3:-Version $version}"
@@ -43,10 +48,23 @@ trap cleanup EXIT
 
 # The game runs under Proton: Steam reads the folder through the Windows view of / (Z:).
 winpath="Z:${stage//\//\\}\\$name"
-python3 - "$tool/publish.json" "$item" "$winpath" "$note" <<'EOF'
+python3 - "$tool/publish.json" "$item" "$winpath" "$note" "$src/mod.json" <<'EOF'
 import json, sys
-path, item, folder, note = sys.argv[1:]
-json.dump({"item": int(item), "folder": folder, "note": note}, open(path, "w"))
+path, item, folder, note, manifest = sys.argv[1:]
+request = {"item": int(item), "folder": folder, "note": note}
+if int(item) == 0:
+    mod = json.load(open(manifest))
+    request["title"] = mod["name"]
+    request["tag"] = "RuinarchModLoader"
+    request["description"] = (
+        "CAUTION: This mod only works if you have properly installed\n"
+        "RuinarchModLoader (https://github.com/Xm0x/RuinarchModLoader).\n"
+        "After installing, you will see the mod when you click the 'Mods' button in the main menu.\n\n"
+        + mod.get("description", "") + "\n\n"
+        "For more information:\n"
+        "https://github.com/Xm0x/RuinarchRE\n"
+        "https://github.com/Xm0x/RuinarchMods")
+json.dump(request, open(path, "w"))
 EOF
 
 echo "Uploading $name $version ($(ls "$stage/$name" | tr '\n' ' ')) to Workshop item $item..."
