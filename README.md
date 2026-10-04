@@ -36,6 +36,7 @@ RuinarchModLoader repo; see its
 RuinarchPlus/
   RuinarchPlus.cs            entry point: applies the patches, registers the buildings
   Config.cs                  options shown in the Settings window (Mods tab)
+  SettingsMigration.cs       moves options from the old config.json into the settings file
   ModBuildings.cs            villagers build Ruinarch+ buildings (shared construction)
   Fixes/                     one Harmony patch class per bug fix
   Phase2/                    death, decay and disease
@@ -55,12 +56,16 @@ RuinarchPerformance/
   RuinarchPerformance.cs     entry point
   TileObjectListeners.cs     tile objects behind one signal listener
   JobCrimeListeners.cs       finished jobs drop their crime listener
+  MinimapRedraw.cs           the minimap redraws only when it changes
+  FrameRateCap.cs            the frame rate cap follows the screen or the player's setting
+  PerformanceSettings.cs     options shown in the Settings window (Mods tab)
 RuinarchDebug/
   DebugMenu.cs               in-game overlay
   AutoTest.cs                unattended in-game test harness
   TemplateSuite.cs           template export, rebuilding, packs and native construction checks
   BlightSuite.cs             blight growth, village rules, crops, feeding, save and fire checks
   PerformanceSuite.cs        Performance Mod checks (signal lists, disconnects, reload)
+  ModSettingsSuite.cs        mod settings checks (files, values, the Mods tab)
   PlusBridge.cs              reaches Ruinarch+ by reflection (no hard dependency)
 tools/
   publish-workshop.sh        uploads a mod as a new version of its Steam Workshop item

@@ -21,10 +21,12 @@ namespace RuinarchPerformance
 
 		private static void Postfix(SettingsManager __instance)
 		{
-			if (SettingsManager.Instance == __instance) Apply();
+			if (SettingsManager.Instance == __instance) Apply(log: true);
 		}
 
-		internal static void Apply()
+		// Called again on every settings change (each step of a dragged slider), so only the
+		// startup call logs.
+		internal static void Apply(bool log = false)
 		{
 			SettingsManager game = SettingsManager.Instance;
 			if (game == null) return;
@@ -34,7 +36,7 @@ namespace RuinarchPerformance
 			int was = Application.targetFrameRate;
 			Application.targetFrameRate = want;
 			if (CharacterTickManager.Instance != null) MaxTickTime(CharacterTickManager.Instance) = 0.9f / want;
-			RuinarchPerformance.Log?.Info($"Frame rate cap {was} -> {want}{(s.matchScreen ? " (matching the screen)" : "")}.");
+			if (log) RuinarchPerformance.Log?.Info($"Frame rate cap {was} -> {want}{(s.matchScreen ? " (matching the screen)" : "")}.");
 		}
 	}
 }

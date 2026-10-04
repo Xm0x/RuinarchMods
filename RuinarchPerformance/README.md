@@ -40,8 +40,10 @@ changes, the rectangle showing your view moves, or once a second; while the mini
 hidden it does not draw at all. It looks and works the same.
 
 **The frame rate stops at 144.** The game caps itself at 144 frames a second. On a screen
-that refreshes faster (165 Hz, 240 Hz), the mod raises the cap to the screen's rate. It
-never lowers it, and vertical sync, if you switch it on in the game's options, still wins.
+that refreshes faster (165 Hz, 240 Hz), the mod raises the cap to the screen's rate. With
+the default settings the cap only ever rises, to the screen's rate; to set a fixed cap
+instead, lower or higher, see Settings below. Vertical sync, if you switch it on in the
+game's options, still wins.
 
 ## Settings
 

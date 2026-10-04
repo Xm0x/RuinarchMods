@@ -20,6 +20,10 @@ namespace RuinarchPlus
 			ModDir = context.ModDirectory;
 			SettingsMigration.Migrate(System.IO.Path.Combine(context.ModDirectory, "config.json"), context.Settings.FilePath, Log);
 			RuinarchPlusConfig.Current = context.Settings.Register<RuinarchPlusConfig>();
+			context.Settings.Changed += field =>
+			{
+				if (field == nameof(RuinarchPlusConfig.blightHeartLimit)) Phase7.BlightHeart.ApplyLimit();
+			};
 
 			var harmony = new Harmony(context.Info.id);
 			harmony.PatchAll(typeof(RuinarchPlus).Assembly);

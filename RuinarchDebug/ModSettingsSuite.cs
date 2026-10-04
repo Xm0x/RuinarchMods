@@ -7,6 +7,7 @@ using System.Reflection;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Ruinarch.Modding;
+using Ruinarch.ModContent;
 using UnityEngine;
 using UnityEngine.UI;
 using SettingsManager = Settings.SettingsManager;
@@ -37,6 +38,7 @@ namespace RuinarchDebug
 		{
 			SettingsFileChecks();
 			yield return PerformanceSettingsChecks();
+			BlightLimitChecks();
 			PlusMigrationChecks();
 			yield return ModsTabChecks("game");
 		}
@@ -72,16 +74,24 @@ namespace RuinarchDebug
 				Toggle box = panel.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == "Setting: minimapRedraw" && t.gameObject.activeInHierarchy)?.GetComponentInChildren<Toggle>(true);
 				SettingField f = FieldOf(perf, "minimapRedraw");
 				bool before = (bool)perf.Get(f);
-				if (box != null) box.isOn = !box.isOn;
-				bool after = (bool)perf.Get(f);
-				bool file = (bool)SavedJson(perf)["minimapRedraw"];
-				Check($"clicking a checkbox in the Mods tab changes the setting and its file ({where})", () =>
-					(box != null && after == !before && file == after && RuinarchPerformanceMinimap() == after, $"row={box != null} {before} -> {after}, file {file}"));
-				if (box != null) box.isOn = !box.isOn;
-				yield return null;
-				yield return Screenshot($"settings-mods-{where}.png");
-				Check($"clicking it again puts it back ({where})", () =>
-					((bool)perf.Get(f) == before && (bool)SavedJson(perf)["minimapRedraw"] == before, $"now {perf.Get(f)}, file {SavedJson(perf)["minimapRedraw"]}"));
+				try
+				{
+					if (box != null) box.isOn = !box.isOn;
+					bool after = (bool)perf.Get(f);
+					bool file = (bool)SavedJson(perf)["minimapRedraw"];
+					Check($"clicking a checkbox in the Mods tab changes the setting and its file ({where})", () =>
+						(box != null && after == !before && file == after && RuinarchPerformanceMinimap() == after, $"row={box != null} {before} -> {after}, file {file}"));
+					if (box != null) box.isOn = !box.isOn;
+					yield return null;
+					yield return Screenshot($"settings-mods-{where}.png");
+					Check($"clicking it again puts it back ({where})", () =>
+						((bool)perf.Get(f) == before && (bool)SavedJson(perf)["minimapRedraw"] == before, $"now {perf.Get(f)}, file {SavedJson(perf)["minimapRedraw"]}"));
+				}
+				finally
+				{
+					// The player's real file: leave it as it was, whatever happened above.
+					if ((bool)perf.Get(f) != before) perf.Set(f, before);
+				}
 			}
 			yield return PlusPageChecks(entries, panel, where);
 			Toggle gameplay = root.Find("Tabs/Gameplay Tab")?.GetComponent<Toggle>();
@@ -174,39 +184,78 @@ namespace RuinarchDebug
 				Skip("changing the frame rate cap applies at once and is saved", "the Performance Mod has no settings registered");
 				yield break;
 			}
-			SettingField match = FieldOf(perf, "matchScreen"), cap = FieldOf(perf, "frameRateCap");
-			object oldMatch = perf.Get(match), oldCap = perf.Get(cap);
+			SettingField match = FieldOf(perf, "matchScreen"), cap = FieldOf(perf, "frameRateCap"), table = FieldOf(perf, "tileObjectListeners");
+			object oldMatch = perf.Get(match), oldCap = perf.Get(cap), oldTable = perf.Get(table);
 			int before = Application.targetFrameRate;
 			var raised = new List<string>();
 			Action<string> onChanged = n => raised.Add(n);
 			perf.Handle.Changed += onChanged;
-			perf.Set(match, false);
-			perf.Set(cap, 60);
-			int after = Application.targetFrameRate;
-			JObject saved = SavedJson(perf);
-			Check("changing the frame rate cap applies at once, is saved and raises Changed", () =>
-				(after == 60 && (int)saved["frameRateCap"] == 60 && !(bool)saved["matchScreen"] && raised.Contains("frameRateCap") && raised.Contains("matchScreen"),
-				 $"targetFrameRate {before} -> {after}; file matchScreen={saved["matchScreen"]} cap={saved["frameRateCap"]}; raised=[{string.Join(",", raised)}]"));
-			perf.Set(cap, oldCap);
-			perf.Set(match, oldMatch);
-			Check("putting the frame rate settings back restores the cap", () => (Application.targetFrameRate == before, $"{Application.targetFrameRate}, was {before}"));
+			try
+			{
+				perf.Set(match, false);
+				perf.Set(cap, 60);
+				int after = Application.targetFrameRate;
+				JObject saved = SavedJson(perf);
+				Check("changing the frame rate cap applies at once, is saved and raises Changed", () =>
+					(after == 60 && (int)saved["frameRateCap"] == 60 && !(bool)saved["matchScreen"] && raised.Contains("frameRateCap") && raised.Contains("matchScreen"),
+					 $"targetFrameRate {before} -> {after}; file matchScreen={saved["matchScreen"]} cap={saved["frameRateCap"]}; raised=[{string.Join(",", raised)}]"));
+				perf.Set(cap, oldCap);
+				perf.Set(match, oldMatch);
+				Check("putting the frame rate settings back restores the cap", () => (Application.targetFrameRate == before, $"{Application.targetFrameRate}, was {before}"));
 
-			SettingField table = FieldOf(perf, "tileObjectListeners");
-			raised.Clear();
-			int tableBefore = PerfBridge.TableCount;
-			perf.Set(table, false);
-			saved = SavedJson(perf);
-			bool pending = perf.RestartPending(table);
-			bool objectKept = (bool)table.Field.GetValue(perf.Target);
-			bool patched = Harmony.GetPatchInfo(AccessTools.Method(typeof(TileObject), "SubscribeListeners"))?.Prefixes.Any(p => p.owner == "ruinarch.performance") == true;
-			yield return WaitGameHours(0.5f, null);
-			Check("a restart-only setting is saved and announced but leaves the running game alone", () =>
-				(!(bool)saved["tileObjectListeners"] && pending && objectKept && patched && raised.Contains("tileObjectListeners") && PerfBridge.TableCount > 0,
-				 $"file={saved["tileObjectListeners"]} pending={pending} object={objectKept} patched={patched} raised=[{string.Join(",", raised)}] table {tableBefore} -> {PerfBridge.TableCount}"));
-			perf.Set(table, true);
-			perf.Handle.Changed -= onChanged;
-			Check("setting it back clears the restart note", () =>
-				(!perf.RestartPending(table) && (bool)SavedJson(perf)["tileObjectListeners"], $"pending={perf.RestartPending(table)}"));
+				raised.Clear();
+				int tableBefore = PerfBridge.TableCount;
+				perf.Set(table, false);
+				saved = SavedJson(perf);
+				bool pending = perf.RestartPending(table);
+				bool objectKept = (bool)table.Field.GetValue(perf.Target);
+				bool patched = Harmony.GetPatchInfo(AccessTools.Method(typeof(TileObject), "SubscribeListeners"))?.Prefixes.Any(p => p.owner == "ruinarch.performance") == true;
+				yield return WaitGameHours(0.5f, null);
+				Check("a restart-only setting is saved and announced but leaves the running game alone", () =>
+					(!(bool)saved["tileObjectListeners"] && pending && objectKept && patched && raised.Contains("tileObjectListeners") && PerfBridge.TableCount > 0,
+					 $"file={saved["tileObjectListeners"]} pending={pending} object={objectKept} patched={patched} raised=[{string.Join(",", raised)}] table {tableBefore} -> {PerfBridge.TableCount}"));
+				perf.Set(table, oldTable);
+				Check("setting it back clears the restart note", () =>
+					(!perf.RestartPending(table) && (bool)SavedJson(perf)["tileObjectListeners"] == (bool)oldTable, $"pending={perf.RestartPending(table)}"));
+			}
+			finally
+			{
+				perf.Handle.Changed -= onChanged;
+				// The player's real file: leave it as it was, whatever happened above.
+				if (!Equals(perf.Get(cap), oldCap)) perf.Set(cap, oldCap);
+				if (!Equals(perf.Get(match), oldMatch)) perf.Set(match, oldMatch);
+				if (!Equals(perf.Get(table), oldTable)) perf.Set(table, oldTable);
+			}
+		}
+
+		// Ruinarch+'s Blight Heart limit is live: changing it in a running world changes the build
+		// skill's charges at once.
+		private void BlightLimitChecks()
+		{
+			const string name = "changing the Blight Heart limit changes the build skill's charges at once";
+			RegisteredSettings plus = SettingsOf("ruinarch.plus");
+			SettingField limit = FieldOf(plus, "blightHeartLimit");
+			DemonicStructurePlayerSkill skill = PlayerSkillManager.Instance?.GetDemonicStructureSkillData(ModContent.SkillTypeFor("ruinarch.plus.blight_heart"));
+			if (limit == null || skill == null || !skill.isInUse)
+			{
+				Skip(name, $"limit setting={limit != null} skill={skill != null} granted={skill?.isInUse}");
+				return;
+			}
+			object old = plus.Get(limit);
+			try
+			{
+				int was = (int)old, other = was == 7 ? 8 : 7;
+				int built = was - skill.charges;
+				plus.Set(limit, other);
+				int maxAfter = skill.maxCharges, chargesAfter = skill.charges;
+				plus.Set(limit, old);
+				Check(name, () => (maxAfter == other && chargesAfter == Math.Max(0, other - built) && skill.maxCharges == was,
+					$"limit {was} -> {other}: max {maxAfter}, charges {chargesAfter} (built {built}); back to {was}: max {skill.maxCharges}"));
+			}
+			finally
+			{
+				if (!Equals(plus.Get(limit), old)) plus.Set(limit, old);
+			}
 		}
 
 		// The loader's settings file handling, on a test class and a scratch folder.

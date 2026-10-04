@@ -181,20 +181,46 @@ namespace RuinarchPlus.Phase7
 			}
 		}
 
-		/// <summary>Grants the build skill once the player exists, with blightHeartLimit charges.</summary>
+		/// <summary>Grants the build skill once the player exists, with blightHeartLimit charges.
+		/// Once granted (also in a loaded world), keeps the charges in step with the setting.</summary>
 		private static void Grant()
 		{
 			PlayerSkillComponent skills = PlayerManager.Instance?.player?.playerSkillComponent;
 			DemonicStructurePlayerSkill data = PlayerSkillManager.Instance?.GetDemonicStructureSkillData(ModContent.SkillTypeFor(Id));
-			if (skills == null || data == null || data.isInUse)
+			if (skills == null || data == null)
 			{
 				return;
 			}
+			if (data.isInUse)
+			{
+				if (data.maxCharges != Limit) ApplyLimit();
+				return;
+			}
 			skills.AddAndCategorizePlayerSkill(data);
-			int limit = Math.Max(1, RuinarchPlusConfig.Current.blightHeartLimit);
-			data.SetMaxCharges(limit);
-			data.SetCharges(Math.Max(0, limit - All().Count));
-			RuinarchPlus.Log?.Info($"Blight Heart can be built ({data.charges} of {limit}).");
+			SetCharges(data);
+			RuinarchPlus.Log?.Info($"Blight Heart can be built ({data.charges} of {Limit}).");
+		}
+
+		private static int Limit => Math.Max(1, RuinarchPlusConfig.Current.blightHeartLimit);
+
+		// Every Heart standing uses one charge; the rest can be built.
+		private static void SetCharges(DemonicStructurePlayerSkill data)
+		{
+			data.SetMaxCharges(Limit);
+			data.SetCharges(Math.Max(0, Limit - All().Count));
+			data.ResetAllChargesUIText();
+		}
+
+		/// <summary>Applies a changed blightHeartLimit to the running world's build skill, if it has one.</summary>
+		internal static void ApplyLimit()
+		{
+			DemonicStructurePlayerSkill data = PlayerSkillManager.Instance?.GetDemonicStructureSkillData(ModContent.SkillTypeFor(Id));
+			if (data == null || !data.isInUse || PlayerManager.Instance?.player == null)
+			{
+				return;
+			}
+			SetCharges(data);
+			RuinarchPlus.Log?.Info($"Blight Heart limit is now {Limit} ({data.charges} can be built).");
 		}
 
 		internal static void Hourly()
@@ -253,6 +279,8 @@ namespace RuinarchPlus.Phase7
 
 		private static void Load(string json)
 		{
+			// The saved skill keeps the limit of the session that saved it; use today's setting.
+			ApplyLimit();
 			BlightSaveData file = string.IsNullOrEmpty(json) ? null : JsonUtility.FromJson<BlightSaveData>(json);
 			if (file == null)
 			{
