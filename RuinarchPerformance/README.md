@@ -71,6 +71,20 @@ saved in `Mods/settings/ruinarch.performance.json`.
 
 ## Measured
 
+Every number below was measured on one machine:
+
+| | |
+|---|---|
+| Laptop | Acer Nitro AN515-58 |
+| CPU | Intel Core i7-12650H (10 cores, 16 threads, up to 4.7 GHz) |
+| GPU | NVIDIA GeForce RTX 4060 Laptop GPU, 8 GB (driver 595.104.02) |
+| Memory | 16 GB |
+| Screen | 1920x1080, 165 Hz |
+| System | Nobara Linux 44 (Linux 7.2), Ruinarch through Steam with Proton Experimental |
+
+Other machines will show different numbers; what carries over is the difference with and
+without the mod.
+
 Version 0.1.0, in one world, switching the fixes off and on again (60 seconds each, 4x
 speed, the game and the camera left alone):
 
@@ -79,7 +93,7 @@ speed, the game and the camera left alone):
 | Extra Large (24x14 areas, the game's largest) | 117 fps; 1 frame in 20 slower than 15.7 ms | 132 fps; 1 in 20 slower than 9.7 ms |
 | 40x24 areas (a test size larger than the game offers) | 28 fps; 404 frames a minute over 50 ms | 65 fps; 5 frames a minute over 50 ms |
 
-Version 0.2.0 on an Extra Large map (a 165 Hz laptop screen, RTX 4060M):
+Version 0.2.0 on an Extra Large map:
 
 | | 0.1.0 | 0.2.0 |
 |---|---|---|
