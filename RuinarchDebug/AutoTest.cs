@@ -2771,8 +2771,29 @@ namespace RuinarchDebug
 				yield break;
 			}
 			// Off for the other suites (see Run); on for these checks, then off again.
+			// A world whose villagers have ages but whose creatures were never aged (creature
+			// ageing off until now; start from no ages, the harness may have run an hour with
+			// the life cycle on). A save and load in that state must not mark the creatures
+			// aged, or switching creature ageing on ages every one of them as a newborn.
+			ReplayLoad("ruinarch.plus.life.json", "");
+			object creatureLife = PlusBridge.Config("creatureLifeEnabled");
+			PlusBridge.SetConfig("creatureLifeEnabled", false);
 			PlusBridge.SetConfig("lifeCycleEnabled", true);
 			yield return WaitGameHours(1f, null);
+			PlusBridge.SetConfig("lifeCycleEnabled", false);
+			PlusBridge.SetConfig("creatureLifeEnabled", creatureLife ?? true);
+			string unaged = null;
+			yield return SaveAndRead("ruinarch.plus.life.json", (j, e) => unaged = j);
+			if (unaged != null)
+			{
+				ReplayLoad("ruinarch.plus.life.json", unaged);
+			}
+			PlusBridge.SetConfig("lifeCycleEnabled", true);
+			yield return WaitGameHours(1f, null);
+			List<string> seeded = CharacterManager.Instance.allCharacters.Where(PlusBridge.IsCreature).Select(c => PlusBridge.LifeStage(c) ?? "none").ToList();
+			Check("creatures saved and loaded before the life cycle is on still get grown ages", () =>
+				(seeded.All(s => s != "none") && seeded.Count(s => s != "Young") * 2 >= seeded.Count,
+				(unaged == null ? "no life entry; " : unaged.Contains("V|2") ? "saved as aged; " : "saved unaged; ") + $"{seeded.Count} creatures: " + string.Join(", ", seeded.GroupBy(s => s).Select(g => $"{g.Key} {g.Count()}"))));
 			yield return LifeChecks();
 			yield return MemoryChecks();
 			yield return CreatureChecks();

@@ -189,7 +189,11 @@ namespace RuinarchPlus.Phase4
 
 		private static void SaveCreatures(List<string> lines)
 		{
-			lines.Add("V|2");
+			// Only once creatures were aged: a world saved before that still seeds them later.
+			if (!_seedCreatures)
+			{
+				lines.Add("V|2");
+			}
 			foreach (KeyValuePair<string, int> kv in Groups)
 			{
 				lines.Add($"G|{kv.Key}|{kv.Value}");

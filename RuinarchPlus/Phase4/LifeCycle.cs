@@ -239,7 +239,10 @@ namespace RuinarchPlus.Phase4
 					Dementia(c, life, now);
 				}
 			}
-			_seedCreatures = false;
+			if (CreaturesEnabled)
+			{
+				_seedCreatures = false;
+			}
 			foreach (KeyValuePair<Character, Pregnancy> kv in Pregnancies.ToList())
 			{
 				Character mother = kv.Key;
