@@ -2782,6 +2782,10 @@ namespace RuinarchDebug
 			yield return WaitGameHours(1f, null);
 			PlusBridge.SetConfig("lifeCycleEnabled", false);
 			PlusBridge.SetConfig("creatureLifeEnabled", creatureLife ?? true);
+			// Judged on the creatures the save held: one born or spawned after the next hourly
+			// check has no age until the one after (four did in a full run), which says nothing
+			// about the saved creatures being aged as newborns.
+			HashSet<Character> saved = new HashSet<Character>(CharacterManager.Instance.allCharacters.Where(PlusBridge.IsCreature));
 			string unaged = null;
 			yield return SaveAndRead("ruinarch.plus.life.json", (j, e) => unaged = j);
 			if (unaged != null)
@@ -2790,10 +2794,13 @@ namespace RuinarchDebug
 			}
 			PlusBridge.SetConfig("lifeCycleEnabled", true);
 			yield return WaitGameHours(1f, null);
-			List<string> seeded = CharacterManager.Instance.allCharacters.Where(PlusBridge.IsCreature).Select(c => PlusBridge.LifeStage(c) ?? "none").ToList();
+			List<Character> now = CharacterManager.Instance.allCharacters.Where(PlusBridge.IsCreature).ToList();
+			List<string> seeded = now.Where(saved.Contains).Select(c => PlusBridge.LifeStage(c) ?? "none").ToList();
+			int newcomers = now.Count(c => !saved.Contains(c)), newcomersUnaged = now.Count(c => !saved.Contains(c) && PlusBridge.LifeStage(c) == null);
 			Check("creatures saved and loaded before the life cycle is on still get grown ages", () =>
-				(seeded.All(s => s != "none") && seeded.Count(s => s != "Young") * 2 >= seeded.Count,
-				(unaged == null ? "no life entry; " : unaged.Contains("V|2") ? "saved as aged; " : "saved unaged; ") + $"{seeded.Count} creatures: " + string.Join(", ", seeded.GroupBy(s => s).Select(g => $"{g.Key} {g.Count()}"))));
+				(seeded.Count > 0 && seeded.All(s => s != "none") && seeded.Count(s => s != "Young") * 2 >= seeded.Count,
+				(unaged == null ? "no life entry; " : unaged.Contains("V|2") ? "saved as aged; " : "saved unaged; ") + $"{seeded.Count} saved creatures: " + string.Join(", ", seeded.GroupBy(s => s).Select(g => $"{g.Key} {g.Count()}"))
+				+ $"; {newcomers} newer (not judged, {newcomersUnaged} without an age yet)"));
 			yield return LifeChecks();
 			yield return MemoryChecks();
 			yield return CreatureChecks();
