@@ -459,6 +459,9 @@ namespace RuinarchDebug
 		internal static LocationStructure InstantBuildLibrary(NPCSettlement settlement) =>
 			RecordsType?.GetMethod("InstantBuildLibrary", Any)?.Invoke(null, new object[] { settlement }) as LocationStructure;
 
+		internal static void CheckLibraries() =>
+			RecordsType?.GetMethod("HourlyCheck", Any)?.Invoke(null, null);
+
 		/// <summary><paramref name="c"/> remembers the structure as if read at home (not carried).</summary>
 		internal static void RememberAtHome(Character c, LocationStructure structure) =>
 			KnowledgeType?.GetMethod("Read", Any)?.Invoke(null, new object[] { c, structure });

@@ -13,8 +13,8 @@ namespace RuinarchPlus.Phase7
 	/// The Blight Heart, a demonic building (config: <c>blightEnabled</c>). Every hour it
 	/// corrupts a few tiles at the edge of the corruption it stands in ("its patch"), within its
 	/// reach; deaths on its patch feed it up to level 3 (more reach, growth and HP). Destroyed,
-	/// its patch stays but stops growing. Looks like a Crypt for now. Level and feeding are
-	/// saved in <c>ModData/ruinarch.plus.blight.json</c>.
+	/// its patch stays but stops growing. Uses the supplied pumping Heart animation;
+	/// level and feeding are saved in <c>ModData/ruinarch.plus.blight.json</c>.
 	/// </summary>
 	public class BlightHeart : DemonicStructure
 	{
@@ -61,6 +61,7 @@ namespace RuinarchPlus.Phase7
 		{
 			base.OnBuiltNewStructure();
 			Track(this);
+			BlightHeartVisual.Attach(this);
 			RuinarchPlus.Log?.Info($"A Blight Heart was raised at {GetCenterTile()?.localPlace}.");
 		}
 
@@ -168,6 +169,12 @@ namespace RuinarchPlus.Phase7
 					LoadFactory = (type, region, save) => new BlightHeart(region, (SaveDataDemonicStructure)save),
 					PrefabSource = STRUCTURE_TYPE.CRYPT,
 					SkillDataFrom = PLAYER_SKILL_TYPE.CRYPT,
+					ConfigureSkillData = data =>
+					{
+						Sprite icon = BlightHeartVisual.Icon;
+						data.buttonSprite = data.tooltipImage = data.skillIcon = data.actionItemIcon = data.contextMenuIcon = icon;
+						data.tooltipVideoClip = null;
+					},
 					// The game's skill classes can only be made once its skill tables are built.
 					CreateSkill = (structure, skill) => new BlightHeartData(structure, skill),
 					IsPlayerStructure = true,
@@ -281,12 +288,14 @@ namespace RuinarchPlus.Phase7
 		{
 			// The saved skill keeps the limit of the session that saved it; use today's setting.
 			ApplyLimit();
+			// Native tile-object visuals are restored after OnDoneLoadStructure.
+			List<BlightHeart> hearts = All();
+			foreach (BlightHeart heart in hearts) BlightHeartVisual.Attach(heart);
 			BlightSaveData file = string.IsNullOrEmpty(json) ? null : JsonUtility.FromJson<BlightSaveData>(json);
 			if (file == null)
 			{
 				return;
 			}
-			List<BlightHeart> hearts = All();
 			foreach (string entry in file.hearts)
 			{
 				string[] p = entry.Split('|');
@@ -317,9 +326,13 @@ namespace RuinarchPlus.Phase7
 
 		public override string name => "Blight Heart";
 
+		public override string localizedName => name;
+
 		public override PLAYER_SKILL_TYPE type => _type;
 
 		public override string description => "Grows corruption around itself every hour and feeds on those who die on it. Villagers will try to clean the blight away.";
+
+		public override string localizedDescription => description;
 
 		public override Vector2Int size => new Vector2Int(6, 4);
 
@@ -327,6 +340,12 @@ namespace RuinarchPlus.Phase7
 		{
 			_type = type;
 			base.structureType = structure;
+		}
+
+		public override void OnSetAsCurrentActiveSpell()
+		{
+			BlightHeartVisual.PreparePreview(structureType);
+			base.OnSetAsCurrentActiveSpell();
 		}
 	}
 

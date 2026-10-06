@@ -112,10 +112,10 @@ namespace RuinarchDebug
 				IReadOnlyList<GameObject> libraryPrefabs = Guard("register a Library look", () => ModTemplates.Register(libraryLook, null));
 				NPCSettlement libraryVillage = Villages().FirstOrDefault(v => v.owner != null);
 				LocationGridTile librarySpot = null;
-				if (libraryVillage != null)
+				if (libraryVillage != null && libraryPrefabs != null)
 				{
-					LandmarkManager.Instance.CanPlaceStructureBlueprint(libraryVillage.owner.factionType.type, libraryVillage,
-						new StructureSetting(STRUCTURE_TYPE.DWELLING, dwelling.Material), out librarySpot, out string _, out int _, out LocationGridTile _);
+					TemplatePlacement(libraryVillage, libraryPrefabs[0],
+						new StructureSetting(STRUCTURE_TYPE.DWELLING, dwelling.Material), out librarySpot, out LocationGridTile _);
 				}
 				if (librarySpot == null || libraryPrefabs == null)
 				{
@@ -141,6 +141,12 @@ namespace RuinarchDebug
 			}
 			BuildingTemplate variant = ModTemplates.Export(tavern.Prefab, "autotest/tavern-variant", tavern.Kind, tavern.Culture, tavern.Material);
 			variant.name = "Autotest Tavern";
+			// Resize changes center but keeps the borrowed tilemap transform. With no explicit
+			// footprint, every rendered floor cell must still belong to this building.
+			variant.center[0] += 4;
+			variant.center[1] += 4;
+			variant.footprint = null;
+			variant.clickBox = null;
 			IReadOnlyList<GameObject> made = Guard("register a Tavern variant", () => ModTemplates.Register(variant, null));
 			List<GameObject> originals = ModTemplates.GameLooks().Where(l => l.Kind == tavern.Kind && l.Culture == tavern.Culture && l.Material == tavern.Material).Select(l => l.Prefab).ToList();
 			// A village that uses this Tavern list: its culture's own, or (for the culture-neutral
@@ -161,7 +167,7 @@ namespace RuinarchDebug
 			LocationGridTile spot = null;
 			if (village != null)
 			{
-				LandmarkManager.Instance.CanPlaceStructureBlueprint(culture, village, new StructureSetting(tavern.Kind, tavern.Material), out spot, out string _, out int _, out LocationGridTile _);
+				TemplatePlacement(village, made[0], new StructureSetting(tavern.Kind, tavern.Material), out spot, out LocationGridTile _);
 			}
 			LocationStructure placed = spot == null ? null : Guard("place the variant", () => spot.tileObjectComponent.genericTileObject.InstantPlaceStructure(poolName, village));
 			if (placed == null)
@@ -182,30 +188,51 @@ namespace RuinarchDebug
 						&& obj.connectors.Length == variant.entrances.Count && obj.connectors.Select(c => c.tileLocation).SequenceEqual(expectedDoors)
 						&& walker != null && doors.All(d => walker.movementComponent.HasPathToEvenIfDiffRegion(d)),
 					$"{obj?.name}: tiles {placed.tiles.Count}, entrances {doors.Count}/{variant.entrances.Count} (original in-map {expectedDoors.Count(d => d != null)}), walker {walker?.name ?? "none"} reaches all={walker != null && doors.All(d => walker.movementComponent.HasPathToEvenIfDiffRegion(d))}"));
+				Tilemap ground = AccessTools.Field(typeof(LocationStructureObject), "_groundTileMap").GetValue(obj) as Tilemap;
+				List<LocationGridTile> painted = new List<LocationGridTile>();
+				foreach (Vector3Int cell in ground.cellBounds.allPositionsWithin)
+					if (ground.HasTile(cell)) painted.Add(spot.parentMap.GetTileFromWorldPosition(ground.GetCellCenterWorld(cell)));
+				Check("a resized template owns its rendered floor, not shifted ground beside it", () =>
+					(painted.All(t => t != null && t.structure == placed) && painted.Count == placed.tiles.Count,
+					$"owned painted tiles={painted.Count(t => t?.structure == placed)}/{painted.Count}, footprint={placed.tiles.Count}"));
 				SaveDataManMadeStructure data = new SaveDataManMadeStructure();
 				data.Save(placed);
 				Check("saving a template building records its look", () => (data.structureTemplateName == poolName, data.structureTemplateName));
 				InnerMapCameraMove.Instance.CenterCameraOn(obj.gameObject);
 				yield return Screenshot("template-variant.png");
 			}
-			// The way villagers get buildings: a villager places the variant as a blueprint with
-			// the game's own job (CharacterJobTriggerComponent.TriggerPlaceBlueprint), and the
-			// village builds it (BUILD_BLUEPRINT) from materials.
+			// The way villages get buildings: a settlement queues its native placement job,
+			// a villager places the blueprint, and BUILD_BLUEPRINT consumes materials.
 			Character placer = village?.residents.FirstOrDefault(r => r != null && !r.isDead && r.hasMarker && r.limiterComponent.canMove && r.limiterComponent.canPerform && !r.partyComponent.hasParty);
 			LocationGridTile bpSpot = null, bpConnector = null;
 			if (placer != null)
 			{
-				LandmarkManager.Instance.CanPlaceStructureBlueprint(culture, village, new StructureSetting(tavern.Kind, tavern.Material), out bpSpot, out string _, out int _, out bpConnector);
+				List<JobQueueItem> competing = new List<JobQueueItem>();
+				village.PopulateJobsOfType(competing, JOB_TYPE.PLACE_BLUEPRINT);
+				foreach (JobQueueItem job in competing) job.ForceCancelJob("autotest template placement");
+				TemplatePlacement(village, made[0], new StructureSetting(tavern.Kind, tavern.Material), out bpSpot, out bpConnector);
 			}
 			bool bpQueued = bpSpot != null && Guard("give a villager the blueprint job", () =>
 			{
+				// A personal placement job is invisible to the village's one-blueprint-job
+				// guard. Use its native settlement job so another builder cannot take the spot.
+				AccessTools.Method(typeof(SettlementJobTriggerComponent), "TriggerPlaceBlueprint").Invoke(
+					village.settlementJobTriggerComponent, new object[] { poolName, new StructureSetting(tavern.Kind, tavern.Material), bpSpot, bpConnector });
+				List<JobQueueItem> placements = new List<JobQueueItem>();
+				village.PopulateJobsOfType(placements, JOB_TYPE.PLACE_BLUEPRINT);
+				JobQueueItem job = placements.FirstOrDefault(j => j.poiTarget == bpSpot.tileObjectComponent.genericTileObject);
+				if (job == null) throw new Exception("the village did not queue its native placement job");
+				placer = village.residents.FirstOrDefault(r => r != null && !r.isDead && r.hasMarker
+					&& r.limiterComponent.canMove && r.limiterComponent.canPerform && !r.partyComponent.hasParty && job.CanCharacterDoJob(r));
+				if (placer == null) return null;
 				placer.jobQueue.CancelAllJobs();
-				placer.jobComponent.TriggerPlaceBlueprint(poolName, new StructureSetting(tavern.Kind, tavern.Material), bpSpot, bpConnector, out JobQueueItem job);
-				return job != null && placer.jobQueue.AddJobInQueue(job) ? job : null;
+				job.SetPriority(1000);
+				if (!placer.jobQueue.AddJobInQueue(job)) throw new Exception("the eligible placer could not take its native placement job");
+				return job;
 			}) != null;
 			if (!bpQueued)
 			{
-				Skip("a villager places a template building as a blueprint", placer == null ? "no free villager" : "no room for a blueprint");
+				Skip("a villager places a template building as a blueprint", placer == null ? "no eligible native placer" : "no room for a blueprint");
 			}
 			else
 			{
@@ -252,9 +279,16 @@ namespace RuinarchDebug
 						&& all.Any(s => s is ManMadeStructure m && m.structureObj != null && m.structureObj.name.StartsWith(poolName) && m.structureObj.currentVisualMode == LocationStructureObject.Structure_Visual_Mode.Built && m != placed);
 					// A builder who starts in the evening goes to bed with the job half done
 					// (seen once: asleep at the deadline). Keep them rested; sleep is not under test.
-					yield return WaitGameHours(18f, () => { worker?.needsComponent.SetTiredness(100f); return built(); });
+					List<string> buildStates = new List<string>();
+					yield return WaitGameHours(18f, () =>
+					{
+						worker?.needsComponent.SetTiredness(100f);
+						string state = $"{worker?.currentJob?.jobType.ToString() ?? "none"}/{worker?.currentActionNode?.goapName ?? "none"} queued={worker?.jobQueue.HasJob(JOB_TYPE.BUILD_BLUEPRINT)} carrying={worker?.carryComponent.carriedPOI?.name ?? "none"}";
+						if (buildStates.Count == 0 || buildStates[buildStates.Count - 1] != state) buildStates.Add(state);
+						return built();
+					});
 					Check("villagers build a template building", () =>
-						(built(), $"{worker?.name ?? placer.name}: job={worker?.currentJob?.jobType.ToString() ?? "none"} action={worker?.currentActionNode?.goapName ?? "none"} blueprint={bpSpot.tileObjectComponent.genericTileObject.blueprintOnTile != null}"));
+						(built(), $"{worker?.name ?? placer.name}: blueprint={bpSpot.tileObjectComponent.genericTileObject.blueprintOnTile != null}; " + string.Join(" > ", buildStates)));
 				}
 			}
 			GameObject fallback = Guard("load a building whose pack is gone", () =>
@@ -320,8 +354,8 @@ namespace RuinarchDebug
 				NPCSettlement redVillage = null;
 				foreach (NPCSettlement candidate in Villages().Where(v => v.owner != null && usesList(v.owner.factionType.type)))
 				{
-					if (LandmarkManager.Instance.CanPlaceStructureBlueprint(candidate.owner.factionType.type, candidate, new StructureSetting(tavern.Kind, tavern.Material),
-						out redSpot, out string _, out int _, out LocationGridTile _))
+					if (TemplatePlacement(candidate, redBuilt, new StructureSetting(tavern.Kind, tavern.Material),
+						out redSpot, out LocationGridTile _))
 					{
 						redVillage = candidate;
 						break;
@@ -355,6 +389,16 @@ namespace RuinarchDebug
 				$"accepted {ModTemplates.PackDirectories.Count}: {string.Join(", ", ModTemplates.PackDirectories.Select(Path.GetFileName))}; refused: {string.Join(", ", refused.Select(m => m.Id + (m.Compatible ? " (disabled)" : " (" + m.RejectionReason + ")")))}"));
 			Check("the framework reports its templates at startup", () => (ModsLogHas("[ModContent] Templates ready:") && ModsLogHas("[ModContent] Template packs:"), "mods.log"));
 			Directory.Delete(pack, true);
+		}
+
+		// Validate the exact look being placed, not a random prefab of the same kind.
+		private static bool TemplatePlacement(NPCSettlement village, GameObject prefab, StructureSetting setting,
+			out LocationGridTile spot, out LocationGridTile connector)
+		{
+			List<StructureConnector> choices = new List<StructureConnector>();
+			village.PopulateStructureConnectorsForStructureType(choices, setting.structureType);
+			return prefab.GetComponent<LocationStructureObject>().GetFirstValidConnector(choices, village.region.innerMap, village,
+				out int _, out spot, out connector, setting, out string _) != null;
 		}
 
 		// A Tavern, a Dwelling and the first special building: the kinds the suite exports and

@@ -57,7 +57,7 @@ the game's Settings window, on the Mods tab.
 | **Villagers are born, grow up, grow old and die** | A year is 16 in-game days. Everyone has an age, shown under their name ("Farmer, age 3", "Child, age 0", "elder") and in an Age row on the Info tab of every character's panel ("Unknown" for those without one); villagers already there when a game starts are adults, some of them elders. A woman and her lover of the same race and village may have a child (rarely: about once a year per couple, half as often when food runs short, never in famine); she is expecting for a season (4 days) and the child is born in their home. Children are drawn smaller, don't work, don't fight and are never picked to rule. Humans come of age at 1 and Elves at 3, then take up a trade the game picks for them. Elders die of old age: Humans around 6 (5 to 7), Elves around 18. |
 | **Creatures grow old too** | Wild and tamed creatures (animals and living monsters, not undead, demons, golems or your minions) have an age in the same years and die of old age: rabbits, rats and chickens after about 2 years, wolves, boars, pigs, sheep, scorpions and spiders 4, bears, trolls, orcs, goblins and kobolds 6, centaurs, harpies, tritons and mothmen 8, wyverns, wurms and unicorns 12, dragons 40. The young are drawn smaller for the first quarter of their life; the Age row shows "0, young" or "5, elder". Those the world began with have random ages; the ones the game spawns or hatches later are born then. The game already replaces game animals, den beasts and egg layers; the kinds it never replaces (trolls, orcs, goblins, kobolds, centaurs, mothmen, wurms, unicorns, scorpions) have young of their own, about once a year, while their group is smaller than it was. Old age and births go to the event log only. |
 | **Memory fades with the people** | What a village knows of you lives in its people, and dies with them. One elder in three grows forgetful ("elder, forgetful" in their panel) and forgets one of your buildings every 3 days. Children and newcomers are not told old news, so once everyone in a village who remembers a building is dead or has forgotten it, the village no longer knows it ("Nobody in Mysa remembers your Portal any more." in the event log), unless someone who remembers comes by and tells it again. Outlive the witnesses and your buildings are forgotten. Needs `knowledgeEnabled`. |
-| **Books and Libraries** | Villages keep records of you, on the Book Shelves of their homes (a home without one gets a Book). In their free time, a villager at home who remembers a building of yours that the household's record lacks walks to the shelf and writes it down, an hour's work; a villager who has forgotten something the record names may sit down and read it. Every finished writing or reading shows in the shelf's Logs tab and the villager's ("Jamie wrote of your Portal in a book on the Book Shelf at home."), and a household that starts a record says so in the event log. Once a village is a Town or City its villagers build a **Library** (it looks like a Workshop) whose shelves, or four Books, keep the village's record; villagers go there to write and to read what they have forgotten, though never under curfew. Records only matter through a reader: a village whose witnesses are all dead or forgetful learns you again from its books. Shelves and Books are ordinary objects: burn or break them all and the record is gone; a Library losing its record is announced ("Andorlad's Library was destroyed; its records of your Portal are lost."). Nobody replaces a lost record by themselves: only someone who still remembers can write it again. Needs `knowledgeEnabled`. |
+| **Books and Libraries** | Villages keep records of you, on the Book Shelves of their homes (a home without one gets a Book). In their free time, a villager at home who remembers a building of yours that the household's record lacks walks to the shelf and writes it down, an hour's work; a villager who has forgotten something the record names may sit down and read it. Every finished writing or reading shows in the shelf's Logs tab and the villager's ("Jamie wrote of your Portal in a book on the Book Shelf at home."), and a household that starts a record says so in the event log. Once a village is a Town or City its villagers build a **Library** using the bundled layout with 24 Book Shelves and two entrances; villagers go there to write and to read what they have forgotten, though never under curfew. Previously saved Libraries keep their saved look and use Books if it has no shelves. Records only matter through a reader: a village whose witnesses are all dead or forgetful learns you again from its books. Shelves and Books are ordinary objects: burn or break them all and the record is gone; a Library losing its record is announced ("Andorlad's Library was destroyed; its records of your Portal are lost."). Nobody replaces a lost record by themselves: only someone who still remembers can write it again. Needs `knowledgeEnabled`. |
 
 ## Phase 5: Settlements & Economy (in progress)
 
@@ -79,7 +79,7 @@ the game's Settings window, on the Mods tab.
 
 | Feature | What you'll notice |
 |---------|--------------------|
-| **Blight Heart** | A demonic building in your Build menu, using the Crypt's look and mana cost. Each hour it grows corruption at the edge of its connected patch. Deaths on that patch feed it through three levels, increasing its reach, growth and HP. Its description shows level, feeding and patch size. Destroying the Heart stops its growth but leaves the corruption; its build charge returns. |
+| **Blight Heart** | A demonic building in your Build menu, using the supplied transparent pumping Heart animation and the Crypt's mana cost and placement rules. Its placement preview uses the same animation; menu icons use the first frame. The 15-frame animation loops every 1.84 seconds and freezes while paused. Each hour it grows corruption at the edge of its connected patch. Deaths on that patch feed it through three levels, increasing its reach, growth and HP. Its description shows level, feeding and patch size. Destroying the Heart stops its growth but leaves the corruption; its build charge returns. Ordinary Crypts keep their original artwork. |
 | **Village blight** | Corruption can creep onto streets, yards and fields, but not building interiors, walls, water, mountains or the Portal's ground and neighbors. Crops wither and cannot be replanted until cleaned. Other village objects stay. Village blight never provides ground for your summons, minions, demonic buildings or further manual corruption. |
 | **Notice and Alarm** | Nearby blight brings cleaners. At 30 affected tiles, a village raises the alarm, tells its kingdom about you and sends several cleaners, prioritizing its own ground. Divine Church villagers purify faster. Blight also adds unrest. |
 | **Fire cleanses** | When a fire ends on corrupted ground, the blight is removed there, including when the burning object or tree burns away. Fire retains the game's normal spread and damage. Bare corrupted ground is not itself flammable; burn something on it. Your demonic buildings are not cleansed by this rule. |
@@ -165,7 +165,7 @@ is held to the same ranges when the game starts.
 
 ## Install
 
-1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.8.0 or newer**. Ruinarch+ 0.12.0 puts its options in the game's Settings window, which needs loader 0.8.0; older loaders refuse to load it. Its installer patches your local `Assembly-CSharp.dll` with the loader startup call and installs the framework in `Mods/`. If you already use loader 0.6.0 or newer, the main-menu Update notice can install 0.8.0.
+1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.9.0 or newer**. Ruinarch+ 0.12.1 needs its corrected building-template footprints for the bundled Library. Its installer patches your local `Assembly-CSharp.dll` with the loader startup call and installs the framework in `Mods/`. If you already use loader 0.6.0 or newer, the main-menu Update notice can install 0.9.0.
 2. Either subscribe to [Ruinarch+ on the Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047) (Steam keeps it up to date), or download `RuinarchPlus-<version>.zip` from the [releases](https://github.com/Xm0x/RuinarchMods/releases) and unzip it into your game's `Mods/` folder, so you get `Mods/RuinarchPlus/`. Use one or the other: when both are present, the local copy wins.
 3. Launch. Check `Mods/mods.log`; you should see a line like:
    ```
@@ -184,11 +184,85 @@ tools/build-mod.sh /path/to/RuinarchMods/RuinarchPlus
 #    second argument to install it there instead)
 ```
 
-Each fix is one `[HarmonyPatch]` class under `Fixes/`, with a comment citing the
-exact game method and behaviour it corrects.
+Stock-game fixes live under `Fixes/`. Their Harmony targets identify the native methods
+they affect; the version history below describes the behavioral changes.
 
 ## Version history
 
+- **0.12.1** (requires loader 0.9.0):
+  - New Libraries use the bundled authored layout exclusively for every culture and
+    material. Existing saved Libraries keep their saved look. The separate building
+    template pack is no longer needed for this Library, but can remain for other looks.
+  - Blight Hearts use the supplied pumping GIF's 15 frames, transparency and original
+    timing, packaged as a shared PNG atlas. Placement previews animate too; ordinary
+    Crypt artwork is unchanged.
+  - The Blight Heart build toolbar and hover tooltip display its name and blight-growth,
+    feeding and village-cleanup explanation instead of looking up missing stock localization keys.
+  Discord-report fixes checked against stock V1.2:
+  - Half costs also halve spirit-energy prices, with the same upward rounding as mana;
+    absent costs (`-1`), None costs and Eradication remain unchanged.
+  - Eating Human Meat or Elf Meat at a table grants Cannibal and the same food alert as
+    eating it directly. Existing food buffs and the summon/minion exclusion remain.
+  - Frozen Vigilant characters cannot intercept stealth actions; awake or thawed
+    Vigilant characters still can.
+  - Wild and agitated harpies no longer select dragons for abduction; other prey keeps
+    the stock eligibility rules and uniform selection.
+  - A cross-faction exile decides crimes and bans return in the judging faction, not
+    the offender's new clan. Its unrelated clan membership, crimes, home and territory
+    remain; restraints are removed and the stock grudge rules still apply.
+  - Removing Demon Cultist refreshes the character's map-name icon immediately instead
+    of leaving the cached Cultist icon until another name/faction refresh.
+  - Hospice recovery releases its hunger, tiredness and boredom suppression when
+    Recuperating ends, without removing suppression from another active status.
+  - Break Up excludes dead and unresolved partners from eligibility, reasons and
+    target selection; a living affair remains selectable after a spouse dies.
+  - Intrinsically Poisonous characters retain their poison coating without damaging
+    themselves or suppressing healing. Ordinary external poisoning still damages.
+  - Purification removes Demon Worship as well as Demon Cultist, restoring the
+    character's race-default religion instead of leaving them praying to demons.
+  - Village attacks stop when their target's faction is no longer hostile.
+  - Cultist archers leave fellow cultists' traps intact unless they own the object.
+  - Selecting a spell clears selected intel, and selecting intel clears the spell.
+  - Monster spawners count native Ratmen toward their cap and raid availability,
+    excluding dead, recruited and kennelled Ratmen as with the stock summon rules.
+  - Eye Wards enforce resource costs both when selecting a target and when placing
+    the ward; an unaffordable activation cannot place a free Eye.
+  - Residents are not accused of trespassing in their own home, nor are paralyzed
+    visitors accused of trespassing. Mobile outsiders retain the stock checks.
+  - Starving vampires no longer select zombies for blood meals.
+  - Corpse hover nameplates do not offer intel hints; living characters still do.
+  - Village quarantine excludes plague rats and other non-normal characters,
+    and a homeless witness no longer crashes the plague reaction.
+  - Legalized crimes lose only the legalizing faction's wanted status. Crimes
+    still wanted elsewhere remain active; fully pardoned crimes move to history.
+  - Human-race-exclusive factions remove incompatible monsters while preserving
+    the stock monster exemption for non-race ideologies.
+  - NPC recruiters cannot take player-faction creatures. Monster succession
+    candidates do not displace living sapient residents at home or on a quest;
+    monster-only factions can still choose a leader.
+  - Monster leaders use the resident-aware fallback for gender-exclusive
+    ideology selection instead of imposing their own gender on villagers.
+  - Arrest reactions use crimes wanted by the witness's own faction, not another
+    faction's warrant against the same person.
+  - Cultist stealth witnesses evaluate the actual attacker instead of treating the
+    victim as the attacker. Ordinary witnesses keep their stock visibility checks.
+  - Releasing a prisoner cancels queued reports of the demonic base before the
+    existing unconscious relocation home.
+  - Demonic building placement rejects indestructible objects throughout its
+    footprint instead of silently deleting them.
+  - Off-camera under-attack warnings have a two-game-hour cooldown per structure.
+    Later attacks can warn again; cooldown state is discarded with the world.
+  - Allied cultists do not liberate or release an active player snatch target;
+    ordinary restrained outsiders still receive the native rescue behaviour.
+  - Workers do not flee from petrified monsters; mobile threats still cause flight.
+  - Corpse decay discards old-world references when leaving or reloading a world,
+    then discovers the loaded bodies normally without stale-map exceptions.
+  - Curfew cancels village visits queued before it began, including jobs restored
+    from saves, without cancelling work or changing ruler/leader exemptions.
+  Design-sensitive proposals left unchanged: Cold Blooded/Freezing immunity,
+  Malnourished hunger mechanics, sleep versus suicide priority, poison crime
+  classification, Chaste affairs, snare allegiance, Ratman preaching and enslaved
+  monster butchering. These need gameplay decisions, not automatic bug patches.
 - **0.12.0**: options in the game's Settings window (Mods tab), saved in Mods/settings/; the
   old config.json moves there by itself. Requires loader 0.8.0.
 - **0.11.0**: Blight Hearts, death-fed levels, spreading corruption, withering fields,
@@ -199,5 +273,5 @@ exact game method and behaviour it corrects.
 
 ## Notes
 
-- Ships **no game code or assets**, source only. You need your own copy of Ruinarch.
+- Ships **no game code or game assets**. Custom artwork is included; you need your own copy of Ruinarch.
 - Ruinarch and its assets belong to their respective owners; this is a fan-made mod, not affiliated with or endorsed by them.

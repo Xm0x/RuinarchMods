@@ -1,8 +1,10 @@
 # TruePlanet, part 1: the planet and its provinces
 
-Status: DRAFT; owner answered the open questions (2026-10-03, recorded under "Owner
-decisions"). Nothing is implemented. Remaining choices marked **(default)** were made by the
-author and stand unless the owner changes them.
+Status: release slice 1 implemented as TruePlanet 0.1.0 (2026-10-06): seeded generation,
+native atlas inspection and independent atlas save/load. Verified in the actual game with
+29 native checks, 0 failures; player settings and native saves byte-identical. Playable
+provinces and Travel Portals in slices 2-3 remain planned, not implemented.
+Owner decisions are recorded below. Choices marked **(default)** stand unless changed.
 
 TruePlanet is a separate mod (id `trueplanet`, namespace `TruePlanet`, folder
 `RuinarchMods/TruePlanet/`). It does not need Ruinarch+; both can be installed together.

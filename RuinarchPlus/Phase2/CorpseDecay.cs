@@ -180,6 +180,16 @@ namespace RuinarchPlus
 			return true;
 		}
 
+		[HarmonyPatch(typeof(GameManager), "OnDestroy")]
+		internal static class GameManager_OnDestroy
+		{
+			private static void Postfix()
+			{
+				_corpses.Clear();
+				_tickAccum = 0;
+			}
+		}
+
 		[HarmonyPatch(typeof(GameManager), "TickEnded")]
 		public static class GameManager_TickEnded
 		{

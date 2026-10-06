@@ -24,8 +24,8 @@ namespace RuinarchPlus.Phase4
 	///   household with no carrier yet gets a Book.
 	/// - At home, a villager who does not remember something the record names may read it
 	///   (<c>readChance</c> % a free-time hour; the Read action, an hour).
-	/// - A Town or City (Phase5/SettlementTiers.cs) builds a Library, borrowing the Workshop's
-	///   prefab; its Book Shelves carry its record, or <c>libraryBooks</c> Books the mod puts in.
+	/// - A Town or City (Phase5/SettlementTiers.cs) builds a Library with the bundled layout
+	///   and Workshop-derived behaviour; its Book Shelves carry its record.
 	///   A villager with something to write there or to learn from it goes to write or read
 	///   (<c>libraryVisitChance</c> % a free-time hour), never under curfew.
 	/// - Each finished action is logged on the carrier and the villager (RecordActions.cs).
@@ -68,7 +68,7 @@ namespace RuinarchPlus.Phase4
 					DisplayName = "Library",
 					Factory = (type, region) => new Library(type, region),
 					LoadFactory = (type, region, save) => new Library(region, (SaveDataManMadeStructure)save),
-					// Borrow the Workshop's prefab: the one building every culture has a prefab for.
+					// Native behaviour comes from the Workshop; LibraryLook supplies the authored layout.
 					PrefabSource = STRUCTURE_TYPE.WORKSHOP,
 					Skill = null,
 					UnlockWith = PLAYER_SKILL_TYPE.NONE,

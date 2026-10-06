@@ -98,6 +98,22 @@ namespace RuinarchPlus.Phase2
 		}
 	}
 
+	// Queued visits outrank free-time behaviour; cancel them before native job planning,
+	// including visits restored from a save made under curfew.
+	[HarmonyPatch(typeof(Character), nameof(Character.TickStarted))]
+	internal static class Curfew_QueuedVisit
+	{
+		private static void Prefix(Character __instance)
+		{
+			if (!Curfew.Enabled
+				|| (__instance.behaviourComponent.targetVisitVillage == null
+					&& !__instance.jobQueue.HasJob(JOB_TYPE.VISIT_DIFFERENT_VILLAGE))
+				|| !Curfew.Binds(__instance)) return;
+			__instance.behaviourComponent.ClearOutVisitVillageBehaviour();
+			__instance.jobQueue.CancelAllJobs(JOB_TYPE.VISIT_DIFFERENT_VILLAGE);
+		}
+	}
+
 	// Free time under curfew: go home, and once home stay in.
 	[HarmonyPatch(typeof(BehaviourComponent), nameof(BehaviourComponent.RunBehaviour))]
 	internal static class Curfew_RunBehaviour

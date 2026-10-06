@@ -261,9 +261,11 @@ namespace RuinarchDebug
 			List<string> grievances = PlusBridge.UnrestReasons(village);
 			Check(mood, () => (grievances.Contains("the blight"), string.Join(", ", grievances)));
 			int before = own.Count(t => t.corruptionComponent.isCorrupted);
-			yield return WaitGameHours(6f, null);
+			// A six-hour window can fall entirely outside native work hours.
+			float cleanupStart = GameHours;
+			yield return WaitGameHours(24f, () => own.Count(t => t.corruptionComponent.isCorrupted) < before);
 			int after = own.Count(t => t.corruptionComponent.isCorrupted);
-			Check(first, () => (after < before, $"own blight {before} -> {after} in 6h"));
+			Check(first, () => (after < before, $"own blight {before} -> {after} in {GameHours - cleanupStart:0.0}h"));
 			Guard("make the faction unaware again", () => { faction?.SetIsAwareOfPlayer(false); return faction; });
 		}
 

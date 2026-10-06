@@ -1,0 +1,12 @@
+{
+  "id": "trueplanet",
+  "name": "TruePlanet",
+  "version": "0.1.0",
+  "author": "Xm0x",
+  "description": "A seeded planet atlas with provinces, terrain, nations, capitals, planned settlements and land roads. Generate, inspect and save planets from the main-menu Planet button. Atlas only: stock New Game, Load and province gameplay remain unchanged.",
+  "loader": "RuinarchModLoader",
+  "loaderApi": 2,
+  "type": "code",
+  "entryAssembly": "TruePlanet.dll",
+  "entryType": "TruePlanet.TruePlanetMod"
+}

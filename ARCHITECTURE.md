@@ -6,7 +6,7 @@ Ruinarch modding is split across three repositories.
 |---|---|
 | [RuinarchRE](https://github.com/Xm0x/RuinarchRE) | The game's code, decompiled into a buildable C# tree. A read-only reference: you read it to find what to patch. |
 | [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader) | The loader that runs mods inside the game, plus the `Ruinarch.ModContent` framework for adding new content. |
-| RuinarchMods (this repo) | The mods themselves: Ruinarch+ and RuinarchDebug. |
+| RuinarchMods (this repo) | The mods themselves: Ruinarch+, Performance Mod, TruePlanet and the development-only RuinarchDebug. |
 
 ## Conventions
 
@@ -14,9 +14,9 @@ Ruinarch modding is split across three repositories.
    game; nothing ships a recompiled `Assembly-CSharp.dll`.
 2. **RuinarchRE only changes to improve the decompile.** Gameplay features never go
    there; they are mods.
-3. **Gameplay features belong to Ruinarch+.** It is one mod with a config flag per
-   feature, rather than one mod per feature. RuinarchDebug is kept separate because it
-   is a development tool.
+3. **Features that deepen a single game map belong to Ruinarch+.** It is one mod with
+   settings per feature. TruePlanet is separate planet-scale work; Performance Mod removes
+   cost without changing gameplay. RuinarchDebug is separate because it is a development tool.
 
 ## Adding new content
 

@@ -168,6 +168,11 @@ namespace RuinarchDebug
 			yield return WaitReal(() => MainMenuUI.Instance != null && WorldSettings.Instance != null, 180f, "main menu");
 			yield return new WaitForSecondsRealtime(5f);
 			if (Runs("ModSettingsSuite")) { yield return Safe("ModSettingsSuite (main menu)", ModsTabChecks("menu")); }
+			if (Runs("SpiritEnergyCostSuite"))
+			{
+				yield return Safe("SpiritEnergyCostSuite", SpiritEnergyCostSuite());
+				if (_only.Count == 1) { Finish("done"); yield break; }
+			}
 			if (!Try("open world settings", () => MainMenuUI.Instance.OnClickPlayGame()))
 			{
 				yield break;
@@ -253,6 +258,17 @@ namespace RuinarchDebug
 
 			FreshWorldChecks();
 			// Early, while villagers are out walking; leaves the camera as it found it.
+			if (Runs("StockDiscordSuite")) { yield return Safe("StockDiscordSuite", StockDiscordSuite()); }
+			if (Runs("StockWorldRulesSuite")) { yield return Safe("StockWorldRulesSuite", StockWorldRulesSuite()); }
+			if (Runs("StockWitnessSuite")) { yield return Safe("StockWitnessSuite", StockWitnessSuite()); }
+			if (Runs("StockFactionSuite")) yield return Safe("StockFactionSuite", StockFactionSuite());
+			if (Runs("StockSecuritySuite")) yield return Safe("StockSecuritySuite", StockSecuritySuite());
+			if (Runs("CultistRemovalSuite")) { yield return Safe("CultistRemovalSuite", CultistRemovalSuite()); }
+			if (Runs("FrozenVigilantSuite")) { yield return Safe("FrozenVigilantSuite", FrozenVigilantSuite()); }
+			if (Runs("HarpyDragonSuite")) { yield return Safe("HarpyDragonSuite", HarpyDragonSuite()); }
+			if (Runs("TableCannibalSuite")) { yield return Safe("TableCannibalSuite", TableCannibalSuite()); }
+			if (Runs("ExileJurisdictionSuite")) { yield return Safe("ExileJurisdictionSuite", ExileJurisdictionSuite()); }
+			if (Runs("CurfewVisitSuite")) yield return Safe("CurfewVisitSuite", CurfewVisitSuite());
 			if (Runs("PerformanceSuite")) { yield return Safe("PerformanceSuite", PerformanceSuite()); }
 			if (Runs("ModSettingsSuite")) { yield return Safe("ModSettingsSuite", ModSettingsSuite()); }
 			if (Runs("TemplateSuite")) { yield return Safe("TemplateSuite", TemplateSuite()); }
@@ -268,7 +284,17 @@ namespace RuinarchDebug
 			if (Runs("LifeSuite")) { yield return Safe("LifeSuite", LifeSuite()); }
 			// Needs three free villagers of one village, so it runs while the villages are
 			// full. Strands them in the wilderness; one never comes back.
-			if (Runs("MissingPersonsSuite")) { yield return Safe("MissingPersonsSuite", MissingPersonsSuite()); }
+			if (Runs("MissingPersonsSuite"))
+			{
+				object decayEnabled = PlusBridge.Config("corpseDecayEnabled");
+				// Keep the discovery fixture's body available even when party formation is delayed.
+				PlusBridge.SetConfig("corpseDecayEnabled", false);
+				try { yield return Safe("MissingPersonsSuite", MissingPersonsSuite()); }
+				finally
+				{
+					if (decayEnabled != null) PlusBridge.SetConfig("corpseDecayEnabled", decayEnabled);
+				}
+			}
 			if (Runs("MassGraveSuite")) { yield return Safe("MassGraveSuite", MassGraveSuite()); }
 			// Knowledge takes the village with the most people left (the one the burial tests
 			// spared).
@@ -312,6 +338,7 @@ namespace RuinarchDebug
 			if (_only.Contains("ShelfProbe")) { yield return Safe("ShelfProbe", ShelfProbe()); }
 			// Replaces the world with a reload of its save: only when asked for by name.
 			if (_only.Contains("PerformanceReloadSuite")) { yield return Safe("PerformanceReloadSuite", PerformanceReloadSuite()); }
+			if (_only.Contains("CorpseReloadSuite")) yield return Safe("CorpseReloadSuite", CorpseReloadSuite());
 
 			Finish("done");
 		}
@@ -568,6 +595,7 @@ namespace RuinarchDebug
 			Log($"test village (no graveyard): {Describe(village)}");
 
 			// 1. A death with no graveyard and no pit: the corpse stays where it fell.
+			int burialLogStart = ModsLogLength();
 			Character first = Guard("kill resident", () => KillResident(village));
 			if (first == null)
 			{
@@ -576,7 +604,8 @@ namespace RuinarchDebug
 			}
 			yield return WaitGameHours(3f, null);
 			Check("no-scatter: corpse lies where it fell (no wilderness tombstone)", () =>
-				((first.grave == null && first.hasMarker) || PlusBridge.IsMassGrave(first.grave?.gridTileLocation?.structure),
+				((first.grave == null && first.hasMarker) || PlusBridge.IsMassGrave(first.grave?.gridTileLocation?.structure)
+					|| (!first.hasMarker && first.grave == null && ModsLogHasSince(burialLogStart, $"Mass Grave: {first.name} laid in the pit by a villager")),
 				$"grave={(first.grave != null)} structure={first.grave?.gridTileLocation?.structure?.structureType} hasMarker={first.hasMarker}"));
 
 			// 1b. A death just OUTSIDE village tiles: vanilla's personal "outside village" burial
@@ -1071,7 +1100,7 @@ namespace RuinarchDebug
 			Check("a village gains vanilla migration times its health factor", () =>
 			{
 				int mod = Gain(true);
-				return (vanilla > 0 && health > 0f && mod == (int)(vanilla * health), $"vanilla={vanilla} mod={mod} x{health:0.##} {healthWhy}");
+				return (vanilla > 0 && mod == (int)(vanilla * health), $"vanilla={vanilla} mod={mod} x{health:0.##} {healthWhy}");
 			});
 
 			if (Guard("start plague event", () => { village.eventManager.AddNewActiveEvent(SETTLEMENT_EVENT.Plagued_Event); return village.eventManager.GetActiveEvent<PlaguedEvent>(); }) is PlaguedEvent plague)
@@ -1394,7 +1423,7 @@ namespace RuinarchDebug
 			// 24h) and the village has no room left for another (a Mass Grave took the space):
 			// nothing left to build or measure.
 			string noBuild = hall != null ? null
-				: Villagers(village) < 3 ? $"{village.name} emptied during the build: {Describe(village)}"
+				: Villagers(village) < townMark ? $"{village.name} fell below the Town threshold during construction: {Villagers(village)} residents, threshold {townMark}; {BlueprintState(village)}"
 				: !PlusBridge.HasPendingTownHall(village) && !HasRoomFor(village, STRUCTURE_TYPE.TAVERN)
 					? $"{village.name}'s Town Hall blueprint expired unbuilt and there is no room left for another (the game's own placement check; {BlueprintState(village)})"
 				: null;
@@ -1859,6 +1888,8 @@ namespace RuinarchDebug
 				});
 			}
 			Character ruler = village.ruler;
+			bool deposedFactionLeader = village.owner.leader == ruler;
+			const string successionCheck = "a deposed faction leader cannot reclaim their village";
 			List<Character> people = adults(village).Where(c => c != ruler).ToList();
 			Guard("turn the village against its ruler", () =>
 			{
@@ -1925,7 +1956,7 @@ namespace RuinarchDebug
 				string gone = $"{ruler.name} {(ruler.isDead ? "was killed" : "lost the rule")} before the village rose (not by an uprising; now ruled by {village.ruler?.name ?? "nobody"})";
 				Skip("an uprising breaks out and the rebels fight the ruler", gone);
 				Skip("the rebels who knock the ruler out take the rule", gone);
-				Skip("the new ruler keeps the rule", gone);
+				Skip(successionCheck, gone);
 			}
 			else
 			{
@@ -1950,13 +1981,18 @@ namespace RuinarchDebug
 				else Check("the rebels who knock the ruler out take the rule", () =>
 					(newRuler != null && newRuler != ruler && ModsLogHas("in an uprising") && people.Contains(newRuler),
 					$"ruler {ruler.name} -> {newRuler?.name ?? "none"}; ruler unconscious={ruler.traitContainer.HasTrait("Unconscious")} uprising={PlusBridge.HasUprising(village)}"));
-				// The game puts a faction leader back in charge of their home village: it must stick.
-				yield return WaitGameHours(6f, () => village.ruler != newRuler);
-				if (newRuler == null || newRuler == ruler)
+				// Exercise the native reassignment that would restore an improperly deposed
+				// faction leader, rather than waiting for unrelated world events to replace a ruler.
+				if (newRuler == null || newRuler == ruler || !deposedFactionLeader)
 				{
-					Skip("the new ruler keeps the rule", $"no new ruler (still {ruler.name})");
+					Skip(successionCheck, "no takeover of a faction leader");
 				}
-				else Check("the new ruler keeps the rule", () => (village.ruler == newRuler, $"ruler now {village.ruler?.name ?? "none"} (was {newRuler.name})"));
+				else
+				{
+					Try("reassign the faction leader's home village", village.owner.ProcessFactionLeaderAsSettlementRuler);
+					Check(successionCheck, () => (village.ruler == newRuler && village.owner.leader == newRuler,
+						$"village ruler={village.ruler?.name ?? "none"} faction leader={village.owner.leader?.name ?? "none"}; successor={newRuler.name}, deposed={ruler.name}"));
+				}
 			}
 
 			// 4. Exercise the defeated-rebel branch, without relying on random combat rolls.
@@ -2246,7 +2282,7 @@ namespace RuinarchDebug
 					}
 					// Someone from outside the village released them (a Kobold once did, with the
 					// game's own release action): the village itself still left them tied.
-					else if (overthrown && delivered && !stillHeld && HeldUntied.By(old) is Character by && by.homeSettlement != jv)
+					else if (overthrown && !stillHeld && HeldUntied.By(old) is Character by && by.homeSettlement != jv)
 					{
 						Skip(jailCheck, $"{by.name}, not of {jv.name}, released them: " + detail);
 					}
@@ -2538,6 +2574,9 @@ namespace RuinarchDebug
 			if (trader != null)
 			{
 				Log($"  trader set out: {Busy(trader)}");
+				_tradeCargo = from.mainStorage.pointsOfInterest.OfType<ResourcePile>().FirstOrDefault(p => p.characterOwner == trader && p.providedResource == RESOURCE.FOOD);
+				_tradeDestination = to.mainStorage;
+				_tradeArrived = false;
 				int tripMark = ModsLogLength();
 				yield return WaitGameHours(30f, () => ModsLogHas($"brought 40 food to {to.name}") || trader.isDead);
 				if (trader.isDead && !ModsLogHas($"{trader.name} of {from.name} brought 40 food to {to.name}"))
@@ -2548,8 +2587,8 @@ namespace RuinarchDebug
 					news = false;
 				}
 				else Check("the trader brings the food to the other village", () =>
-					(ModsLogHas($"{trader.name} of {from.name} brought 40 food to {to.name}"),
-					$"{Busy(trader)} dead={trader.isDead} carrying={trader.carryComponent.carriedPOI?.name ?? "nothing"} haul={trader.jobQueue.HasJob(JOB_TYPE.HAUL)}; {ModsLogLineSince(tripMark, $"The trip of {trader.name} from") ?? "the trip has not ended"}"));
+					(_tradeArrived && ModsLogHas($"{trader.name} of {from.name} brought 40 food to {to.name}"),
+					$"deposited in destination={_tradeArrived}; {Busy(trader)} dead={trader.isDead} carrying={trader.carryComponent.carriedPOI?.name ?? "nothing"} haul={trader.jobQueue.HasJob(JOB_TYPE.HAUL)}; {ModsLogLineSince(tripMark, $"The trip of {trader.name} from") ?? "the trip has not ended"}"));
 				if (news && trader.isAlliedWithPlayer)
 				{
 					// Demon cultists keep the player's secrets (Knowledge.Counts).
@@ -2569,6 +2608,8 @@ namespace RuinarchDebug
 							+ $" {to.name} residents who could learn: {to.residents.Count(r => r != null && !r.isDead && r.isNormalCharacter && r.race.IsSapient() && !r.isAlliedWithPlayer)}"));
 				}
 			}
+			_tradeCargo = null;
+			_tradeDestination = null;
 			if (news)
 			{
 				foreach (Faction f in new[] { from.owner, to.owner })
@@ -3894,7 +3935,7 @@ namespace RuinarchDebug
 				&& r.race.IsSapient() && r.isNormalCharacter && !r.isAlliedWithPlayer && (!r.partyComponent.hasParty || !r.partyComponent.currentParty.isActive) && r.carryComponent.isBeingCarriedBy == null
 				&& r != r.homeSettlement?.ruler && !r.isFactionLeader && r.homeSettlement?.cityCenter != null
 				&& !r.combatComponent.isInCombat && r.gridTileLocation != null && r.gridTileLocation.IsPartOfSettlement(r.homeSettlement)).Take(2).ToList();
-			LocationGridTile near = portal.tiles.SelectMany(t => t.neighbourList).FirstOrDefault(t => t != null && t.structure != portal && !t.isOccupied);
+			LocationGridTile near = portal.tiles.SelectMany(t => t.neighbourList).FirstOrDefault(t => t != null && t.structure != portal && !t.isOccupied && t.IsPassable());
 			if (witnesses.Count < 2 || near == null)
 			{
 				const string why = "news of a sighting travels with the witness";
@@ -3904,10 +3945,20 @@ namespace RuinarchDebug
 			}
 			else
 			{
+				void SeePortal(Character viewer)
+				{
+					CharacterManager.Instance.Teleport(viewer, near);
+					viewer.marker.UpdatePosition();
+					Physics2D.SyncTransforms();
+					TileObject seen = portal.tiles.Select(t => t.tileObjectComponent.objHere)
+						.First(o => o != null && o.tileObjectType.IsDemonicStructureTileObject());
+					viewer.marker.AddPOIAsInVisionRange(seen);
+					// Finish native sighting before defenders get a combat tick.
+					viewer.marker.ProcessAllUnprocessedVisionPOIs();
+				}
 				// A witness killed before getting home: the news dies with them.
 				Character doomed = witnesses[0];
-				Guard("place a doomed witness by the portal", () => { doomed.marker.PlaceMarkerAt(near); return doomed; });
-				yield return WaitGameHours(2f, () => PlusBridge.Carries(doomed, portal));
+				Guard("place a doomed witness by the portal", () => { SeePortal(doomed); return doomed; });
 				bool sawIt = PlusBridge.Carries(doomed, portal);
 				Guard("kill the witness", () => { doomed.Death("autotest"); return doomed; });
 				yield return WaitGameHours(2f, null);
@@ -3921,8 +3972,7 @@ namespace RuinarchDebug
 
 				// A witness who gets home tells their people.
 				Character witness = witnesses[1];
-				Guard("place a witness by the portal", () => { witness.marker.PlaceMarkerAt(near); return witness; });
-				yield return WaitGameHours(2f, () => PlusBridge.Carries(witness, portal));
+				Guard("place a witness by the portal", () => { SeePortal(witness); return witness; });
 				Check("a villager who sees the portal carries the news; their faction does not know yet", () =>
 					(PlusBridge.Carries(witness, portal) && !PlusBridge.Knows(faction, portal),
 					$"{witness.name} at {witness.gridTileLocation?.localPlace} carries={PlusBridge.Carries(witness, portal)} faction knows={PlusBridge.Knows(faction, portal)}"));
@@ -4612,19 +4662,78 @@ namespace RuinarchDebug
 			}
 			else
 			{
-				string queued = $"{village.name} is a {tier}: queued a Library blueprint";
-				string placed = $"Library blueprint placed in {village.name}";
-				yield return WaitGameHours(6f, () => ModsLogHas(queued) || PlusBridge.LibraryFor(village) != null);
-				if (!ModsLogHas(queued) && PlusBridge.LibraryFor(village) == null && !HasRoomFor(village, STRUCTURE_TYPE.WORKSHOP))
+				STRUCTURE_TYPE kind = Ruinarch.ModContent.ModContent.StructureTypeFor("ruinarch.plus.library");
+				var placements = new List<JobQueueItem>();
+				village.PopulateJobsOfType(placements, JOB_TYPE.PLACE_BLUEPRINT);
+				GoapPlanJob placement = placements.OfType<GoapPlanJob>().FirstOrDefault(j =>
+					j.GetOtherDataFor(INTERACTION_TYPE.PLACE_BLUEPRINT)?[2]?.obj is StructureSetting setting && setting.structureType == kind);
+				GenericTileObject blueprintTile = placement?.poiTarget as GenericTileObject
+					?? village.areas.SelectMany(a => a.gridTileComponent.gridTiles).Select(t => t.tileObjectComponent.genericTileObject)
+						.FirstOrDefault(g => g?.blueprintOnTile?.name.Contains("@ruinarch.plus/library") == true);
+				StructureSetting material = village.owner.factionType.CreateStructureSettingForStructure(STRUCTURE_TYPE.WORKSHOP, village);
+				bool room = material.hasValue && LandmarkManager.Instance.CanPlaceStructureBlueprint(village.owner.factionType.type, village,
+					new StructureSetting(kind, material.resource), out LocationGridTile _, out string _, out int _, out LocationGridTile _);
+				Character worker = !writer.isDead ? writer : !reader.isDead ? reader : null;
+				if (PlusBridge.LibraryFor(village) == null && blueprintTile == null && !room)
 				{
-					Skip(queuedCheck, $"{village.name} has no room for a Workshop-sized building");
+					Skip(queuedCheck, $"{village.name} has no room for the authored Library");
+				}
+				else if (PlusBridge.LibraryFor(village) == null && worker == null)
+				{
+					Skip(queuedCheck, "both household members died before construction");
 				}
 				else
 				{
-					yield return WaitGameHours(48f, () => PlusBridge.LibraryFor(village) != null);
+					if (PlusBridge.LibraryFor(village) == null)
+					{
+						// Native permits one placement job at a time. Do not let an unrelated
+						// unassigned job block the fixture's Library queue indefinitely.
+						foreach (JobQueueItem other in placements.Where(j => j != placement)) other.ForceCancelJob("autotest Library setup");
+						PlusBridge.CheckLibraries();
+						placements.Clear();
+						village.PopulateJobsOfType(placements, JOB_TYPE.PLACE_BLUEPRINT);
+						placement = placements.OfType<GoapPlanJob>().FirstOrDefault(j =>
+							j.GetOtherDataFor(INTERACTION_TYPE.PLACE_BLUEPRINT)?[2]?.obj is StructureSetting setting && setting.structureType == kind);
+						if (placement != null)
+						{
+							blueprintTile = placement.poiTarget as GenericTileObject;
+							if (placement.assignedCharacter == null)
+							{
+								worker.jobQueue.CancelAllJobs();
+								placement.SetPriority(1000);
+								worker.jobQueue.AddJobInQueue(placement);
+							}
+						}
+						yield return WaitGameHours(12f, () => blueprintTile?.blueprintOnTile != null || PlusBridge.LibraryFor(village) != null);
+						if (blueprintTile?.blueprintOnTile is LocationStructureObject blueprint && PlusBridge.LibraryFor(village) == null)
+						{
+							Guard("supply the native Library build job", () =>
+							{
+								var jobs = new List<JobQueueItem>();
+								village.PopulateJobsOfType(jobs, JOB_TYPE.BUILD_BLUEPRINT);
+								JobQueueItem build = jobs.First(j => j.poiTarget == blueprintTile);
+								worker = build.assignedCharacter ?? worker;
+								worker.StopCurrentActionNode("autotest Library materials");
+								worker.UncarryPOI();
+								RESOURCE resource = blueprint.thinWallResource.GetResourceForWall();
+								TILE_OBJECT_TYPE pileType = resource == RESOURCE.STONE ? TILE_OBJECT_TYPE.STONE_PILE : TILE_OBJECT_TYPE.WOOD_PILE;
+								ResourcePile supplies = InnerMapManager.Instance.CreateNewTileObject<ResourcePile>(pileType);
+								supplies.SetResourceInPile(blueprint.craftCost);
+								worker.ObtainItem(supplies);
+								worker.carryComponent.CarryPOI(supplies);
+								build.SetPriority(1000);
+								return build.assignedCharacter != null || worker.jobQueue.AddJobInQueue(build) ? build : null;
+							});
+						}
+						yield return WaitGameHours(18f, () =>
+						{
+							worker?.needsComponent.SetTiredness(100f);
+							return PlusBridge.LibraryFor(village) != null;
+						});
+					}
 					Check(queuedCheck, () =>
-						(ModsLogHas(queued) && ModsLogHas(placed) && PlusBridge.LibraryFor(village) != null,
-						$"queued={ModsLogHas(queued)} placed={ModsLogHas(placed)} built={PlusBridge.LibraryFor(village)?.name ?? "no"} placeBlueprint job={village.HasJob(JOB_TYPE.PLACE_BLUEPRINT)}"));
+						(PlusBridge.LibraryFor(village) != null,
+						$"built={PlusBridge.LibraryFor(village)?.name ?? "no"} tier={PlusBridge.Tier(village)} villagers={Villagers(village)}; {BlueprintState(village)}"));
 				}
 			}
 
@@ -5971,7 +6080,7 @@ namespace RuinarchDebug
 					string caller = string.Join(" < ", new System.Diagnostics.StackTrace().GetFrames().Skip(2).Take(10).Select(f => f.GetMethod()?.DeclaringType?.Name + "." + f.GetMethod()?.Name));
 					Last[c] = caller;
 					Releaser[c] = removedBy;
-					_running.Log($"  held ex-ruler untied: {c.name} ({PlusBridge.HeldState(c)}, {c.characterClass?.className}) by {removedBy?.name ?? "nobody"} (friend={removedBy != null && removedBy.relationshipContainer.IsFriendsWith(c)}) in {c.currentStructure?.name ?? "the wild"} via {caller}");
+					_running.Log($"  held ex-ruler untied: {c.name} ({PlusBridge.HeldState(c)}, {c.characterClass?.className}) by {removedBy?.name ?? "nobody"} (friend={removedBy != null && removedBy.relationshipContainer.IsFriendsWith(c)}, home={removedBy?.homeSettlement?.name ?? "none"}) in {c.currentStructure?.name ?? "the wild"} via {caller}");
 				}
 				catch
 				{

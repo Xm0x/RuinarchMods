@@ -48,7 +48,11 @@ their fields, and villagers fight back harder the closer it gets.
   in its tooltip.
 - **When destroyed**, its patch stops growing but stays; villagers still have to clean it.
   Its unused charge returns, as the game does for other demonic buildings.
-- Look: borrows an existing demonic building's prefab for now (`PrefabSource`).
+- Look: the Crypt prefab still supplies placement geometry and build behavior, but the
+  Heart's visible sprite and placement preview use the supplied `blight_heart_pumping.gif`
+  animation (15 transparent frames, original 1.84-second loop). The shipped art is a
+  lossless PNG atlas plus frame timings; menu icons use the first frame. Ordinary Crypts
+  are unchanged.
 
 ### 2. Ways to spread it
 

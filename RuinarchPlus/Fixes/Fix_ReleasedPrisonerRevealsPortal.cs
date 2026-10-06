@@ -19,13 +19,14 @@ namespace RuinarchPlus
 	[HarmonyPatch(typeof(MovementComponent), "LetGo")]
 	public static class Fix_ReleasedPrisonerRevealsPortal
 	{
-		private static bool Prefix(MovementComponent __instance)
+		private static bool Prefix(MovementComponent __instance, bool becomeDazed)
 		{
 			Character owner = __instance.owner;
 			if (owner == null)
 			{
 				return true; // let vanilla run
 			}
+			if (becomeDazed) owner.jobQueue.CancelAllJobs(JOB_TYPE.REPORT_CORRUPTED_STRUCTURE);
 			LocationGridTile dest = PickHomeTile(owner);
 			if (dest == null)
 			{

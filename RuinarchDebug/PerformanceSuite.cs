@@ -201,11 +201,16 @@ namespace RuinarchDebug
 			Vector3 home = main.transform.position;
 			yield return new WaitForEndOfFrame();
 			long before = MinimapHash(mini);
-			Try("move the view", () => InnerMapCameraMove.Instance.MoveCameraForMinimap(home + new Vector3(map.width / 3f, 0f, 0f)));
+			float direction = home.x > (map.cameraBounds.x + map.cameraBounds.z) * 0.5f ? -1f : 1f;
+			Try("move the view", () =>
+			{
+				InnerMapCameraMove.Instance.ClearOutCameraTargets();
+				InnerMapCameraMove.Instance.MoveCameraForMinimap(home + new Vector3(direction * map.width / 3f, 0f, 0f));
+			});
 			for (int i = 0; i < 5; i++) yield return null;
 			yield return new WaitForEndOfFrame();
 			long after = MinimapHash(mini);
-			Check("moving the view redraws the minimap", () => (before != after, $"picture {before:X} -> {after:X}, view {home} -> {main.transform.position}"));
+			Check("moving the view redraws the minimap", () => (Vector3.Distance(home, main.transform.position) > 0.1f && before != after, $"picture {before:X} -> {after:X}, view {home} -> {main.transform.position}"));
 			Try("move the view back", () => InnerMapCameraMove.Instance.MoveCameraForMinimap(home));
 
 			Try("hide the minimap", () => ui.HideUI());

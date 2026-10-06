@@ -454,9 +454,9 @@ knowledge).
    `libraryBooks` 4; spec `docs/specs/2026-09-27-records-library-design.md`). A record
    belongs to a dwelling or a Library and is carried by its Book Shelves (`SHELF_BOOKS`), or
    by Books the mod places when it has none. A Town or City (and a capital) queues a
-   **Library** (a ModContent village building borrowing the Workshop prefab, the only one
-   every culture has: the Magic Academy's are elven or corrupted only) through
-   `ModBuildings`, like the Town Hall. Writing and reading are two new actions, registered
+   **Library** (a ModContent village building using the bundled
+   `templates/library.json` layout exclusively, with the Workshop's build rules) through
+   `ModBuildings`, like the Town Hall. Existing saves keep their saved look. Writing and reading are two new actions, registered
    through the framework's `RegisterAction` (RuinarchModLoader v0.5.0): Write and Read,
    near-target on a carrier, one hour, Read icon, a fixed-text log on the villager and the
    carrier. A `BehaviourComponent.RunBehaviour` prefix (ahead of the curfew's) decides once
