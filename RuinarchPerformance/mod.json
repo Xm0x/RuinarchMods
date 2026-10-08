@@ -1,9 +1,9 @@
 {
   "id": "ruinarch.performance",
   "name": "Performance Mod",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": "Xm0x",
-  "description": "Speeds up loading with linear tile-object traversal, memoized native enum decoding and an optional one-save background preload cache. Also removes map-wide listener scans and finished-job listeners, redraws the minimap only when it changes, and supports high-refresh screens without changing gameplay or save formats.",
+  "description": "Speeds up loading with linear tile-object traversal, compiled native field accessors, memoized enum decoding and an optional one-save background preload cache. Also removes map-wide listener scans and finished-job listeners, redraws the minimap only when it changes, and supports high-refresh screens without changing gameplay or save formats.",
   "loader": "RuinarchModLoader",
   "loaderApi": 2,
   "type": "code",

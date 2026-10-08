@@ -51,6 +51,7 @@ namespace RuinarchDebug
 			TileObjectLoadingChecks();
 			yield return SavePreloadChecks();
 			EnumLoadingChecks();
+			FieldLoadingChecks();
 			yield return DisconnectReachesTileObjects("");
 			yield return MinimapRedrawChecks();
 

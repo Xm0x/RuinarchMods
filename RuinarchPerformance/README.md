@@ -6,7 +6,7 @@ characters do the same things, only with less waiting between frames.
 
 It works with or without [Ruinarch+](../RuinarchPlus/README.md).
 
-### 0.4.0: native loading and selected-save preparation
+### 0.4.1: native loading and selected-save preparation
 
 Second-wave tile-object loading walks the native collection once instead of
 restarting a HashSet scan for every object. The native loading body, yield schedule
@@ -16,6 +16,12 @@ the requested native ordinal rather than reading a stale snapshot.
 Named enum decoding reuses successful native values instead of repeatedly scanning
 enum names and boxing the same value. Flags, numeric virtual IDs, invalid names,
 case sensitivity and overflow keep the native conversion path.
+
+Instance-field conversion uses cached compiled accessors instead of reflection for
+each value. Boxed structs are mutated in place, not copied. Property access, readonly
+writes, volatile/pointer fields, reflection coercions and invalid targets retain the
+native path. Accessors cache field metadata and code, never loaded objects; concurrent
+first use compiles each field once.
 
 The optional selected-save preload prepares one destination in RAM while browsing
 the Load window or changing scenes. One worker handles the latest selection, not
@@ -200,6 +206,66 @@ the red/green isolated checks are in `native-preload-red-1` and
 costing 4.397 s during one Large decode (`native-decoder-profile-1`); this is not a
 standalone timing guarantee for memoization or its synchronization overhead.
 
+### 0.4.1: compiled field access
+
+Aggregate native profiling counted 3,311,863 field reads and as many writes in one
+Large load. Read/write timings dominated the measured converter operations;
+metadata lookup and locking were smaller, so their synchronization remains intact.
+Profiling adds overhead: those timings are hotspot evidence, not load benchmarks.
+
+The uninstrumented comparison below held every 0.4.0 patch constant and changed
+only field access. Preparation includes real Load-window selection and a concurrent
+native player-data save:
+
+| Fixture | Preparation, 0.4.0 / 0.4.1 | In-flight scene transition, 0.4.0 / 0.4.1 | Already-prepared transition, 0.4.0 / 0.4.1 |
+|---|---:|---:|---:|
+| TruePlanet Large | 29.178 s / 26.723 s | 45.919 s / 44.732 s | 37.702 s / 38.666 s |
+| Ordinary Small | 7.299 s / 6.538 s | 14.448 s / 14.226 s | 12.840 s / 12.730 s |
+
+This is an incremental preparation/decoder improvement, not another drastic
+reduction in total load time. Ready snapshots bypass field decoding entirely:
+the Large ready transition did not improve. Scene teardown and main-thread
+reconstruction remain the dominant ready-load costs.
+
+Before-GC whole-process managed-memory increases during preparation were
+1,275.4/1,150.9 MiB (Large) and 303.5/260.5 MiB (Small), old/new. These include
+temporary JSON and unrelated allocations, not an exact retained-cache budget.
+Largest preparation frame gaps were 0.245/0.206 s and 0.229/0.202 s. Background
+preparation still causes frame-pacing costs.
+
+A separate same-Load-window Large control observed 164.9 fps idle, 27.7 fps while
+preparing and 164.3 fps once ready, with the cap fixed at 165. Its worst preparation
+gap was 0.102 s. Closing that window retired the snapshot. This isolates preparation
+from merely opening the Load window; it does not promise smooth preparation.
+
+Both fixtures passed six cursor and twenty cache/enum/field checks, with zero game
+errors. The seven field checks also passed with original reflection enabled:
+private/inherited/nullable fields, boxed-struct mutation, coercion/null resets,
+property exceptions, cycles/shared references, partial JSON and readonly assignment.
+Terrain/biome/TileBase records and non-generic object records matched before and
+after gameplay/save/reload, subject only to the existing native visible-wall GUID
+rule. Post-gameplay transitions were 50.612/49.894 s (Large) and 15.896/15.351 s
+(Small), old/new. All thirteen protected files were restored byte-identically.
+
+Separate main-menu loads with preloading disabled exercised compiled fields on
+the native reader path. All 47,040/19,600 terrain records and 15,101/3,134 object
+records matched the original-reader controls, with only the same visible-wall
+GUID normalization. Cold loads took 42.989 s (Large) and 15.325 s (Small); these
+separate-process observations are compatibility checks, not a speedup claim.
+The first two-case pacing runner then refused its own reused fixture filename
+on Small, after the cold dump had completed; protected files were still restored.
+With case-specific fixture names, the Small control passed cold loading, state
+comparison, selection, preparation and snapshot retirement on close with zero game errors.
+Its idle/preparing/ready rates were 164.3/30.0/162.4 fps, and all thirteen protected
+files were restored byte-identically.
+
+Evidence: `/home/deniz/ruinarch-runs/native-loading-fields-production-1/`,
+`native-loading-decoder-metrics-1`, `native-field-access-{red,green}-1`,
+and `native-loading-window-pacing-1`. Cold-reader evidence is in
+`native-loading-fields-cold-1/cold-comparison.json` and `native-loading-fields-cold-2`.
+A throwaway field-write timing
+gate failed before the change and passed afterward; it is not a full-load speedup claim.
+
 ## What it does not change
 
 - Saves: nothing is written to them. Saves made with the mod load without it and the
@@ -219,7 +285,7 @@ standalone timing guarantee for memoization or its synchronization overhead.
    are present, the local copy wins.
 3. Launch. `Mods/mods.log` should have a line like:
    ```
-   [ruinarch.performance] Performance Mod v0.4.0: linear tile-object loading on, enum decoding cache on, selected-save preload on, ...
+   [ruinarch.performance] Performance Mod v0.4.1: linear tile-object loading on, compiled field access on, enum decoding cache on, selected-save preload on, ...
    ```
 
 ## Build from source

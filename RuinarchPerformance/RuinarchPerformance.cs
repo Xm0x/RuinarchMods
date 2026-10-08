@@ -37,10 +37,11 @@ namespace RuinarchPerformance
 			if (Settings.jobCrimeListeners) Patch(harmony, typeof(JobCrimeListeners));
 			TileObjectLoading.Install(new Harmony(context.Info.id + ".loading"));
 			Patch(new Harmony(context.Info.id + ".enums"), typeof(EnumLoading));
+			FieldLoading.Install(new Harmony(context.Info.id + ".fields"));
 			var preload = new Harmony(context.Info.id + ".preloading");
 			SavePreloading.Install(preload);
 			Patch(preload, typeof(SavePreloading));
-			Log.Info($"{context.Info.name} v{context.Info.version}: linear tile-object loading on, enum decoding cache on, selected-save preload {(Settings.preloadSaves && SavePreloading.Available ? "on" : "off")}, tile-object signal table {(Settings.tileObjectListeners ? "on" : "off")}, job crime-listener cleanup {(Settings.jobCrimeListeners ? "on" : "off")}, minimap redraw on change {(Settings.minimapRedraw ? "on" : "off")}, frame cap {(Settings.matchScreen ? "matches the screen" : Settings.frameRateCap.ToString())}");
+			Log.Info($"{context.Info.name} v{context.Info.version}: linear tile-object loading on, compiled field access on, enum decoding cache on, selected-save preload {(Settings.preloadSaves && SavePreloading.Available ? "on" : "off")}, tile-object signal table {(Settings.tileObjectListeners ? "on" : "off")}, job crime-listener cleanup {(Settings.jobCrimeListeners ? "on" : "off")}, minimap redraw on change {(Settings.minimapRedraw ? "on" : "off")}, frame cap {(Settings.matchScreen ? "matches the screen" : Settings.frameRateCap.ToString())}");
 		}
 
 		// The class and its nested [HarmonyPatch] classes.
