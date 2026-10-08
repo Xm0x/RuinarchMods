@@ -23,5 +23,8 @@ namespace RuinarchPerformance
 
 		[Setting("Finished jobs drop their crime listener", "Jobs stop leaving listeners behind that slow the game down over a long game."), RequiresRestart]
 		public bool jobCrimeListeners = true;
+
+		[Setting("Preload selected saves", "Prepare one selected save in RAM while browsing or changing scenes. Uses extra memory; oversized saves use the ordinary reader. Off: no background preparation.")]
+		public bool preloadSaves = true;
 	}
 }

@@ -7,9 +7,9 @@ using Ruinarch.Modding;
 namespace RuinarchPerformance
 {
 	/// <summary>
-	/// Performance Mod entry point. Every fix is a [HarmonyPatch] class in this assembly
-	/// that keeps the game's behaviour and removes a cost that grows with the map or the
-	/// length of the game. The two listener fixes are patched only when switched on (they
+	/// Performance Mod entry point. The patches keep the game's behaviour and remove
+	/// costs that grow with the map or the length of the game.
+	/// The two listener fixes are patched only when switched on (they
 	/// take effect at the next start); the frame cap and the minimap react to changes at once.
 	/// </summary>
 	public class RuinarchPerformance : IRuinarchMod
@@ -24,6 +24,7 @@ namespace RuinarchPerformance
 			context.Settings.Changed += field =>
 			{
 				if (field == nameof(PerformanceSettings.matchScreen) || field == nameof(PerformanceSettings.frameRateCap)) FrameRateCap.Apply();
+				if (field == nameof(PerformanceSettings.preloadSaves)) SavePreloading.Cancel();
 			};
 			var harmony = new Harmony(context.Info.id);
 			Patch(harmony, typeof(FrameRateCap));
@@ -34,7 +35,12 @@ namespace RuinarchPerformance
 				TileObjectListeners.Install();
 			}
 			if (Settings.jobCrimeListeners) Patch(harmony, typeof(JobCrimeListeners));
-			Log.Info($"{context.Info.name} v{context.Info.version}: tile-object signal table {(Settings.tileObjectListeners ? "on" : "off")}, job crime-listener cleanup {(Settings.jobCrimeListeners ? "on" : "off")}, minimap redraw on change {(Settings.minimapRedraw ? "on" : "off")}, frame cap {(Settings.matchScreen ? "matches the screen" : Settings.frameRateCap.ToString())}");
+			TileObjectLoading.Install(new Harmony(context.Info.id + ".loading"));
+			Patch(new Harmony(context.Info.id + ".enums"), typeof(EnumLoading));
+			var preload = new Harmony(context.Info.id + ".preloading");
+			SavePreloading.Install(preload);
+			Patch(preload, typeof(SavePreloading));
+			Log.Info($"{context.Info.name} v{context.Info.version}: linear tile-object loading on, enum decoding cache on, selected-save preload {(Settings.preloadSaves && SavePreloading.Available ? "on" : "off")}, tile-object signal table {(Settings.tileObjectListeners ? "on" : "off")}, job crime-listener cleanup {(Settings.jobCrimeListeners ? "on" : "off")}, minimap redraw on change {(Settings.minimapRedraw ? "on" : "off")}, frame cap {(Settings.matchScreen ? "matches the screen" : Settings.frameRateCap.ToString())}");
 		}
 
 		// The class and its nested [HarmonyPatch] classes.

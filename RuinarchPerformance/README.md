@@ -6,6 +6,39 @@ characters do the same things, only with less waiting between frames.
 
 It works with or without [Ruinarch+](../RuinarchPlus/README.md).
 
+### 0.4.0: native loading and selected-save preparation
+
+Second-wave tile-object loading walks the native collection once instead of
+restarting a HashSet scan for every object. The native loading body, yield schedule
+and save format are unchanged. If the collection changes, the cursor restarts at
+the requested native ordinal rather than reading a stale snapshot.
+
+Named enum decoding reuses successful native values instead of repeatedly scanning
+enum names and boxing the same value. Flags, numeric virtual IDs, invalid names,
+case sensitivity and overflow keep the native conversion path.
+
+The optional selected-save preload prepares one destination in RAM while browsing
+the Load window or changing scenes. One worker handles the latest selection, not
+one worker per click. Changing selection, closing the window, starting a new game
+or disabling preloading retires the previous result.
+
+The cache is only eligible for the stock JSON serializer and unencoded saves.
+Before handoff, SHA-256 and byte length must match the actual extracted native save
+stream. Matching snapshots transfer exactly once: the game destructively cleans
+decoded saves after loading, so consumed graphs are never reused. Missing, invalid,
+changed or oversized entries fall back to ordinary native decoding; its errors
+remain visible. Native loading still owns ZIP extraction, streams and callbacks.
+
+No live scene objects are cached. The 128 MiB uncompressed-entry guard is not a
+128 MiB RAM budget: decoded objects and temporary JSON can take substantially more.
+Native serializer metadata operations are synchronized because its shared caches
+were not designed for simultaneous background preparation and ordinary saving.
+
+This is a source development update, not a new Workshop or release ZIP publication.
+Tile-world travel, multiple resident scenes and near-seamless switching are not
+implemented by these loading changes.
+
+
 ## What it fixes
 
 **Every tree and rock listens for the game's "disconnect" signals.** When a character
@@ -64,10 +97,13 @@ Fixes:
   longer checks every tree and rock on the map. Needs a restart.
 - **Finished jobs drop their crime listener** (on): jobs stop leaving listeners behind
   that slow the game down over a long game. Needs a restart.
+- **Preload selected saves** (on): prepare one selected destination in RAM. Off
+  cancels preparation and restores ordinary decoding without a restart. Use off
+  when memory pressure or background frame stalls matter more than transition time.
 
-The first three take effect at once. The two listener fixes take effect the next time you
-start the game; until then the tab shows "Restart to apply" next to them. The values are
-saved in `Mods/settings/ruinarch.performance.json`.
+Frame-rate, minimap and preload settings take effect at once. The two listener fixes
+take effect the next time you start the game; until then the tab shows "Restart to
+apply" next to them. Values are saved in `Mods/settings/ruinarch.performance.json`.
 
 ## Measured
 
@@ -104,6 +140,66 @@ Version 0.2.0 on an Extra Large map:
 The bigger the map and the longer the game, the more it helps: the costs it removes grow
 with the number of objects in the world.
 
+Development 0.3.1, protected same-save native reload comparisons:
+
+| Fixture | Stock reload | Linear reload | Stock object loop | Linear object loop | Largest object-loop step, stock / linear |
+|---|---:|---:|---:|---:|---:|
+| TruePlanet Large, 280x168 cells | 90.931 s | 65.630 s | 31.885 s | 4.958 s | 24.823 s / 0.173 s |
+| Ordinary Small, 140x140 cells | 23.407 s | 19.905 s | 3.761 s | 0.597 s | 3.217 s / 0.102 s |
+
+These are individual runs, not an exhaustive seed/size benchmark. The same saved
+world was loaded with only the new loading patches off/on; other installed mods
+remained enabled. Native saves made after resumed gameplay also matched stock
+loading. A 65-second Large load is still far from seamless: scene teardown, save
+decoding and reconstruction remain separate costs.
+
+### 0.4.0: production one-use preloading
+
+Protected native runs compared ordinary decoding against the production cache.
+Linear tile-object traversal was enabled in every column; the ordinary control
+disabled the new enum/preload hooks. These are same-scene transitions, not the
+faster first load from the main menu:
+
+| Fixture | Ordinary decoding | Production, preparation starts at Load | Production, selected save already prepared |
+|---|---:|---:|---:|
+| TruePlanet Large, 280x168 cells | 55.077 s | 46.438 s | 37.606 s |
+| Ordinary Small, 140x140 cells | 17.626 s | 14.350 s | 13.319 s |
+
+Preparation happens before the transition in the last column; it is not free:
+
+| Fixture | Preparation including Load-window selection | Whole-process managed-memory increase during preparation, before GC | Largest observed preparation frame gap |
+|---|---:|---:|---:|
+| TruePlanet Large | 29.717 s | 965.1 MiB | 0.231 s |
+| Ordinary Small | 7.357 s | 286.7 MiB | 0.218 s |
+
+Those memory deltas include temporary JSON and unrelated process allocations, not
+just the retained graph. Background work can hurt frame pacing: 467/534 Large and
+122/131 Small preparation frames exceeded 50 ms. Disable preloading if that tradeoff
+is undesirable. Advance preparation hides work; it does not eliminate it. Even a
+ready Large transition still takes about 38 seconds because native scene teardown
+and reconstruction remain. This is not near-seamless travel.
+
+Every 47,040 Large and 19,600 Small terrain/biome/actual TileBase record matched.
+The initial 15,101/3,134 non-generic object records and post-gameplay 15,297/3,244
+records also matched. Only positioned visible ThinWall GUIDs were normalized:
+stock-to-stock controls recreate those IDs; saved nonvisual wall IDs and every
+other ID stayed exact.
+
+Each fixture passed six loading-cursor regressions and thirteen cache/enum checks,
+with zero game errors. The real Load-window selection, native callbacks exactly
+once, concurrent player-data saving, villager movement, Portal identity and native
+save/reload were exercised. Post-gameplay ordinary/production transitions were
+60.594/52.740 s (Large) and 18.679/16.120 s (Small), with preparation starting at Load.
+Protected runs restored all thirteen player/settings/deployed-candidate files
+byte-identically and stopped the game. Screenshots were inspected at 1920x1080.
+
+This is two fixtures on one machine, not an exhaustive seed/size benchmark.
+Evidence: `/home/deniz/ruinarch-runs/native-loading-production-cache-2/`;
+the red/green isolated checks are in `native-preload-red-1` and
+`native-preload-green-3`. Earlier profiling found 1,646,502 native enum conversions
+costing 4.397 s during one Large decode (`native-decoder-profile-1`); this is not a
+standalone timing guarantee for memoization or its synchronization overhead.
+
 ## What it does not change
 
 - Saves: nothing is written to them. Saves made with the mod load without it and the
@@ -123,7 +219,7 @@ with the number of objects in the world.
    are present, the local copy wins.
 3. Launch. `Mods/mods.log` should have a line like:
    ```
-   [ruinarch.performance] Performance Mod v0.3.0: tile-object signal table on, job crime-listener cleanup on, minimap redraw on change on, frame cap matches the screen
+   [ruinarch.performance] Performance Mod v0.4.0: linear tile-object loading on, enum decoding cache on, selected-save preload on, ...
    ```
 
 ## Build from source

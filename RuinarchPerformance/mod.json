@@ -1,9 +1,9 @@
 {
   "id": "ruinarch.performance",
   "name": "Performance Mod",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "Xm0x",
-  "description": "Makes Ruinarch faster on big maps and in long games without changing how it plays: no list scans over every tree and rock, finished jobs stop leaving listeners behind, removing a dead creature no longer stalls the game, the minimap only redraws when it changes, and fast screens get their full frame rate.",
+  "description": "Speeds up loading with linear tile-object traversal, memoized native enum decoding and an optional one-save background preload cache. Also removes map-wide listener scans and finished-job listeners, redraws the minimap only when it changes, and supports high-refresh screens without changing gameplay or save formats.",
   "loader": "RuinarchModLoader",
   "loaderApi": 2,
   "type": "code",

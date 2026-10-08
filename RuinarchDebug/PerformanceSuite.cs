@@ -48,6 +48,9 @@ namespace RuinarchDebug
 				yield break;
 			}
 			PerformanceListenerChecks("");
+			TileObjectLoadingChecks();
+			yield return SavePreloadChecks();
+			EnumLoadingChecks();
 			yield return DisconnectReachesTileObjects("");
 			yield return MinimapRedrawChecks();
 
@@ -105,6 +108,67 @@ namespace RuinarchDebug
 			PerformanceListenerChecks(" after loading a save");
 			yield return DisconnectReachesTileObjects(" after loading a save");
 			Try("delete the test save", () => File.Delete(zip));
+		}
+
+		// Mutate only a private set of existing references, never the world's database.
+		private void TileObjectLoadingChecks()
+		{
+			Type cursorType = AccessTools.TypeByName("RuinarchPerformance.TileObjectLoading+Cursor");
+			if (cursorType == null)
+			{
+				Skip("loading preserves native ordinals across collection changes", "linear loading is not installed");
+				return;
+			}
+			TileObject[] objects = DatabaseManager.Instance.tileObjectDatabase.allTileObjectsList.Take(8).ToArray();
+			if (objects.Length < 8)
+			{
+				Skip("loading preserves native ordinals across collection changes", "fewer than eight tile objects");
+				return;
+			}
+			var read = AccessTools.Method(cursorType, "Read");
+			using (var cursor = (IDisposable)Activator.CreateInstance(cursorType, true))
+			{
+				var set = new HashSet<TileObject>(objects.Take(6));
+				bool Same(HashSet<TileObject> source, int index) =>
+					ReferenceEquals(read.Invoke(cursor, new object[] { source, index }), source.ElementAt(index));
+				Check("loading preserves ordinals after removing an earlier object", () =>
+				{
+					bool first = Same(set, 0) && Same(set, 1);
+					set.Remove(objects[0]);
+					return (first && Same(set, 2), "third native ordinal after removing the first object");
+				});
+				Check("loading preserves ordinals when a removed slot is reused", () =>
+				{
+					set.Remove(objects[1]); set.Add(objects[6]);
+					return (Same(set, 3), "same-count removal/insertion reuses a HashSet slot");
+				});
+				Check("loading preserves ordinals after insertion", () =>
+				{
+					set.Add(objects[7]);
+					return (Same(set, 4), "next ordinal after adding another object");
+				});
+				Check("loading preserves nonsequential and repeated ordinals", () =>
+					(Same(set, 0) && Same(set, set.Count - 1) && Same(set, 1) && Same(set, 1),
+					"restart, skip forward, go backward and repeat"));
+				Check("loading preserves ordinals after replacing or clearing the set", () =>
+				{
+					var replacement = new HashSet<TileObject>(objects.Reverse());
+					bool changed = Same(replacement, 0);
+					replacement.Clear(); replacement.Add(objects[3]); replacement.Add(objects[5]);
+					return (changed && Same(replacement, 1), "new source followed by clear/repopulate");
+				});
+				Check("loading preserves native invalid-index errors", () =>
+				{
+					bool Invalid(int index)
+					{
+						try { read.Invoke(cursor, new object[] { set, index }); return false; }
+						catch (System.Reflection.TargetInvocationException e)
+						{ return e.InnerException is ArgumentOutOfRangeException; }
+					}
+					return (Invalid(-1) && Invalid(set.Count) && Same(set, 0),
+						"negative/end ordinals fail; a subsequent valid lookup still works");
+				});
+			}
 		}
 
 		private void PerformanceListenerChecks(string when)
