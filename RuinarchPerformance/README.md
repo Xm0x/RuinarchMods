@@ -40,9 +40,9 @@ No live scene objects are cached. The 128 MiB uncompressed-entry guard is not a
 Native serializer metadata operations are synchronized because its shared caches
 were not designed for simultaneous background preparation and ordinary saving.
 
-This is a source development update, not a new Workshop or release ZIP publication.
-Tile-world travel, multiple resident scenes and near-seamless switching are not
-implemented by these loading changes.
+Released as 0.4.1 on GitHub and the Steam Workshop. Tile-world travel, multiple
+resident scenes and near-seamless switching are not implemented by these loading
+changes.
 
 
 ## What it fixes
