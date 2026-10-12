@@ -113,16 +113,7 @@ apply" next to them. Values are saved in `Mods/settings/ruinarch.performance.jso
 
 ## Measured
 
-Every number below was measured on one machine:
-
-| | |
-|---|---|
-| Laptop | Acer Nitro AN515-58 |
-| CPU | Intel Core i7-12650H (10 cores, 16 threads, up to 4.7 GHz) |
-| GPU | NVIDIA GeForce RTX 4060 Laptop GPU, 8 GB (driver 595.104.02) |
-| Memory | 16 GB |
-| Screen | 1920x1080, 165 Hz |
-| System | Nobara Linux 44 (Linux 7.2), Ruinarch through Steam with Proton Experimental |
+Every number below was measured on one test machine.
 
 Other machines will show different numbers; what carries over is the difference with and
 without the mod.
@@ -200,7 +191,7 @@ Protected runs restored all thirteen player/settings/deployed-candidate files
 byte-identically and stopped the game. Screenshots were inspected at 1920x1080.
 
 This is two fixtures on one machine, not an exhaustive seed/size benchmark.
-Evidence: `/home/deniz/ruinarch-runs/native-loading-production-cache-2/`;
+Evidence run: `native-loading-production-cache-2`;
 the red/green isolated checks are in `native-preload-red-1` and
 `native-preload-green-3`. Earlier profiling found 1,646,502 native enum conversions
 costing 4.397 s during one Large decode (`native-decoder-profile-1`); this is not a
@@ -259,7 +250,7 @@ comparison, selection, preparation and snapshot retirement on close with zero ga
 Its idle/preparing/ready rates were 164.3/30.0/162.4 fps, and all thirteen protected
 files were restored byte-identically.
 
-Evidence: `/home/deniz/ruinarch-runs/native-loading-fields-production-1/`,
+Evidence runs: `native-loading-fields-production-1`,
 `native-loading-decoder-metrics-1`, `native-field-access-{red,green}-1`,
 and `native-loading-window-pacing-1`. Cold-reader evidence is in
 `native-loading-fields-cold-1/cold-comparison.json` and `native-loading-fields-cold-2`.
