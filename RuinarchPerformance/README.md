@@ -113,7 +113,16 @@ apply" next to them. Values are saved in `Mods/settings/ruinarch.performance.jso
 
 ## Measured
 
-Every number below was measured on one test machine.
+Every number below was measured on one machine:
+
+| Component | Benchmark machine |
+|---|---|
+| Laptop | Acer Nitro AN515-58 |
+| CPU | Intel Core i7-12650H (10 cores, 16 threads, up to 4.7 GHz) |
+| GPU | NVIDIA GeForce RTX 4060 Laptop GPU, 8 GB (driver 595.104.02) |
+| Memory | 16 GB |
+| Screen | 1920x1080, 165 Hz |
+| System | Nobara Linux 44 (Linux 7.2), Ruinarch through Steam with Proton Experimental |
 
 Other machines will show different numbers; what carries over is the difference with and
 without the mod.
