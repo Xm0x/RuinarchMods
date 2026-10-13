@@ -14,7 +14,7 @@ replaced or recompiled.
 |---|---|
 | **[Ruinarch+](RuinarchPlus/README.md)** | The gameplay mod: bug fixes, plus rotting corpses, a Mass Grave village building, a plague curfew that closes a village's borders, factions that only attack what they know about and news that travels on foot and by gossip, villages that search for their missing, migration that follows a village's fortunes, villages that grow into Towns and Cities around a Town Hall, famine and the unrest it brings, hunters and traders. Every feature can be switched off in the game's Settings window, on the Mods tab. |
 | **[Performance Mod](RuinarchPerformance/README.md)** | Makes the game faster on big maps and in long games without changing how it plays. Works with or without Ruinarch+. |
-| **[TruePlanet](TruePlanet/README.md)** | A separate seeded planet atlas: geography, provinces, nations, capitals, planned settlements and land roads, with native menu inspection and atlas save/load. Atlas only; playable provinces and Travel Portals are not implemented. Independent of Ruinarch+. |
+| **[TruePlanet](TruePlanet/README.md)** | A separate seeded planet with a rotatable 3D globe, optional flat map, native translucent floating HUD and thin orange roads. Play persistent geographic tiles or wilderness; travel saves the source and restores visited native maps. Independent of Ruinarch+. Single-scene travel, not seamless streaming; Travel Portal structures are not implemented. |
 | **RuinarchDebug** | A development tool, not meant for normal play: an in-game debug overlay (spawn, kill, time control, place buildings, dev console) and an unattended test harness that plays scenarios in a real world and reports PASS/FAIL. |
 
 ## Art
@@ -61,19 +61,31 @@ RuinarchPerformance/
   FrameRateCap.cs            the frame rate cap follows the screen or the player's setting
   PerformanceSettings.cs     options shown in the Settings window (Mods tab)
 TruePlanet/
-  TruePlanet.cs             settings, native names and the main-menu Planet button
-  PlanetModel.cs            atlas data and graph/reference validation
-  SphereGraph.cs            seeded spherical province graph
-  PlanetGenerator.cs        geography, nations, planned villages and land roads
-  PlanetStore.cs            independent transactional JSON atlas saves
-  PlanetCanvas.cs           cached terrain/political raster and map picking
-  PlanetView.cs             native atlas controls, inspector and saved-atlas list
+  TruePlanet.cs             settings, native names, New Game and campaign atlas entry points
+  PlanetModel.cs            versioned world data and geographic identity validation
+  PlanetGeography.cs        continuous spherical terrain and climate
+  TileMesh.cs               indexed Standard/Detailed geographic cells
+  NationalProvinces.cs      nations, connected provinces, settlements and road routes
+  PlanetStore.cs            independent transactional JSON world saves
+  PlanetSurface.cs          shared cached terrain/political raster and geographic picking
+  PlanetGlobe.cs            isolated 3D sphere camera and owned render target
+  GlobeOverlays.cs           horizon-clipped screen-space borders, roads and labels
+  PlanetCanvas.cs           optional flat map sharing the same surface and selection
+  PlanetView.cs             native floating HUD, drawers and selection inspector
+  AtlasInputScope.cs        exact source input capture and restoration
+  TileGame.cs               playable geographic tiles and native context
+  TileTravel.cs             explicit source-save/destination-load travel
+  TileStore.cs              immutable native tile snapshots and campaign revisions
+  CampaignCarry.cs          portable progression versus map-local state
+  LegacyProvinceGame.cs     preserved format-one/two province gameplay
 RuinarchDebug/
   DebugMenu.cs               in-game overlay
   AutoTest.cs                unattended in-game test harness
   TemplateSuite.cs           template export, rebuilding, packs and native construction checks
   BlightSuite.cs             blight growth, village rules, crops, feeding, save and fire checks
   PerformanceSuite.cs        Performance Mod checks (signal lists, disconnects, reload)
+  TruePlanet*Checks.cs       geographic identities, globe rays and campaign storage checks
+  TruePlanetSuite.cs        native/offline TruePlanet consumer-check integration
   ModSettingsSuite.cs        mod settings checks (files, values, the Mods tab)
   SpiritEnergyCostSuite.cs   spirit-energy cost settings, rounding and disabled-cost checks
   TableCannibalSuite.cs      direct/table meat trait and alert parity, food buffs and exclusions

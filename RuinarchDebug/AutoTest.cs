@@ -270,6 +270,7 @@ namespace RuinarchDebug
 			if (Runs("ExileJurisdictionSuite")) { yield return Safe("ExileJurisdictionSuite", ExileJurisdictionSuite()); }
 			if (Runs("CurfewVisitSuite")) yield return Safe("CurfewVisitSuite", CurfewVisitSuite());
 			if (Runs("PerformanceSuite")) { yield return Safe("PerformanceSuite", PerformanceSuite()); }
+			if (Runs("TruePlanetSuite")) { yield return Safe("TruePlanetSuite", TruePlanetSuite()); }
 			if (Runs("ModSettingsSuite")) { yield return Safe("ModSettingsSuite", ModSettingsSuite()); }
 			if (Runs("TemplateSuite")) { yield return Safe("TemplateSuite", TemplateSuite()); }
 			if (Runs("BlightSuite")) { yield return Safe("BlightSuite", BlightSuite()); }
