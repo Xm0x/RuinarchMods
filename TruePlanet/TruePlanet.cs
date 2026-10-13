@@ -34,6 +34,7 @@ namespace TruePlanet
 			TileGame.Install(harmony);
 			TileTravel.Install(harmony);
 			AtlasInputScope.Install(harmony);
+			CampaignObjective.Install(harmony);
 			Log.Info("TruePlanet installed: New Game opens geographic world generation; dry tiles support native play and campaign travel.");
 		}
 		internal static void Name(Planet planet)

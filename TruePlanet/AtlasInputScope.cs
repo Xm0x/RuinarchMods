@@ -53,7 +53,7 @@ namespace TruePlanet
 			// while this modal is open; uGUI input remains entirely independent.
 			harmony.Patch(AccessTools.Method(typeof(InputManager), "TryExecuteShortcutKeyDownAction"), prefix: new HarmonyMethod(typeof(AtlasInputScope), nameof(WorldAction)));
 		}
-		private static void MouseOnUi(ref bool __result) { if (PlanetView.Instance != null) __result = true; }
-		private static bool WorldAction() => PlanetView.Instance == null;
+		private static void MouseOnUi(ref bool __result) { if (PlanetView.Instance != null && PlanetView.Instance.gameObject.activeInHierarchy) __result = true; }
+		private static bool WorldAction() => PlanetView.Instance == null || !PlanetView.Instance.gameObject.activeInHierarchy;
 	}
 }

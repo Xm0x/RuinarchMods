@@ -3,6 +3,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Collections;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -36,10 +38,28 @@ namespace TruePlanet
 		private GlobeSkin _skin;
 		private AtlasInputScope _inputScope;
 		private bool _inGame;
+		private AtlasProgress _progress;
+		private bool _generating, _drawFinished;
+		private int _terrainTile = -1;
+		private string _terrainSummary;
+		private Button[] _generationControls;
+		private TMP_InputField[] _inputs;
+		private bool _controlsReady = true;
 		private static readonly Color Background = new Color32(17, 16, 23, 255);
 		internal static void Open()
 		{
-			if (Instance != null) return;
+			if (Instance != null)
+			{
+				if (Instance.gameObject.activeSelf) return;
+				if (Instance._inGame && TileGame.Active != null && ReferenceEquals(Instance._planet, TileGame.Active.Planet))
+				{
+					Instance._inputScope = new AtlasInputScope();
+					Instance.gameObject.SetActive(true);
+					Instance.Inspect(Instance._selected >= 0 ? Instance._selected : TileGame.Active.TileId);
+					return;
+				}
+				Destroy(Instance.gameObject); Instance = null;
+			}
 			var root = new GameObject("TruePlanet atlas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
 			root.layer = LayerMask.NameToLayer("UI");
 			var canvas = root.GetComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay; canvas.sortingOrder = 2600;
@@ -130,7 +150,7 @@ namespace TruePlanet
 			var controlBody = Row(controls.transform); At(controlBody.gameObject, Vector2.zero, Vector2.one, new Vector2(18, 12), new Vector2(-18, -12));
 			_modeLabel = Button(controlBody, "Globe", () => SetFlat(!_flat)).GetComponentInChildren<TextMeshProUGUI>();
 			Button(controlBody, "Layers", () => ToggleDrawer(_layersPanel));
-			Button(controlBody, "Reset view", () => { if (_flat) _map.ResetView(); else _globe.ResetView(); });
+			Button(controlBody, "Reset view", ResetView);
 			_layersPanel = _skin.Panel("Layers drawer", transform);
 			At(_layersPanel, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(-145, 169), new Vector2(145, 467));
 			var layers = Column(_layersPanel.transform); At(layers.gameObject, Vector2.zero, Vector2.one, new Vector2(20, 20), new Vector2(-20, -20));
@@ -159,11 +179,21 @@ namespace TruePlanet
 			var saves = New("Saved world list", _savedPanel.transform);
 			At(saves, Vector2.zero, Vector2.one, new Vector2(20, 20), new Vector2(-20, -68)); _saved = Scroll(saves.transform); _savedPanel.SetActive(false);
 
+			_generationControls = _actions.GetComponentsInChildren<Button>(true).Concat(_worldPanel.GetComponentsInChildren<Button>(true)).ToArray();
+			_inputs = GetComponentsInChildren<TMP_InputField>(true);
+			_progress = new AtlasProgress(_skin, transform);
 			_surface.Progress = value =>
 			{
-				_generate.interactable = _surface.Ready;
-				_status.text = !_surface.Ready ? "Drawing world: " + (value * 100).ToString("0") + "%"
-					: "Select land. Scroll to zoom; drag to " + (_flat ? "pan." : "rotate.");
+				SetControlsReady(false);
+				if (!_surface.Ready)
+				{
+					_status.text = _surface.WorkStage;
+					_progress.Show(_surface.WorkStage, _surface.Shading ? 5 : 4, 7, _surface.CompletedRows, PlanetSurface.Height, "texture upload and overlays");
+				}
+				else
+				{
+					_progress.Show("Finishing atlas overlays", 6, 7, pending: "first complete globe frame");
+				}
 			};
 			_surface.Failed += error => ShowFailure("Cannot draw world", error);
 			_globe.Failed += RenderFailed;
@@ -173,7 +203,8 @@ namespace TruePlanet
 		}
 		private void ShowFailure(string operation, Exception error)
 		{
-			_generate.interactable = true; _play.interactable = false;
+			SetControlsReady(true); _save.interactable = _surface.Ready && _drawFinished; _play.interactable = false;
+			_progress?.Hide(); _generating = false;
 			_status.text = operation + ": " + error.Message; TruePlanetMod.Log.Warning(operation + ": " + error);
 		}
 		private void RenderFailed(Exception error)
@@ -201,13 +232,31 @@ namespace TruePlanet
 		}
 		private void Update()
 		{
+			if (!_drawFinished && !_generating && _surface != null && _surface.Ready && (_flat ? _map.Ready : _globe.FrameReady))
+			{
+				_drawFinished = true; _progress.Hide(); SetControlsReady(true);
+				_status.text = "Ready. Select land. Scroll to zoom; drag to " + (_flat ? "pan." : "rotate.");
+				if (_inGame) { Inspect(_selected); ResetView(); }
+			}
 			if (Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame) return;
 			if (_savedPanel.activeSelf) { ToggleDrawer(_savedPanel); return; }
 			if (_layersPanel.activeSelf) { ToggleDrawer(_layersPanel); return; }
 			if (_worldPanel.activeSelf) { ToggleDrawer(_worldPanel); return; }
 			Close();
 		}
-		private void Close() { _inputScope?.Dispose(); Destroy(gameObject); }
+		private void Close()
+		{
+			_inputScope?.Dispose(); _inputScope = null;
+			if (_inGame && _surface.Ready && _globe.enabled) gameObject.SetActive(false);
+			else Destroy(gameObject);
+		}
+		private void ResetView()
+		{
+			int id = _selected >= 0 ? _selected : _inGame && TileGame.Active != null ? TileGame.Active.TileId : -1;
+			if (id < 0 || !_surface.Ready) { _map.ResetView(); _globe.ResetView(); return; }
+			UnitVector direction = _planet.FormatVersion == 3 ? TileLand.For(_planet).Cells[id].DryPoint : _planet.Provinces[id].Direction;
+			_map.CenterOn(direction); _globe.CenterOn(direction);
+		}
 		private void Play() => Attempt(() =>
 		{
 			_inputScope?.Dispose();
@@ -249,21 +298,55 @@ namespace TruePlanet
 		}
 		private void Regenerate()
 		{
+			if (_generating || !_generate.interactable) return;
 			int.TryParse(_seed.text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int previous);
 			_seed.text = NextSeed(previous).ToString(CultureInfo.InvariantCulture);
 			Generate();
 		}
-		private void Generate() => Attempt(() =>
+		private void Generate()
 		{
-			int Integer(TMP_InputField field) => int.Parse(field.text, NumberStyles.Integer, CultureInfo.InvariantCulture);
-			var options = new PlanetOptions { Provinces = Integer(_count), LandShare = Integer(_land) / 100.0, Nations = Integer(_nations), WildShare = Integer(_wild) / 100.0, LocalSize = _localSize, Resolution = _resolution };
-			Planet planet = PlanetGenerator.Generate(Integer(_seed), options); TruePlanetMod.Name(planet);
-			if (!string.IsNullOrWhiteSpace(_name.text) && (_planet == null || _name.text != _planet.Name)) planet.Name = _name.text.Trim();
-			Display(planet);
-		});
+			if (_generating || !_generate.interactable) return;
+			try
+			{
+				int Integer(TMP_InputField field) => int.Parse(field.text, NumberStyles.Integer, CultureInfo.InvariantCulture);
+				var options = new PlanetOptions { Provinces = Integer(_count), LandShare = Integer(_land) / 100.0, Nations = Integer(_nations), WildShare = Integer(_wild) / 100.0, LocalSize = _localSize, Resolution = _resolution };
+				options.Validate(); int seed = Integer(_seed); string name = _name.text;
+				_generating = true; _drawFinished = false; _surface.Invalidate(); SetControlsReady(false); _play.interactable = false;
+				_status.text = _planet == null ? "Generating planet..." : "Re-generating planet...";
+				_progress.Show(_status.text, 0, 7, pending: "geography, settlements, atlas and overlays");
+				StartCoroutine(GenerateAsync(seed, options, name));
+			}
+			catch (Exception error) { ShowFailure("Cannot generate planet", error); }
+		}
+		private IEnumerator GenerateAsync(int seed, PlanetOptions options, string name)
+		{
+			yield return null; // Render the operation state before starting work.
+			var operation = new GenerationOperation();
+			Task<Planet> task = Task.Run(() => operation.Run(seed, options));
+			GenerationProgress previous = null;
+			while (!task.IsCompleted)
+			{
+				GenerationProgress progress = operation.Progress;
+				if (!ReferenceEquals(previous, progress))
+				{
+					previous = progress; _status.text = progress.Stage;
+					_progress.Show(progress.Stage, progress.Completed, 7, pending: "remaining generation stages, atlas and overlays");
+				}
+				yield return null;
+			}
+			if (task.IsFaulted) { ShowFailure("Cannot generate planet", task.Exception.GetBaseException()); yield break; }
+			try
+			{
+				Planet planet = task.Result; TruePlanetMod.Name(planet);
+				if (!string.IsNullOrWhiteSpace(name) && (_planet == null || name != _planet.Name)) planet.Name = name.Trim();
+				_generating = false; Display(planet);
+			}
+			catch (Exception error) { ShowFailure("Cannot generate planet", error); }
+		}
 		private void Display(Planet planet)
 		{
-			_planet = planet; _selected = -1; _name.text = planet.Name; _map.ResetView(); _globe.ResetView(); RefreshViews(); _surface.Show(planet); _save.interactable = true; _play.interactable = false;
+			_drawFinished = false; _terrainTile = -1;
+			_planet = planet; _selected = -1; _name.text = planet.Name; _map.ResetView(); _globe.ResetView(); RefreshViews(); _surface.Show(planet); _save.interactable = false; _play.interactable = false;
 			_worldTitle.text = planet.Name;
 			_generate.GetComponentInChildren<TextMeshProUGUI>().text = "Re-generate";
 			_seed.text = planet.Seed.ToString(CultureInfo.InvariantCulture); _count.text = planet.Options.Provinces.ToString(); _land.text = (planet.Options.LandShare * 100).ToString("0");
@@ -284,6 +367,7 @@ namespace TruePlanet
 		}
 		private void Inspect(int id)
 		{
+			if (_generating || !_surface.Ready) return;
 			_selected = id; RefreshViews();
 			if (_planet.FormatVersion == 3) { InspectTile(id); return; }
 			Province p = _planet.Provinces[id]; var text = new StringBuilder(); text.AppendLine(p.Name + (p.Land ? " / Land" : " / Ocean"));
@@ -313,6 +397,21 @@ namespace TruePlanet
 			text.AppendLine("Land area: " + land.LandArea.ToString("0.00000") + " sr");
 			TerrainSample sample = _surface.Geography.Sample(land.DryPoint);
 			text.AppendLine("Temperature: " + (sample.Temperature * 100).ToString("0") + "% / Moisture: " + (sample.Moisture * 100).ToString("0") + "%");
+			if (_terrainTile != tile)
+			{
+				var footprint = _surface.Geography.TileFootprint(tile);
+				int open = 0, mountains = 0, water = 0;
+				for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++)
+				{
+					float elevation = _surface.Geography.Elevation(_surface.Geography.Sample(footprint.Direction((x + .5) / 16, (y + .5) / 16)));
+					if (elevation < .23f) water++; else if (elevation > .78f) mountains++; else open++;
+				}
+				float count = open + mountains + water;
+				_terrainSummary = "Sampled local terrain: " + (open * 100 / count).ToString("0") + "% open land / " + (mountains * 100 / count).ToString("0") + "% mountain / " + (water * 100 / count).ToString("0") + "% water";
+				_terrainTile = tile;
+			}
+			text.AppendLine(_terrainSummary);
+			text.AppendLine("Village culture does not determine terrain.");
 			int villages = 0;
 			if (province != null) foreach (Village village in province.Villages) if (village.TileId == tile)
 			{
@@ -339,8 +438,16 @@ namespace TruePlanet
 			}
 			if (_saved.childCount == 0) Label(_saved, "No saved worlds. Generate a world, then Save world.", 16);
 		}
+		private void SetControlsReady(bool ready)
+		{
+			if (_controlsReady == ready) return;
+			_controlsReady = ready;
+			foreach (Button button in _generationControls) button.interactable = ready;
+			foreach (TMP_InputField input in _inputs) input.interactable = ready;
+		}
 		private void Attempt(Action action)
 		{
+			if (_generating || !_generate.interactable) return;
 			try { action(); } catch (Exception e) { _status.text = e.Message; TruePlanetMod.Log.Warning("Atlas operation failed: " + e.Message); }
 		}
 		private static string Size(ProvinceSize size) => size == ProvinceSize.Huge ? "Huge (32x20)" : size == ProvinceSize.ExtraLarge ? "Extra Large (24x14)" : "Large (20x12)";

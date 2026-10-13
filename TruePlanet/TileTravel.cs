@@ -62,19 +62,25 @@ namespace TruePlanet
             int hud = UIManager.Instance.GetInstanceID();
             if (_hud != hud)
             {
-                TMP_Text native = PlayerUI.Instance.GetComponentInChildren<TMP_Text>(true);
-                if (native == null) return;
+                var tabs = AccessTools.Field(typeof(PlayerUI), "topMenuButtons").GetValue(PlayerUI.Instance) as Ruinarch.Custom_UI.RuinarchToggle[];
+                if (tabs == null || tabs.Length == 0) return;
+                var native = tabs[tabs.Length - 1]; if (native == null) return;
+                var holder = new GameObject("TruePlanet tab clone staging"); holder.SetActive(false);
+                var button = Instantiate(native.gameObject, holder.transform, false); button.name = "TruePlanet atlas entry"; button.SetActive(false);
+                var target = button.GetComponent<Selectable>().targetGraphic;
+                // Remove dependents before Selectable: the native hotkey receiver requires it.
+                foreach (MonoBehaviour behaviour in button.GetComponentsInChildren<MonoBehaviour>(true))
+                    if (!(behaviour is Selectable) && !(behaviour is TMP_Text) && !(behaviour is Image) && !(behaviour is LayoutElement)) DestroyImmediate(behaviour);
+                foreach (Selectable selectable in button.GetComponentsInChildren<Selectable>(true)) DestroyImmediate(selectable);
+                button.transform.SetParent(native.transform.parent, false); Destroy(holder);
+                button.transform.SetSiblingIndex(native.transform.GetSiblingIndex() + 1);
+                var rect = (RectTransform)button.transform; rect.anchoredPosition = ((RectTransform)native.transform).anchoredPosition + new Vector2(((RectTransform)native.transform).rect.width + 2, 0);
+                rect.sizeDelta = new Vector2(144, rect.sizeDelta.y);
+                _atlas = button.AddComponent<Button>(); _atlas.targetGraphic = target; _atlas.transition = native.transition;
+                _atlas.colors = native.colors; _atlas.spriteState = native.spriteState; _atlas.navigation = new Navigation { mode = Navigation.Mode.None };
+                _atlas.onClick.AddListener(PlanetView.Open);
+                foreach (TMP_Text label in button.GetComponentsInChildren<TMP_Text>(true)) label.text = "Planet atlas";
                 _hud = hud;
-                var button = new GameObject("TruePlanet atlas entry", typeof(RectTransform), typeof(Image), typeof(Button));
-                button.transform.SetParent(UIManager.Instance.canvas.transform, false);
-                var rect = button.GetComponent<RectTransform>(); rect.anchorMin = rect.anchorMax = Vector2.zero;
-                rect.pivot = Vector2.zero; rect.anchoredPosition = new Vector2(18, 100); rect.sizeDelta = new Vector2(144, 36);
-                button.GetComponent<Image>().color = new Color32(38, 45, 52, 255);
-                _atlas = button.GetComponent<Button>(); _atlas.onClick.AddListener(PlanetView.Open);
-                var text = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI)); text.transform.SetParent(button.transform, false);
-                var bounds = text.GetComponent<RectTransform>(); bounds.anchorMin = Vector2.zero; bounds.anchorMax = Vector2.one; bounds.offsetMin = bounds.offsetMax = Vector2.zero;
-                var label = text.GetComponent<TextMeshProUGUI>(); label.font = native.font; label.fontSharedMaterial = native.fontSharedMaterial;
-                label.text = "Planet atlas"; label.fontSize = 18; label.alignment = TextAlignmentOptions.Center;
             }
             if (_atlas != null)
             {
@@ -191,6 +197,7 @@ namespace TruePlanet
             {
                 FormatVersion = current.FormatVersion, CampaignId = current.CampaignId, WorldId = current.WorldId,
                 Revision = current.Revision, ActiveTile = tile, Carry = _carry,
+                SubjugatedTiles = current.SubjugatedTiles,
                 Tiles = current.Tiles.Where(t => t.TileId != tile).Concat(new[] { snapshot }).ToArray()
             };
             TileGame.CommitCampaign(manifest);
@@ -232,7 +239,7 @@ namespace TruePlanet
             GameManager.Instance.SetProgressionSpeed(_sourceSpeed);
             if (_sourcePaused) UIManager.Instance.Pause(); else UIManager.Instance.Unpause();
         }
-        private void Finish() { Stage = TravelStage.Idle; Debug.unityLogger.logEnabled = _loggerWasEnabled; }
+        private void Finish() { Stage = TravelStage.Idle; Debug.unityLogger.logEnabled = _loggerWasEnabled; CampaignObjective.WorldReady(); }
         private void ShowError() { if (PlayerUI.Instance != null) PlayerUI.Instance.ShowGeneralConfirmation("Tile travel failed", LastError); }
         internal static bool HasPortal() => PlayerManager.Instance != null && PlayerManager.Instance.player != null
             && PlayerManager.Instance.player.playerSettlement.GetFirstStructureOfType(STRUCTURE_TYPE.THE_PORTAL) != null;

@@ -100,6 +100,15 @@ namespace RuinarchDebug
             }
             if (!string.IsNullOrEmpty(nativeSave) && System.IO.File.Exists(nativeSave)) TruePlanetStorageChecks(planetType, nativeSave);
             else Skip("campaign storage preserves old revisions and failed-commit references", "no completed geographic native save is loaded");
+            object activeTile = planetType.Assembly.GetType("TruePlanet.TileGame").GetField("Active", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            if (activeTile != null && GameManager.Instance.gameHasStarted && Quests.QuestManager.Instance.victoryCondition != null)
+            {
+                string objective = Quests.QuestManager.Instance.victoryCondition.bookmarkName;
+                FieldInfo label = typeof(BookmarkTextItemUI).GetField("lblName", BindingFlags.Instance | BindingFlags.NonPublic);
+                Check("native objective UI matches live planet progress after world setup or reload", () =>
+                    (UnityEngine.Object.FindObjectsOfType<BookmarkTextItemUI>().Where(item => item.gameObject.activeInHierarchy)
+                        .Any(item => ((TMPro.TMP_Text)label.GetValue(item)).text == objective), "actual bookmark text, not a stale loading-stage title"));
+            }
         }
 
         private void TruePlanetGlobeChecks(Assembly assembly)

@@ -75,6 +75,7 @@ namespace TruePlanet
 		{
 			Active = _pending = null; _restoredJson = null; ClearTerrain();
 			_store = null; _campaign = null; NativeSaveError = null;
+			CampaignObjective.Clear();
 		}
 		private static void ClearTerrain()
 		{
@@ -101,6 +102,7 @@ namespace TruePlanet
 			_pending = new TileContext { Planet = planet, TileId = tileId, CampaignId = campaignId ?? Guid.NewGuid().ToString("N") };
 			Active = null; _restoredJson = null; ClearTerrain();
 			_store = null; _campaign = null;
+			CampaignObjective.Clear();
 			WorldSettings.Instance.SetWorldSettingsData(settings);
 			SaveManager.Instance.saveCurrentProgressManager.SetCurrentSaveDataPath(string.Empty);
 			if (MainMenuManager.Instance != null) MainMenuManager.Instance.StartGame();
@@ -128,6 +130,7 @@ namespace TruePlanet
 			try
 			{
 				EnsureCampaign();
+				CampaignObjective.Refresh();
 				_campaign.Carry = CampaignCarry.Capture(); _campaign.ActiveTile = Active.TileId;
 				_store.RecordRevision(_campaign); Active.CampaignRevision = _campaign.Revision;
 			}
@@ -139,6 +142,7 @@ namespace TruePlanet
 			if (json != null && string.Equals(json, _restoredJson, StringComparison.Ordinal)) return;
 			Active = null; _restoredJson = null; ClearTerrain();
 			_store = null; _campaign = null;
+			CampaignObjective.Clear();
 			if (string.IsNullOrEmpty(json)) return;
 			TileContext saved = JsonConvert.DeserializeObject<TileContext>(json, Json);
 			if (saved == null || saved.Planet == null || saved.LocalMapVersion != 1 || saved.Planet.FormatVersion != 3)
@@ -285,11 +289,6 @@ namespace TruePlanet
                 // Restore only this saved counter, not destination-local skill state.
                 if (Active != null && Active.CampaignRevision != null) Campaign.Carry.RestoreSpiritEnergy();
             }
-		}
-		[HarmonyPatch(typeof(Quests.Eradication), "CheckForGameWin")]
-		private static class WildernessObjective
-		{
-			private static bool Prefix() => Active == null || Active.Planet.Provinces.Any(p => p.Villages.Any(v => v.TileId == Active.TileId));
 		}
 		[HarmonyPatch(typeof(InnerTileMap), "BiomePerlin")]
 		private static class ClimateScope

@@ -58,7 +58,7 @@ namespace TruePlanet
 				var lines = new GameObject("Political boundaries and roads", typeof(RectTransform));
 				lines.layer = LayerMask.NameToLayer("UI"); lines.transform.SetParent(transform, false);
 				var rect = (RectTransform)lines.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
-				_linework = lines.AddComponent<MapLines>(); _linework.Configure((RectTransform)transform, MapGeometry.Build(Planet, _surface.Geography));
+				_linework = lines.AddComponent<MapLines>(); _linework.Configure((RectTransform)transform, _surface.FlatGeometry);
 				BuildLabels(); _builtPlanet = Planet;
 			}
 			LayoutOverlays();
@@ -178,6 +178,13 @@ namespace TruePlanet
 			_occupied.Add(box);
 		}
 		internal void ResetView() { _zoom = 1; transform.localScale = Vector3.one; ((RectTransform)transform).anchoredPosition = Vector2.zero; LayoutOverlays(); }
+		internal void CenterOn(UnitVector direction)
+		{
+			_zoom = 2; transform.localScale = Vector3.one * _zoom;
+			var rect = (RectTransform)transform; Vector2 uv = UV(direction);
+			rect.anchoredPosition = -new Vector2((uv.x - .5f) * rect.rect.width, (uv.y - .5f) * rect.rect.height) * _zoom;
+			LayoutOverlays();
+		}
 		public void OnScroll(PointerEventData data)
 		{
 			if (!Ready) return;

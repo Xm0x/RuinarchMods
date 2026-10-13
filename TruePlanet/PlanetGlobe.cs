@@ -26,6 +26,7 @@ namespace TruePlanet
 		private Vector2 _dragStart;
 		private Quaternion _dragRotation;
 		internal event Action<Exception> Failed;
+		internal bool FrameReady => _surface != null && _surface.Ready && !_dirty && _target != null;
 
 		internal void Configure(PlanetSurface surface, TMP_FontAsset font, Material fontMaterial, Action<int> picked)
 		{
@@ -51,6 +52,8 @@ namespace TruePlanet
 				_material.SetFloat("_Cull", 2); _material.SetFloat("_SrcBlend", 1); _material.SetFloat("_DstBlend", 0); _material.SetFloat("_ZWrite", 1);
 				_material.SetFloat("_Metallic", 0); _material.SetFloat("_Smoothness", 0); _material.SetOverrideTag("RenderType", "Opaque");
 				_material.EnableKeyword("_EMISSION"); _material.SetColor("_EmissionColor", Color.white);
+				_material.SetFloat("_ReceiveShadows", 0); _material.EnableKeyword("_RECEIVE_SHADOWS_OFF");
+				var renderer = sphereObject.GetComponent<MeshRenderer>(); renderer.receiveShadows = false; renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 				sphereObject.GetComponent<MeshRenderer>().sharedMaterial = _material;
 				var overlay = new GameObject("TruePlanet globe overlays", typeof(RectTransform)); overlay.layer = LayerMask.NameToLayer("UI"); overlay.transform.SetParent(transform, false);
 				var rect = (RectTransform)overlay.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
@@ -71,6 +74,12 @@ namespace TruePlanet
 		internal void ResetView()
 		{
 			_zoom = 1; if (_sphere != null) _sphere.localRotation = Quaternion.identity; _dirty = _renderDirty = true;
+		}
+		internal void CenterOn(UnitVector direction)
+		{
+			_zoom = 1;
+			if (_sphere != null) _sphere.localRotation = Quaternion.FromToRotation(GlobeProjection.ToUnity(direction), Vector3.back);
+			_dirty = _renderDirty = true;
 		}
 		private void SurfaceChanged()
 		{

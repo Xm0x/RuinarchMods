@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace TruePlanet
@@ -21,11 +23,18 @@ namespace TruePlanet
 		private Color32[] _terrain, _political, _displayedPalette;
 		private bool _politicalView;
 		private Coroutine _building;
+		internal bool Shading { get; private set; }
+		internal int CompletedRows { get; private set; }
+		internal string WorkStage { get; private set; }
+		internal List<MapSegment> FlatGeometry { get; private set; }
+		internal List<SphericalSegment> SphericalGeometry { get; private set; }
 
+		internal void Invalidate() { Ready = false; Changed?.Invoke(); }
 		internal void Show(Planet planet)
 		{
 			if (_building != null) StopCoroutine(_building);
 			_building = null; Ready = false; Planet = planet;
+			Shading = false; CompletedRows = 0; WorkStage = "Drawing atlas terrain";
 			_displayedPalette = null; Progress?.Invoke(0); Changed?.Invoke();
 			try { Geography = new PlanetGeography(planet); }
 			catch (Exception error) { Failed?.Invoke(error); return; }
@@ -51,6 +60,9 @@ namespace TruePlanet
 
 		private IEnumerator Build()
 		{
+			Planet world = Planet; PlanetGeography geometryGeography = Geography;
+			var geometryTask = Task.Run(() => new Tuple<List<MapSegment>, List<SphericalSegment>>(
+				MapGeometry.Build(world, geometryGeography), MapGeometry.BuildSpherical(world, geometryGeography)));
 			int count = Width * Height;
 			if (ProvinceIds == null)
 			{
@@ -81,9 +93,12 @@ namespace TruePlanet
 					_terrain[at] = Color.Lerp(terrain, politics, land * (nation >= 0 ? .38f : .12f));
 					_political[at] = Color.Lerp(terrain, politics, land * .8f);
 				}
-				if (y % 4 == 3) { Progress?.Invoke((float)(y + 1) / Height); yield return null; }
+				if (y % 2 == 1) { CompletedRows = y + 1; Progress?.Invoke((float)(y + 1) / Height * .85f); yield return null; }
 			}
-			for (int y = 1; y < Height - 1; y++) for (int x = 0; x < Width; x++)
+			Shading = true; CompletedRows = 0; WorkStage = "Shading atlas terrain";
+			for (int y = 1; y < Height - 1; y++)
+			{
+			for (int x = 0; x < Width; x++)
 			{
 				int at = y * Width + x;
 				float slope = (Heights[y * Width + (x + 1) % Width] - Heights[y * Width + (x + Width - 1) % Width])
@@ -92,6 +107,13 @@ namespace TruePlanet
 				Color t = _terrain[at]; t *= shade; t.a = 1; _terrain[at] = t;
 				Color p = _political[at]; p *= shade; p.a = 1; _political[at] = p;
 			}
+				if (y % 8 == 0) { CompletedRows = y; Progress?.Invoke(.85f + (float)y / Height * .1f); yield return null; }
+			}
+			CompletedRows = Height; WorkStage = "Preparing borders, roads and atlas texture"; Progress?.Invoke(.95f);
+			while (!geometryTask.IsCompleted) yield return null;
+			if (geometryTask.IsFaulted) throw geometryTask.Exception.GetBaseException();
+			FlatGeometry = geometryTask.Result.Item1; SphericalGeometry = geometryTask.Result.Item2;
+			yield return null;
 			if (Texture == null)
 				Texture = new Texture2D(Width, Height, TextureFormat.RGBA32, false)
 				{

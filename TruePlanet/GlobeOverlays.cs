@@ -16,6 +16,9 @@ namespace TruePlanet
 		private TMP_FontAsset _font;
 		private Material _labelMaterial;
 		private List<SphericalSegment> _geometry;
+		private int _borderStart, _roadStart;
+		private UnitVector _projectX, _projectY;
+		private Vector2 _projectOrigin, _projectScale;
 		private readonly List<SphericalSegment> _outline = new List<SphericalSegment>();
 		private readonly List<MapStroke> _strokes = new List<MapStroke>();
 		private readonly List<MapLineGraphic> _batches = new List<MapLineGraphic>();
@@ -50,7 +53,11 @@ namespace TruePlanet
 			if (!_surface.Ready) return;
 			if (!ReferenceEquals(_world, _surface.Planet))
 			{
-				_world = _surface.Planet; _geometry = MapGeometry.BuildSpherical(_world, _surface.Geography);
+				_world = _surface.Planet; _geometry = _surface.SphericalGeometry;
+				_borderStart = 0;
+				while (_borderStart < _geometry.Count && _geometry[_borderStart].Kind == 0) _borderStart++;
+				_roadStart = _borderStart;
+				while (_roadStart < _geometry.Count && _geometry[_roadStart].Kind < 3) _roadStart++;
 				_outline.Clear(); _outlineFor = -1; BuildLabels();
 			}
 			if (_outlineFor != _selected)
@@ -64,19 +71,25 @@ namespace TruePlanet
 			Vector2 origin = RectTransformUtility.WorldToScreenPoint(null, _viewport.TransformPoint(Vector3.zero));
 			Vector2 right = RectTransformUtility.WorldToScreenPoint(null, _viewport.TransformPoint(Vector3.right));
 			_unit = 1 / Mathf.Max(.001f, Vector2.Distance(origin, right));
+			Vector3 xAxis = Quaternion.Inverse(_rotation) * _camera.transform.right, yAxis = Quaternion.Inverse(_rotation) * _camera.transform.up;
+			_projectX = new UnitVector(xAxis.x, xAxis.y, xAxis.z); _projectY = new UnitVector(yAxis.x, yAxis.y, yAxis.z);
+			Vector3 center = _camera.WorldToViewportPoint(_centre);
+			_projectOrigin = new Vector2(_bounds.xMin + center.x * _bounds.width, _bounds.yMin + center.y * _bounds.height);
+			_projectScale = new Vector2(_bounds.width * _radius / (2 * _camera.orthographicSize * _camera.aspect), _bounds.height * _radius / (2 * _camera.orthographicSize));
 			_strokes.Clear();
-			foreach (SphericalSegment segment in _geometry)
+			if (_grid) for (int i = 0; i < _borderStart; i++)
+				if (Visible(_geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Grid);
+			if (_borders) for (int i = _borderStart; i < _roadStart; i++)
 			{
-				if (segment.Kind == 3 || segment.Kind == 0 && !_grid || segment.Kind != 0 && !_borders) continue;
+				SphericalSegment segment = _geometry[i];
 				if (!Visible(segment, out Vector2 a, out Vector2 b)) continue;
-				if (segment.Kind == 0) Stroke(a, b, MapStyle.Grid);
-				else if (segment.Kind == 1) Stroke(a, b, MapStyle.Province);
+				if (segment.Kind == 1) Stroke(a, b, MapStyle.Province);
 				else { Stroke(a, b, MapStyle.NationOuter); Stroke(a, b, MapStyle.NationInner); }
 			}
 			foreach (SphericalSegment segment in _outline)
 				if (Visible(segment, out Vector2 a, out Vector2 b)) { Stroke(a, b, MapStyle.SelectionOuter); Stroke(a, b, MapStyle.SelectionInner); }
-			if (_roads) foreach (SphericalSegment segment in _geometry)
-				if (segment.Kind == 3 && Visible(segment, out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Road);
+			if (_roads) for (int i = _roadStart; i < _geometry.Count; i++)
+				if (Visible(_geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Road);
 			int needed = (_strokes.Count + MapStyle.BatchSize - 1) / MapStyle.BatchSize;
 			while (_batches.Count < needed)
 			{
@@ -111,11 +124,9 @@ namespace TruePlanet
 			a = Local(start); b = Local(end);
 			return true;
 		}
-		private Vector2 Local(UnitVector direction)
-		{
-			Vector3 screen = _camera.WorldToViewportPoint(_centre + _rotation * GlobeProjection.ToUnity(direction) * _radius);
-			return new Vector2(_bounds.xMin + screen.x * _bounds.width, _bounds.yMin + screen.y * _bounds.height);
-		}
+		private Vector2 Local(UnitVector direction) => _projectOrigin + new Vector2(
+			(float)UnitVector.Dot(direction, _projectX) * _projectScale.x,
+			(float)UnitVector.Dot(direction, _projectY) * _projectScale.y);
 		private bool Clip(ref Vector2 a, ref Vector2 b)
 		{
 			float low = 0, high = 1; Vector2 delta = b - a;

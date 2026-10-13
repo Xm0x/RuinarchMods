@@ -8,14 +8,29 @@ plague and spreading blight. Each feature can be disabled independently.
 [Releases](https://github.com/Xm0x/RuinarchMods/releases) ·
 [Roadmap](RuinarchPlus-DESIGN.md)
 
+[Install](#install) · [Settings](#configure-it) · [Feature rules](#what-it-fixes)
+
 ## Install
 
-1. Install the [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases), **v0.9.0 or newer**. Ruinarch+ 0.12.1 needs its corrected building-template footprints for the bundled Library. Its installer patches your local `Assembly-CSharp.dll` with the loader startup call and installs the framework in `Mods/`. If you already use loader 0.6.0 or newer, the main-menu Update notice can install 0.9.0.
-2. Either subscribe to [Ruinarch+ on the Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047) (Steam keeps it up to date), or download `RuinarchPlus-<version>.zip` from the [releases](https://github.com/Xm0x/RuinarchMods/releases) and unzip it into your game's `Mods/` folder, so you get `Mods/RuinarchPlus/`. Use one or the other: when both are present, the local copy wins.
-3. Launch. Check `Mods/mods.log`; you should see a line like:
-   ```
-   [ruinarch.plus] Applied N patch class(es) over M method(s): ...
-   ```
+1. Install [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases)
+   **0.9.0 or newer**. Its installer adds the startup call to your local
+   `Assembly-CSharp.dll` and places the framework in `Mods/`. Loader 0.6.0 or
+   newer can update to 0.9.0 through the main-menu Update notice.
+2. Subscribe to [Ruinarch+ on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3811868047),
+   or extract `RuinarchPlus-<version>.zip` from
+   [releases](https://github.com/Xm0x/RuinarchMods/releases) into the game's
+   `Mods/` directory, producing `Mods/RuinarchPlus/`.
+3. Use one distribution path. Steam updates subscriptions automatically; a
+   local copy takes precedence when both exist.
+4. Launch Ruinarch and check `Mods/mods.log` for the patch summary:
+
+```text
+[ruinarch.plus] Applied N patch class(es) over M method(s): ...
+```
+
+> [!IMPORTANT]
+> Ruinarch+ 0.12.1 requires loader 0.9.0's corrected template footprints for the
+> bundled Library. Installing only the mod is not enough on an older loader.
 
 ## What changes in a village
 
@@ -94,7 +109,7 @@ they remain roadmap work.
 (Bug 11) The game spares your buildings from your own spells, but not from the elemental explosions your demons set off. When the Portal's defenders fought villagers or monsters right beside it, their poison explosions took up to all of the max HP of everything in range, the Portal included: in a test, one chain destroyed a full-health Portal in 17 seconds and the game was lost. Poison and frozen explosions and chain lightning set off by your side now leave your demonic buildings and their walls alone; villagers and monsters caught in them are hurt as before. A frozen explosion (something frozen and then zapped) counts as your side's when one of your demons did the freezing or the zapping: the game itself never recorded who caused one, and in a test one destroyed a full-health Portal at once. Switch off with `friendlyExplosionsSpareBuildings`.
 
 
-## Phase 2: Death, Decay & Disease (in progress)
+## Death, decay and disease
 
 ### Corpse decomposition
 
@@ -323,7 +338,7 @@ they affect; the version history below describes the behavioral changes.
 <details>
 <summary>Version history and 0.12.1 stock-game fixes</summary>
 
-## Version history
+## Release record
 
 - **0.12.1** (requires loader 0.9.0):
   - New Libraries use the bundled authored layout exclusively for every culture and

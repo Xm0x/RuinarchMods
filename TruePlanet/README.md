@@ -1,12 +1,19 @@
-# TruePlanet 0.3.0
+# TruePlanet 0.3.1
 
 Generate a seeded planet, inspect it on a rotatable globe and play its geographic
 tiles. Nations, settlements and orange roads share one world; unclaimed land is
 playable wilderness. Works without Ruinarch+.
 
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263) ·
-[Download 0.3.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.0) ·
-[Loader 0.9.0](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.0)
+[Download 0.3.1](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.1) ·
+[Loader 0.9.1](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.1)
+
+> [!IMPORTANT]
+> 0.3.1 adds responsive atlas generation, a cached gameplay atlas and persistent
+> planet-wide subjugation. Use loader **0.9.1** for shared native loading feedback;
+> the mod remains compatible with the 0.9.0 core/framework.
+
+[Install](#install) · [Play and travel](#play-and-travel) · [Options](#options) · [Verification](#verification-and-measured-limits)
 
 ![Actual TruePlanet globe with native floating controls](../assets/readme/trueplanet-globe.webp)
 
@@ -15,11 +22,16 @@ scroll to zoom, then select land to play. The **Globe / Map** button changes the
 
 ## Install
 
-Install RuinarchModLoader 0.9.0 first; this package does not replace the loader.
-Then either subscribe to [TruePlanet on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263),
-or download `TruePlanet-0.3.0.zip` from [the release](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.0)
-and extract its `TruePlanet/` folder into the game's `Mods/` folder. Restart Ruinarch.
-Use one distribution path: if both local and Workshop copies exist, the local copy wins.
+1. Install [RuinarchModLoader 0.9.1](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.1)
+   first; TruePlanet does not replace the loader.
+2. Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263),
+   or extract `TruePlanet-0.3.1.zip` from
+   [the release](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.1)
+   into the game's `Mods/` directory, producing `Mods/TruePlanet/`.
+3. Restart Ruinarch. Use one distribution path: a local copy takes precedence
+   when local and Workshop packages both exist.
+
+Do not downgrade conquest-bearing 0.3.1 saves to the 0.3.0 reader.
 
 ## Play and travel
 
@@ -32,13 +44,14 @@ Use one distribution path: if both local and Workshop copies exist, the local co
    the whole world.
 3. Drag the globe to rotate; scroll to zoom. The centered **Globe / Map** button
    switches to the optional flat map, where dragging pans. **Layers** contains
-   Terrain / Political, Borders, Roads and Grid. **Reset view** restores the view.
+   Terrain / Political, Borders, Roads and Grid. **Reset view** faces the selected
+   tile, or the current campaign tile when nothing else is selected, and resets zoom.
 4. Click actual land to select a geographic tile, then **Play**. Unclaimed dry
    tiles are playable wilderness without invented settlements. Ocean and coastal
    water clicks preserve the previous selection. Place the normal native Portal
    and configure the native loadout on a first visit.
-5. During gameplay, open **Planet atlas**, select another dry tile and use
-   **Switch tile**. A visited tile reloads its committed native snapshot.
+5. During gameplay, open **Planet atlas** beside **Achievements**, select another
+   dry tile and use **Switch tile**. A visited tile reloads its committed native snapshot.
    Currency and portable skill progression follow the campaign; villagers,
    jobs, buildings, minions, corruption and local clocks stay with their map.
 6. If a Portal is destroyed while another tile remains held, the campaign
@@ -55,6 +68,47 @@ control captions are centered. Selection details and long status messages scroll
 and Play / Switch tile stays anchored in the inspector. **Escape** closes the
 open drawer first, then the atlas. Atlas interactions suppress source-world
 mouse actions, movement and shortcuts until the original input state is restored.
+
+## Subjugate the planet
+
+In geographic tile campaigns, victory requires subjugating **every distinct
+settled tile**, not just the current map. The native objective shows completed
+targets and current opposition. A tile is subjugated when no living villagers
+oppose you: destruction, demon worship and native faction alliances retain the
+game's original eligibility rules. Living allied villagers need not be killed.
+Empty wilderness is not a conquest target.
+
+Progress follows campaign revisions through normal saves and travel. Revisiting a
+tile with new opposition makes it contested again. Older campaign revisions without
+recorded conquest do not assume that other maps have already been subjugated;
+visit them to establish their state. An older tile-local win flag no longer ends
+an incomplete planet campaign. Legacy province worlds keep their original victory
+condition. Native Portal placement, lord/loadout selection and local retaliation
+remain in use.
+
+## Loading and atlas performance
+
+New Game and Re-generate expose an operation panel before managed generation
+starts on a worker. It reports real completed phases, raster/shading rows,
+texture/overlay preparation and first-frame readiness. Settings, saving and
+playing are unavailable until the selected world is ready. Percentages describe
+completed stages, not elapsed time, bytes or an estimated completion time.
+
+Closing the gameplay atlas hides one source-scene-owned cache. Reopening reuses
+its raster, geometry and render target; hidden atlases do not render or intercept
+world shortcuts. Loading another native scene, returning to the menu or a renderer
+failure releases the cache. The gameplay globe uses its own unlit texture and
+does not receive native scene shadows.
+
+Native world-generation and save-loading status now belongs to the loader's
+**Ruinarch.ModMenu.dll**, not TruePlanet. Loader **0.9.1** reports actual
+completed/running/pending native stages and threaded load-batch counts even with
+TruePlanet disabled, then restores the borrowed loading-screen layout and art.
+
+Village culture does not prescribe terrain. Selection details report a sampled
+local footprint mix of open land, mountains and water without flattening the
+seeded geography to make Human villages look grassy.
+
 
 ## Know the boundaries
 
@@ -165,12 +219,79 @@ Flushed temporary writes precede atomic replacement; failed commits leave the
 last usable references intact. Loading an older native save restores its recorded
 revision, not today's latest campaign manifest.
 
+`SubjugatedTiles` records distinct settled geographic targets in each campaign
+revision. Missing progress in older manifests defaults to an empty set; null,
+duplicate, non-settled and unvisited remote targets are rejected. Conquest-bearing
+revisions require TruePlanet 0.3.1 or newer; the 0.3.0 reader does not recognize
+the new field.
+
 Existing format-one/two saves retain `ModData/trueplanet.province.json`, original
 ownership and dimensions; they are not migrated to tile identities. Ordinary
 native saves clear both contexts. Missing/corrupt known destinations are rejected
 before teardown rather than silently regenerated.
 
 ## Verification and measured limits
+
+### 0.3.1 qualification
+
+The final `trueplanet-responsive-final/integrated-verified` run used one
+TruePlanet DLL and one shared ModMenu DLL against the actual published loader
+0.9.0 core/framework/Harmony dependencies. The 0.3.1 package retains that exact
+qualified TruePlanet DLL; loader 0.9.1 ships the qualified shared ModMenu DLL.
+
+| Native mode | Cases | Passed assertions |
+|---|---:|---:|
+| Ordinary generation/save/reload with TruePlanet disabled | 1 | 7 |
+| Planet-wide conquest, save/reload, travel and living allies | 1 | 15 |
+| Responsive generation, cache, centering and native atlas entry | 2 | 166 |
+| Small/Large native play, reload and campaign travel | 2 | 90 |
+| Format-one/two native play and reload | 2 | 30 |
+| Cache lifetime, menu teardown and forced failure cleanup | 2 | 155 |
+| Four atlas formats, boundaries and road continuity | 4 | 404 |
+| Four HUD client sizes and input isolation | 4 | 336 |
+| Actual consumer regression hosts | 2 | 40 |
+| **Total** | **20** | **1,243** |
+
+The actual consumer suite passed **37 checks per Small/Large fixture**, with
+zero failures or skips. An offline worker smoke confirmed exact synchronous/
+worker JSON identity and monotonic stage completion; the existing real-assembly
+smoke passed 11 checks. Unexpected Unity errors and pathfinder faults were zero.
+
+- New Game and Re-generate expose operation state before worker generation.
+  Flat-mode generation reaches readiness without waiting for a hidden globe.
+  Counts represent completed stages and raster rows, not elapsed-time estimates.
+- The shared loading observer works with TruePlanet disabled. It reports native
+  generation components and completed threaded-load tasks and restores the
+  original loading-screen styling. Native generation/save/load sequence is unchanged.
+- Reopening the same campaign atlas retains its exact surface and render target.
+  Five measured reopens per fixture took **36.232–38.185 ms**. The maximum
+  overlay projection time in the exercised rotations was **3.782 ms**. Neither
+  observation is an interactive-FPS or GPU-time guarantee.
+- Actual native objective text matches planet progress after setup, reload and
+  travel. Clearing the first of two targets does not win. Save/reload preserves
+  progress; an older tile-local win flag resumes an incomplete campaign. Native
+  alliances subjugate the final tile with living villagers and show the actual
+  planet-wide victory summary/end screen.
+- All **120 final images** were inspected, including native loading/victory,
+  gameplay, legacy formats, globe shadows/roads, failure cleanup and HUD clients
+  at 1280x720, 1568x878, 1920x1080 and 2560x1080. Road comparisons covered
+  **16,147 unobscured route pixels, zero missing** across the four atlas formats.
+- All **82 protected files**, permissions, timestamps and exact file/directory
+  sets were independently restored before local installation; the game stopped,
+  Steam was idle, and the probe and backup were absent.
+
+The raster remains 1536x768 and the preview target caps its largest dimension
+at 2048 pixels. The largest instrumented frame gap was **101.193 seconds**;
+process VmHWM peaked at **9,657,400 KiB**. These whole-run observations include
+native generation/save/reload, exhaustive consumer checks and screenshot
+readback, not only atlas interaction. Native work can still stall the main
+thread; truthful feedback does not make native map generation asynchronous.
+Qualification covers the documented fixtures, not every seed, size or mod
+combination. Earlier failed and interrupted runs are retained, not counted
+as passes. Evidence remains private and contains no published player data.
+
+<details>
+<summary>Published 0.3.0 globe/HUD qualification and measured limits</summary>
 
 Qualified on 2026-10-13 against the actual published RuinarchModLoader 0.9.0
 binaries, not an unpublished framework build. The same production DLL and
@@ -251,6 +372,8 @@ evidence is retained by run ID, without publishing player data or native assets.
 Design and implementation record:
 [spec](../docs/specs/2026-10-12-trueplanet-globe-ui-design.md) ·
 [plan](../docs/plans/2026-10-12-trueplanet-globe-ui.md).
+
+</details>
 
 <details>
 <summary>Earlier qualification history and tile-world development checkpoints</summary>
@@ -582,9 +705,22 @@ the game's `Mods/` folder and restart. Passing the game's `Mods/` folder as the
 second argument builds and installs directly.
 
 <details>
-<summary>Version history</summary>
+<summary>Release and development record</summary>
 
-## Version history
+## Earlier builds
+
+
+### 0.3.1
+
+Worker-based deterministic generation with truthful progress; native top-menu
+atlas entry beside Achievements; selected/current-tile Reset view; source-scene
+atlas caching with exact input restoration; shadow-free gameplay globe and
+cached managed overlay projection; sampled local terrain explanation.
+
+Planet-wide subjugation persists through native saves and travel. Clearing one
+tile does not win a multi-target planet; native alliances count without killing
+living villagers. Earlier tile-local win flags resume incomplete planet campaigns.
+Shared native loading feedback ships separately in loader 0.9.1's built-in UI.
 
 ### 0.3.0
 

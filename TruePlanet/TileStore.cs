@@ -22,6 +22,7 @@ namespace TruePlanet
         public string CampaignId, WorldId, Revision;
         public int ActiveTile;
         public TileSnapshot[] Tiles = new TileSnapshot[0];
+        public int[] SubjugatedTiles = Array.Empty<int>();
         public CampaignCarry Carry;
     }
     internal sealed class TileStore
@@ -30,6 +31,9 @@ namespace TruePlanet
         { MissingMemberHandling = MissingMemberHandling.Error, Formatting = Formatting.Indented };
         private readonly Planet _world;
         private readonly string _directory, _worldJson;
+        private readonly HashSet<int> _settledTiles;
+        internal int SettledTileCount => _settledTiles.Count;
+        internal bool IsSettledTile(int tile) => _settledTiles.Contains(tile);
 
         internal TileStore(string root, Planet world)
         {
@@ -38,6 +42,7 @@ namespace TruePlanet
             if (world.FormatVersion != 3) throw new InvalidDataException("Campaign snapshots require a geographic tile world.");
             Component(world.Id); _worldJson = JsonConvert.SerializeObject(world, Json);
             _world = JsonConvert.DeserializeObject<Planet>(_worldJson, Json); _world.Validate();
+            _settledTiles = new HashSet<int>(_world.Provinces.SelectMany(p => p.Villages).Select(v => v.TileId));
             _directory = Path.Combine(Path.GetFullPath(root), world.Id);
             string path = Path.Combine(_directory, "planet.json");
             Directory.CreateDirectory(_directory);
@@ -115,7 +120,7 @@ namespace TruePlanet
         }
         private void Validate(CampaignManifest manifest, bool requireRevision = true)
         {
-            if (manifest == null || manifest.FormatVersion != 1 || manifest.WorldId != _world.Id || manifest.Carry == null || manifest.Tiles == null)
+            if (manifest == null || manifest.FormatVersion != 1 || manifest.WorldId != _world.Id || manifest.Carry == null || manifest.Tiles == null || manifest.SubjugatedTiles == null)
                 throw new InvalidDataException("Unsupported or incomplete campaign manifest.");
             GuidId(manifest.CampaignId);
             if (requireRevision) GuidId(manifest.Revision);
@@ -127,6 +132,10 @@ namespace TruePlanet
                 if (!tiles.Add(snapshot.TileId) || !ids.Add(snapshot.SnapshotId))
                     throw new InvalidDataException("Campaign contains duplicate tile or snapshot identities.");
             }
+            var subjugated = new HashSet<int>();
+            foreach (int tile in manifest.SubjugatedTiles)
+                if (!_settledTiles.Contains(tile) || !subjugated.Add(tile) || tile != manifest.ActiveTile && !tiles.Contains(tile))
+                    throw new InvalidDataException("Subjugation progress must reference distinct visited settled tiles.");
         }
         private void ValidateSnapshot(string campaignId, TileSnapshot snapshot)
         {

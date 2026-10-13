@@ -69,6 +69,29 @@ namespace RuinarchDebug
                     (failed && File.ReadAllBytes(pointer).SequenceEqual(committed)
                         && current["Tiles"][0]["SnapshotId"].ToString() == JObject.FromObject(next)["SnapshotId"].ToString()
                         && File.ReadAllBytes((string)resolve.Invoke(store, new[] { context, next })).SequenceEqual(File.ReadAllBytes(changed)), "failed temporary-file write"));
+                int tile = (int)contextType.GetField("TileId").GetValue(context);
+                var legacyProgress = (int[])manifestType.GetField("SubjugatedTiles").GetValue(manifest);
+                Check("older campaign manifests begin with no assumed conquest", () => (legacyProgress.Length == 0, "missing progress is not a victory"));
+                data["SubjugatedTiles"] = new JArray(tile);
+                object conquest = JsonConvert.DeserializeObject(data.ToString(), manifestType);
+                commit.Invoke(store, new[] { conquest });
+                string conqueredRevision = (string)manifestType.GetField("Revision").GetValue(conquest);
+                data["SubjugatedTiles"] = new JArray();
+                commit.Invoke(store, new[] { JsonConvert.DeserializeObject(data.ToString(), manifestType) });
+                var conquered = JObject.FromObject(read.Invoke(store, new object[] { campaign, conqueredRevision }));
+                var reopened = JObject.FromObject(read.Invoke(store, new object[] { campaign, null }));
+                Check("subjugation persists per revision and later opposition does not rewrite history", () =>
+                    (conquered["SubjugatedTiles"].Values<int>().SequenceEqual(new[] { tile }) && !reopened["SubjugatedTiles"].Any(), "completed and reopened native tile"));
+                committed = File.ReadAllBytes(pointer);
+                foreach (JToken progress in new JToken[] { JValue.CreateNull(), new JArray(tile, tile), new JArray(-1) })
+                {
+                    data["SubjugatedTiles"] = progress;
+                    bool rejected = false;
+                    try { commit.Invoke(store, new[] { JsonConvert.DeserializeObject(data.ToString(), manifestType) }); }
+                    catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
+                    Check("invalid subjugation leaves the committed campaign intact: " + progress.ToString(Formatting.None), () =>
+                        (rejected && File.ReadAllBytes(pointer).SequenceEqual(committed), "null, duplicate or non-target progress"));
+                }
             }
             finally { Directory.Delete(root, true); }
         }
