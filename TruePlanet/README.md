@@ -1,16 +1,27 @@
 # TruePlanet 0.3.0
 
-A separate Ruinarch mod for seeded planets, a rotatable 3D globe, persistent
-geographic tile maps and explicit single-scene travel. Works without Ruinarch+.
-Requires [RuinarchModLoader 0.9.0](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.0)
-and its bundled content framework.
+Generate a seeded planet, inspect it on a rotatable globe and play its geographic
+tiles. Nations, settlements and orange roads share one world; unclaimed land is
+playable wilderness. Works without Ruinarch+.
 
-New worlds use format three; existing format-one/two worlds retain their original
-province gameplay and saved identity. Only one native map runs at a time. Travel
-saves the source before loading or generating the destination; it is not seamless
-streaming or offscreen simulation. Travel Portal structures are not implemented.
+[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263) ·
+[Download 0.3.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.0) ·
+[Loader 0.9.0](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.0)
 
-## Use
+![Actual TruePlanet globe with native floating controls](../assets/readme/trueplanet-globe.webp)
+
+Native 0.3.0 UI from the qualified build, scaled for this README. Drag to rotate,
+scroll to zoom, then select land to play. The **Globe / Map** button changes the view.
+
+## Install
+
+Install RuinarchModLoader 0.9.0 first; this package does not replace the loader.
+Then either subscribe to [TruePlanet on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263),
+or download `TruePlanet-0.3.0.zip` from [the release](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.0)
+and extract its `TruePlanet/` folder into the game's `Mods/` folder. Restart Ruinarch.
+Use one distribution path: if both local and Workshop copies exist, the local copy wins.
+
+## Play and travel
 
 1. Click **New Game** to generate a planet with a random seed. **Re-generate**
    chooses a fresh seed. Open **World settings** to edit the name and seed;
@@ -44,6 +55,45 @@ control captions are centered. Selection details and long status messages scroll
 and Play / Switch tile stays anchored in the inspector. **Escape** closes the
 open drawer first, then the atlas. Atlas interactions suppress source-world
 mouse actions, movement and shortcuts until the original input state is restored.
+
+## Know the boundaries
+
+Only **one native map runs at a time**. Switching saves the source before loading
+or generating the destination. Other maps do not keep simulating; this is not
+seamless streaming. Travel Portal structures are not implemented.
+
+New worlds use format three. Existing format-one/two worlds keep their original
+province gameplay, saved identities and dimensions rather than being migrated to
+new geographic tile IDs.
+
+<details>
+<summary>Optional flat view</summary>
+
+![Actual flat view sharing the globe selection and layer state](../assets/readme/trueplanet-map.webp)
+
+The flat map shares geography, layers and selection with the globe; dragging pans instead of rotating.
+
+</details>
+
+## Options
+
+Controls apply to the next generated world. Initial defaults come from
+**Settings > Mods > TruePlanet**, stored in `Mods/settings/trueplanet.json`.
+
+| Option | Default | Range |
+|---|---|---|
+| Provinces | 120 | 30–400 |
+| Tile detail | Standard | Standard (10,242), Detailed (40,962) |
+| Land percent | 40 | 20–80 |
+| Nations | 10 | 2–40; limited by inhabited land |
+| Wild land percent | 25 | 0–75 |
+| Map size | Large | Small, Medium, Large, Extra Large, Huge |
+
+World summaries display actual political province count, nations and wild area.
+The requested province count is subject to available claimed-land capacity.
+
+<details>
+<summary>How geography, political provinces, labels and roads are generated</summary>
 
 ## Generated world
 
@@ -91,22 +141,7 @@ mouse actions, movement and shortcuts until the original input state is restored
   Native scenes are rectangular geographic samples, not political boundary
   polygons. Existing legacy worlds retain their stored province dimensions.
 
-## Options
-
-Controls apply to the next generated world. Initial defaults come from
-**Settings > Mods > TruePlanet**, stored in `Mods/settings/trueplanet.json`.
-
-| Option | Default | Range |
-|---|---|---|
-| Provinces | 120 | 30–400 |
-| Tile detail | Standard | Standard (10,242), Detailed (40,962) |
-| Land percent | 40 | 20–80 |
-| Nations | 10 | 2–40; limited by inhabited land |
-| Wild land percent | 25 | 0–75 |
-| Map size | Large | Small, Medium, Large, Extra Large, Huge |
-
-World summaries display actual political province count, nations and wild area.
-The requested province count is subject to available claimed-land capacity.
+</details>
 
 ## Save data
 
@@ -135,26 +170,7 @@ ownership and dimensions; they are not migrated to tile identities. Ordinary
 native saves clear both contexts. Missing/corrupt known destinations are rejected
 before teardown rather than silently regenerated.
 
-## Build and install
-
-Download `TruePlanet-0.3.0.zip` from the repository's
-[TruePlanet releases](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.0).
-Extract its `TruePlanet/` folder into the game's `Mods/` folder and restart.
-Install RuinarchModLoader 0.9.0 first; this package does not replace the loader.
-
-To build from source, use a neighbouring RuinarchModLoader checkout:
-
-```bash
-tools/build-mod.sh ../RuinarchMods/TruePlanet
-```
-
-This stages the mod in the loader's `build/mods/TruePlanet/`. Copy that folder to
-the game's `Mods/` folder and restart. Passing the game's `Mods/` folder as the
-second argument builds and installs directly.
-
-## Verification status
-
-### 0.3.0 globe and floating HUD
+## Verification and measured limits
 
 Qualified on 2026-10-13 against the actual published RuinarchModLoader 0.9.0
 binaries, not an unpublished framework build. The same production DLL and
@@ -235,6 +251,11 @@ evidence is retained by run ID, without publishing player data or native assets.
 Design and implementation record:
 [spec](../docs/specs/2026-10-12-trueplanet-globe-ui-design.md) ·
 [plan](../docs/plans/2026-10-12-trueplanet-globe-ui.md).
+
+<details>
+<summary>Earlier qualification history and tile-world development checkpoints</summary>
+
+These chronological records describe the implementation at the time of each run, including failed attempts and superseded local-only statuses. The current 0.3.0 release includes the completed tile/campaign implementation.
 
 ### Earlier qualification records
 
@@ -546,6 +567,23 @@ Earlier evidence run IDs include
 `trueplanet-tiled-native-{9,10,13,14}-mods.log`, `trueplanet-map-ui-green-{5,6}-mods.log`,
 `trueplanet-map-ui-geometry.log` and corresponding screenshots.
 
+</details>
+
+## Build from source
+
+To build from source, use a neighbouring RuinarchModLoader checkout:
+
+```bash
+tools/build-mod.sh ../RuinarchMods/TruePlanet
+```
+
+This stages the mod in the loader's `build/mods/TruePlanet/`. Copy that folder to
+the game's `Mods/` folder and restart. Passing the game's `Mods/` folder as the
+second argument builds and installs directly.
+
+<details>
+<summary>Version history</summary>
+
 ## Version history
 
 ### 0.3.0
@@ -573,3 +611,11 @@ released; its implementation is included in 0.3.0.
 
 Seeded generation, inspectable atlas layers, separate Planet menu entry and
 independent atlas save/load. This version was atlas-only.
+
+</details>
+
+## Project notes
+
+No game binaries or extracted stock assets are included in the package. Ruinarch
+and its assets belong to their respective owners; this is an independent fan-made
+mod. README screenshots show the actual game and mod UI, not replacement game assets.
