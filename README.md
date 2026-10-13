@@ -9,8 +9,9 @@ Choose the packages you want; they patch the stock game at runtime through
 ## Install a package
 
 1. Install [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases).
-   Check each mod's minimum version: Ruinarch+ 0.12.1 and TruePlanet 0.3.0 need 0.9.0;
+   Check each mod's minimum version: Ruinarch+ 0.12.1 and TruePlanet 0.3.1 need 0.9.0;
    Performance Mod 0.4.1 needs 0.8.0 or newer.
+   Use loader 0.9.1 for shared native loading feedback.
 2. Subscribe to a package's Workshop item, or download its ZIP from
    [releases](https://github.com/Xm0x/RuinarchMods/releases) and extract its mod
    folder into the game's `Mods/` directory.
