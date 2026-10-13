@@ -4,6 +4,23 @@ Gameplay changes, performance fixes and a planet atlas for **Ruinarch**.
 Choose the packages you want; they patch the stock game at runtime through
 [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader).
 
+[Install](#install-a-package) · [Choose mods](#choose-your-mods) · [Build and verify](#build-and-verify)
+
+## Install a package
+
+1. Install [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases).
+   Check each mod's minimum version: Ruinarch+ 0.12.1 and TruePlanet 0.3.0 need 0.9.0;
+   Performance Mod 0.4.1 needs 0.8.0 or newer.
+2. Subscribe to a package's Workshop item, or download its ZIP from
+   [releases](https://github.com/Xm0x/RuinarchMods/releases) and extract its mod
+   folder into the game's `Mods/` directory.
+3. Restart Ruinarch. Inspect packages and enable/disable them in the main-menu
+   **Mods** window. If both local and Workshop copies exist, the local copy wins.
+
+Normal mod deployment does not replace the game with a rebuilt DLL. The loader's
+installer adds its startup call to your own stock assembly; gameplay patches run
+through Harmony afterward.
+
 ## Choose your mods
 
 ### [Ruinarch+](RuinarchPlus/README.md)
@@ -31,8 +48,12 @@ A seeded globe with political provinces, settlements and land-only orange roads.
 Select geographic tiles or wilderness to play; return visits restore native maps.
 Only one map runs at a time. Works without Ruinarch+.
 
+TruePlanet **0.3.1** adds responsive generation, a cached gameplay atlas beside
+Achievements and persistent planet-wide subjugation. Loader **0.9.1** supplies
+the shared native generation/save-loading progress display.
+
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263) ·
-[Download 0.3.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.0) ·
+[Download 0.3.1](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.1) ·
 [Controls and compatibility](TruePlanet/README.md)
 
 ![TruePlanet's actual 0.3.0 native globe and floating controls](assets/readme/trueplanet-globe.webp)
@@ -45,20 +66,6 @@ This is not a simulated product mockup.
 An in-game overlay and unattended native scenario harness. It can spawn or kill
 characters, control time and place buildings. Do not install it for normal play.
 
-## Install a package
-
-1. Install [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases).
-   Check each mod's minimum version: Ruinarch+ 0.12.1 and TruePlanet 0.3.0 need 0.9.0;
-   Performance Mod 0.4.1 needs 0.8.0 or newer.
-2. Subscribe to a package's Workshop item, or download its ZIP from
-   [releases](https://github.com/Xm0x/RuinarchMods/releases) and extract its mod
-   folder into the game's `Mods/` directory.
-3. Restart Ruinarch. Inspect packages and enable/disable them in the main-menu
-   **Mods** window. If both local and Workshop copies exist, the local copy wins.
-
-Normal mod deployment does not replace the game with a rebuilt DLL. The loader's
-installer adds its startup call to your own stock assembly; gameplay patches run
-through Harmony afterward.
 
 ## Content and artwork
 
@@ -93,8 +100,8 @@ actual native behavior; unavailable fixtures are not treated as passes.
 <details>
 <summary>Native harness conventions and recorded 0.12.1 qualification</summary>
 
-The first argument is a wall-clock timeout, not a requested run duration. Checks stop as
-soon as their required behavior is observed. `DecayTest` temporarily uses the supported
+Checks stop when their required behavior is observed. `DecayTest` temporarily
+uses the supported
 quarter-day decay setting, verifies all four stages and the decay bar, then restores the
 original setting. Missing-persons tests finish when their cases are settled; valid failed
 searches still exercise all three attempts and the increasing retry intervals. Burial fixtures

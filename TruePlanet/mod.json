@@ -1,9 +1,9 @@
 {
   "id": "trueplanet",
   "name": "TruePlanet",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "author": "Xm0x",
-  "description": "A seeded planet atlas with provinces, terrain, nations, capitals, planned settlements and land roads. Generate, inspect and save planets from the main-menu Planet button. Atlas only: stock New Game, Load and province gameplay remain unchanged.",
+  "description": "Seeded spherical planets with a rotatable globe, optional flat map and native floating controls. Responsive planet generation and real loading stages; cached gameplay atlas beside Achievements and selected/current-tile Reset view. Nations, provinces, settlements and orange roads share persistent geographic tiles, including wilderness. Standard/Detailed resolution and fixed local map size. Single-scene travel saves native snapshots and carries campaign currencies/skill progression; local worlds remain separate. Legacy province saves remain readable. Requires RuinarchModLoader 0.9.0. No Travel Portal structures, offscreen simulation or seamless streaming.",
   "loader": "RuinarchModLoader",
   "loaderApi": 2,
   "type": "code",
