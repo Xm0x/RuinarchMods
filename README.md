@@ -52,7 +52,7 @@ Only one map runs at a time. Works without Ruinarch+.
 TruePlanet **0.4.0** adds automatic later Portal/loadout setup, carried campaign
 progression, developed capitals, revised local terrain and cached line rendering.
 Loader **0.9.1** supplies shared native generation/save-loading feedback.
-The Workshop item remains on 0.3.1; use the GitHub package for 0.4.0.
+The Workshop item and GitHub package both carry the same qualified 0.4.0 files.
 
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263) ·
 [Download 0.4.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.4.0) ·

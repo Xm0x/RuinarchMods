@@ -16,8 +16,8 @@ playable wilderness. Works without Ruinarch+.
 > compatible with the 0.9.0 core/framework.
 
 > [!NOTE]
-> The linked Workshop item still carries **0.3.1**. Use the GitHub package below
-> for 0.4.0; this release does not replace or update the Workshop upload.
+> The linked Workshop item now carries **0.4.0**, byte-identical to the three-file
+> GitHub package. Its existing artwork and subscriptions were preserved.
 
 [Install](#install) · [Play and travel](#play-and-travel) · [Options](#options) · [Verification](#verification-and-measured-limits)
 
@@ -30,7 +30,8 @@ scroll to zoom, then select land to play. The **Globe / Map** button changes the
 
 1. Install [RuinarchModLoader 0.9.1](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.1)
    first; TruePlanet does not replace the loader.
-2. Extract `TruePlanet-0.4.0.zip` from
+2. Subscribe to [TruePlanet on Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263),
+   or extract `TruePlanet-0.4.0.zip` from
    [the GitHub release](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.4.0)
    into the game's `Mods/` directory, producing `Mods/TruePlanet/`.
 3. Restart Ruinarch. Use one distribution path: a local copy takes precedence
