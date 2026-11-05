@@ -136,11 +136,12 @@ namespace TruePlanet
 			if (FormatVersion < 1 || FormatVersion > 3) throw new InvalidDataException("Unsupported planet format " + FormatVersion + ".");
 			if ((FormatVersion == 1 && (TopologyVersion != 0 || TileOwners != null))
 				|| (FormatVersion >= 2 && TopologyVersion != 1)) throw new InvalidDataException("Unsupported planet topology.");
-			if (FormatVersion == 3
-				? GeographyVersion != 3 || NationalGenerationVersion != 1 || LocalMapVersion != 1
-				: NationalGenerationVersion != 0 || LocalMapVersion != 0)
-				throw new InvalidDataException("Unsupported national or local map version.");
-			if (GeographyVersion < 0 || GeographyVersion > 3 || !PlanetOptions.Finite(SeaLevel))
+            if (FormatVersion == 3
+                ? !((GeographyVersion == 3 && NationalGenerationVersion == 1 && LocalMapVersion == 1)
+                    || (GeographyVersion == 4 && NationalGenerationVersion == 2 && LocalMapVersion == 2))
+                : NationalGenerationVersion != 0 || LocalMapVersion != 0)
+                throw new InvalidDataException("Unsupported national or local map version.");
+            if (GeographyVersion < 0 || GeographyVersion > 4 || !PlanetOptions.Finite(SeaLevel))
 				throw new InvalidDataException("Unsupported or invalid planet geography.");
 			if (Options == null || string.IsNullOrWhiteSpace(Name) || string.IsNullOrEmpty(Id)
 				|| Id.Any(c => !(char.IsLetterOrDigit(c) || c == '-')))

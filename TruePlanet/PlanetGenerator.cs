@@ -13,9 +13,9 @@ namespace TruePlanet
 				WildShare = options.WildShare, LocalSize = options.LocalSize, Resolution = options.Resolution };
 			string identity = seed.ToString("X8") + "-" + copy.Provinces + "-" + copy.Nations + "-" + (int)copy.LocalSize
 				+ "-" + BitConverter.DoubleToInt64Bits(copy.LandShare).ToString("X16") + "-" + BitConverter.DoubleToInt64Bits(copy.WildShare).ToString("X16");
-			var planet = new Planet { Id = "planet-" + identity + "-g3-t1r" + (int)copy.Resolution + "-n1-l1",
-				Name = "World " + seed.ToString(CultureInfo.InvariantCulture), Seed = seed, Options = copy,
-				GeographyVersion = 3, FormatVersion = 3, TopologyVersion = 1, NationalGenerationVersion = 1, LocalMapVersion = 1 };
+            var planet = new Planet { Id = "planet-" + identity + "-g4-t1r" + (int)copy.Resolution + "-n2-l2",
+                Name = "World " + seed.ToString(CultureInfo.InvariantCulture), Seed = seed, Options = copy,
+                GeographyVersion = 4, FormatVersion = 3, TopologyVersion = 1, NationalGenerationVersion = 2, LocalMapVersion = 2 };
 			progress?.Invoke("Calibrating oceans", 0);
 			planet.SeaLevel = new PlanetGeography(planet).CalibrateSeaLevel(copy.LandShare);
 			progress?.Invoke("Sampling land and coastlines", 1);

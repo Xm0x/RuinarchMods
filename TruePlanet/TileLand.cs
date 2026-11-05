@@ -20,28 +20,53 @@ namespace TruePlanet
 		private TileLand(TileLandSample[] cells, int[][] links) { Cells = cells; Links = links; }
 		internal static TileLand For(Planet planet)
 		{
-			if (planet.FormatVersion != 3 || planet.GeographyVersion != 3 || planet.TopologyVersion != 1)
+            if (planet.FormatVersion != 3 || !((planet.GeographyVersion == 3 && planet.LocalMapVersion == 1)
+                || (planet.GeographyVersion == 4 && planet.LocalMapVersion == 2)) || planet.TopologyVersion != 1)
 				throw new InvalidDataException("Unsupported tile land geography.");
-			if (planet.Land == null) planet.Land = Build(planet.Mesh, new PlanetGeography(planet).Sample);
+            if (planet.Land == null) planet.Land = Build(planet.Mesh, new PlanetGeography(planet).Sample, planet.NationalGenerationVersion >= 2);
 			return planet.Land;
 		}
-		internal static TileLand Build(TileMesh mesh, Func<UnitVector, TerrainSample> sample)
+        internal static TileLand Build(TileMesh mesh, Func<UnitVector, TerrainSample> sample, bool interiorAnchors)
 		{
 			var cells = new TileLandSample[mesh.Centers.Length];
 			for (int tile = 0; tile < cells.Length; tile++)
 			{
-				UnitVector center = mesh.Centers[tile], dry = center; double best = double.NegativeInfinity, landArea = 0;
-				bool coastal = false;
-				double Height(UnitVector point)
-				{
-					// Shared boundary points belong to both polygons. The recorded point must belong to this cell.
-					point = (point + center * 1e-6).Normalized();
-					double height = sample(point).Height;
-					if (!PlanetOptions.Finite(height)) throw new InvalidDataException("Non-finite terrain height.");
-					if (height > 0 && height > best) { best = height; dry = point; }
-					if (height <= 0) coastal = true;
-					return height;
-				}
+                UnitVector center = mesh.Centers[tile], dry = center;
+                double bestScore = double.NegativeInfinity, highestHeight = double.NegativeInfinity, dryHeight = double.NegativeInfinity, landArea = 0;
+                bool coastal = false;
+                UnitVector[] edgeNormals = null;
+                if (interiorAnchors)
+                {
+                    edgeNormals = new UnitVector[mesh.CellEdges[tile].Length];
+                    for (int i = 0; i < edgeNormals.Length; i++)
+                    {
+                        TileEdge edge = mesh.Edges[mesh.CellEdges[tile][i]];
+                        edgeNormals[i] = UnitVector.Cross(edge.First, edge.Second).Normalized();
+                    }
+                }
+                double InteriorScore(UnitVector point)
+                {
+                    double nearest = double.PositiveInfinity;
+                    foreach (UnitVector normal in edgeNormals)
+                        nearest = Math.Min(nearest, Math.Abs(UnitVector.Dot(normal, point)));
+                    return nearest;
+                }
+                double Height(UnitVector point)
+                {
+                    // Shared boundary points belong to both polygons. The recorded point must belong to this cell.
+                    point = (point + center * 1e-6).Normalized();
+                    double height = sample(point).Height;
+                    if (!PlanetOptions.Finite(height)) throw new InvalidDataException("Non-finite terrain height.");
+                    if (height > 0)
+                    {
+                        highestHeight = Math.Max(highestHeight, height);
+                        double score = interiorAnchors ? InteriorScore(point) : height;
+                        if (score > bestScore || interiorAnchors && score == bestScore && height > dryHeight)
+                        { bestScore = score; dryHeight = height; dry = point; }
+                    }
+                    if (height <= 0) coastal = true;
+                    return height;
+                }
 				void Triangle(UnitVector a, UnitVector b, UnitVector c)
 				{
 					double area = TileMesh.Triangle(a, b, c);
@@ -55,7 +80,7 @@ namespace TruePlanet
 					UnitVector ab = (center + edge.First).Normalized(), bc = (edge.First + edge.Second).Normalized(), ca = (edge.Second + center).Normalized();
 					Triangle(center, ab, ca); Triangle(ab, edge.First, bc); Triangle(ca, bc, edge.Second); Triangle(ab, bc, ca);
 				}
-				cells[tile] = new TileLandSample { DryPoint = dry, LandArea = landArea, Eligible = best > 0, Coastal = coastal };
+                cells[tile] = new TileLandSample { DryPoint = dry, LandArea = landArea, Eligible = highestHeight > 0, Coastal = coastal };
 			}
 			var links = new List<int>[cells.Length];
 			for (int i = 0; i < links.Length; i++) links[i] = new List<int>(mesh.Neighbours[i].Length);

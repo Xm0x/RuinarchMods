@@ -9,7 +9,7 @@ Choose the packages you want; they patch the stock game at runtime through
 ## Install a package
 
 1. Install [RuinarchModLoader](https://github.com/Xm0x/RuinarchModLoader/releases).
-   Check each mod's minimum version: Ruinarch+ 0.12.1 and TruePlanet 0.3.1 need 0.9.0;
+   Check each mod's minimum version: Ruinarch+ 0.12.1 and TruePlanet 0.4.0 need 0.9.0;
    Performance Mod 0.4.1 needs 0.8.0 or newer.
    Use loader 0.9.1 for shared native loading feedback.
 2. Subscribe to a package's Workshop item, or download its ZIP from
@@ -49,12 +49,13 @@ A seeded globe with political provinces, settlements and land-only orange roads.
 Select geographic tiles or wilderness to play; return visits restore native maps.
 Only one map runs at a time. Works without Ruinarch+.
 
-TruePlanet **0.3.1** adds responsive generation, a cached gameplay atlas beside
-Achievements and persistent planet-wide subjugation. Loader **0.9.1** supplies
-the shared native generation/save-loading progress display.
+TruePlanet **0.4.0** adds automatic later Portal/loadout setup, carried campaign
+progression, developed capitals, revised local terrain and cached line rendering.
+Loader **0.9.1** supplies shared native generation/save-loading feedback.
+The Workshop item remains on 0.3.1; use the GitHub package for 0.4.0.
 
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263) ·
-[Download 0.3.1](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.1) ·
+[Download 0.4.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.4.0) ·
 [Controls and compatibility](TruePlanet/README.md)
 
 ![TruePlanet's actual 0.3.0 native globe and floating controls](assets/readme/trueplanet-globe.webp)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -96,13 +97,20 @@ namespace TruePlanet
 				if (y % 2 == 1) { CompletedRows = y + 1; Progress?.Invoke((float)(y + 1) / Height * .85f); yield return null; }
 			}
 			Shading = true; CompletedRows = 0; WorkStage = "Shading atlas terrain";
+            float[] rawHeights = Heights; Heights = FilterDeepWater(rawHeights, out bool[] deepWater);
+            for (int y = 1; y < Height - 1; y++) for (int x = 0; x < Width; x++)
+            {
+                int at = y * Width + x; if (!deepWater[at]) continue;
+                Color ocean = OceanColor(Heights[at]); _terrain[at] = ocean; _political[at] = ocean;
+            }
 			for (int y = 1; y < Height - 1; y++)
 			{
 			for (int x = 0; x < Width; x++)
 			{
 				int at = y * Width + x;
-				float slope = (Heights[y * Width + (x + 1) % Width] - Heights[y * Width + (x + Width - 1) % Width])
-					+ (Heights[at + Width] - Heights[at - Width]);
+                float[] heights = deepWater[at] ? Heights : rawHeights;
+				float slope = (heights[y * Width + (x + 1) % Width] - heights[y * Width + (x + Width - 1) % Width])
+					+ (heights[at + Width] - heights[at - Width]);
 				float shade = Mathf.Clamp(1 - slope * 14, .78f, 1.12f);
 				Color t = _terrain[at]; t *= shade; t.a = 1; _terrain[at] = t;
 				Color p = _political[at]; p *= shade; p.a = 1; _political[at] = p;
@@ -149,9 +157,35 @@ namespace TruePlanet
 			}
 			return true;
 		}
+        internal static float[] FilterDeepWater(float[] source, out bool[] deepWater)
+        {
+            int count = Width * Height;
+            if (source == null || source.Length != count) throw new InvalidDataException("Unexpected atlas height dimensions.");
+            var filtered = (float[])source.Clone(); deepWater = new bool[count]; var neighbors = new float[9];
+            for (int y = 1; y < Height - 1; y++) for (int x = 0; x < Width; x++)
+            {
+                int at = y * Width + x; bool deep = true;
+                for (int dy = -1; dy <= 1 && deep; dy++) for (int dx = -1; dx <= 1; dx++)
+                    if (source[(y + dy) * Width + (x + dx + Width) % Width] >= -.006f) { deep = false; break; }
+                if (!deep) continue;
+                int index = 0;
+                for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++)
+                    neighbors[index++] = source[(y + dy) * Width + (x + dx + Width) % Width];
+                for (int i = 1; i < neighbors.Length; i++)
+                {
+                    float value = neighbors[i]; int j = i;
+                    while (j > 0 && neighbors[j - 1] > value) { neighbors[j] = neighbors[j - 1]; j--; }
+                    neighbors[j] = value;
+                }
+                filtered[at] = neighbors[4]; deepWater[at] = true;
+            }
+            return filtered;
+        }
+        private static Color OceanColor(double height) => Color.Lerp(new Color32(18, 46, 65, 255), new Color32(53, 110, 125, 255),
+            (float)Math.Exp(Math.Min(0, height) * 8));
 		private static Color TerrainColor(TerrainSample sample)
 		{
-			Color ocean = Color.Lerp(new Color32(18, 46, 65, 255), new Color32(53, 110, 125, 255), (float)Math.Exp(Math.Min(0, sample.Height) * 8));
+			Color ocean = OceanColor(sample.Height);
 			Color land = Color.Lerp(new Color32(195, 167, 112, 255), new Color32(120, 144, 84, 255), (float)PlanetGeography.Clamp((sample.Moisture - .2) * 3));
 			land = Color.Lerp(land, new Color32(47, 94, 65, 255), (float)PlanetGeography.Clamp((sample.Moisture - .5) * 3));
 			land = Color.Lerp(land, new Color32(145, 145, 133, 255), (float)PlanetGeography.Clamp(sample.Mountains * 1.3 + Math.Max(0, sample.Height - .3)));

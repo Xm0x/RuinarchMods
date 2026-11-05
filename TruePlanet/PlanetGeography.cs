@@ -149,16 +149,17 @@ namespace TruePlanet
 		internal UnitVector LocalTileDirection(int tileId, double u, double v) => TileFootprint(tileId).Direction(u, v);
 		internal LocalTileFootprint TileFootprint(int tileId)
 		{
-			if (_planet.FormatVersion != 3 || _planet.LocalMapVersion != 1 || tileId < 0 || tileId >= _planet.Mesh.Centers.Length)
+            if (_planet.FormatVersion != 3 || (_planet.LocalMapVersion != 1 && _planet.LocalMapVersion != 2) || tileId < 0 || tileId >= _planet.Mesh.Centers.Length)
 				throw new ArgumentException("Unsupported local tile identity.");
 			TileLand land = TileLand.For(_planet);
 			if (!land.Cells[tileId].Eligible) throw new ArgumentException("The selected tile has no sampled dry land.");
-			UnitVector center = land.Cells[tileId].DryPoint;
-			return new LocalTileFootprint(center, East(center), Math.Sqrt(_planet.Mesh.Areas[tileId]) * .45);
+			UnitVector center = _planet.LocalMapVersion == 1 ? land.Cells[tileId].DryPoint : _planet.Mesh.Centers[tileId];
+			double span = Math.Sqrt(_planet.Mesh.Areas[tileId]) * (_planet.LocalMapVersion == 1 ? .45 : .55);
+			return new LocalTileFootprint(center, East(center), span);
 		}
 		internal int NativeTileSeed(int tileId)
 		{
-			if (_planet.LocalMapVersion != 1 || tileId < 0 || tileId >= _planet.Mesh.Centers.Length) throw new ArgumentException("Unsupported local tile identity.");
+            if ((_planet.LocalMapVersion != 1 && _planet.LocalMapVersion != 2) || tileId < 0 || tileId >= _planet.Mesh.Centers.Length) throw new ArgumentException("Unsupported local tile identity.");
 			unchecked { return (_planet.Seed * 397 ^ tileId) * 397 ^ _planet.LocalMapVersion; }
 		}
 	}

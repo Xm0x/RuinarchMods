@@ -30,10 +30,11 @@ namespace TruePlanet
         private TileStore _store;
         private CampaignManifest _transaction;
         private CampaignCarry _carry;
-        private bool _sourcePaused, _teardown, _loggerWasEnabled;
+        private bool _sourcePaused, _teardown, _loggerWasEnabled, _automaticSetup;
+        private static bool AutomaticSetupActive => Instance != null && Instance._automaticSetup && Instance._carry != null;
         private PROGRESSION_SPEED _sourceSpeed;
         private volatile string _nativeError;
-        private Button _atlas;
+        private Ruinarch.Custom_UI.RuinarchToggle _atlas;
         private int _hud;
         private Player_Input.PickPortalInputModule _replacementModule;
 
@@ -67,18 +68,26 @@ namespace TruePlanet
                 var native = tabs[tabs.Length - 1]; if (native == null) return;
                 var holder = new GameObject("TruePlanet tab clone staging"); holder.SetActive(false);
                 var button = Instantiate(native.gameObject, holder.transform, false); button.name = "TruePlanet atlas entry"; button.SetActive(false);
-                var target = button.GetComponent<Selectable>().targetGraphic;
                 // Remove dependents before Selectable: the native hotkey receiver requires it.
                 foreach (MonoBehaviour behaviour in button.GetComponentsInChildren<MonoBehaviour>(true))
                     if (!(behaviour is Selectable) && !(behaviour is TMP_Text) && !(behaviour is Image) && !(behaviour is LayoutElement)) DestroyImmediate(behaviour);
-                foreach (Selectable selectable in button.GetComponentsInChildren<Selectable>(true)) DestroyImmediate(selectable);
+                foreach (Selectable selectable in button.GetComponentsInChildren<Selectable>(true))
+                    if (selectable.gameObject != button) DestroyImmediate(selectable);
                 button.transform.SetParent(native.transform.parent, false); Destroy(holder);
                 button.transform.SetSiblingIndex(native.transform.GetSiblingIndex() + 1);
                 var rect = (RectTransform)button.transform; rect.anchoredPosition = ((RectTransform)native.transform).anchoredPosition + new Vector2(((RectTransform)native.transform).rect.width + 2, 0);
                 rect.sizeDelta = new Vector2(144, rect.sizeDelta.y);
-                _atlas = button.AddComponent<Button>(); _atlas.targetGraphic = target; _atlas.transition = native.transition;
-                _atlas.colors = native.colors; _atlas.spriteState = native.spriteState; _atlas.navigation = new Navigation { mode = Navigation.Mode.None };
-                _atlas.onClick.AddListener(PlanetView.Open);
+                _atlas = button.GetComponent<Ruinarch.Custom_UI.RuinarchToggle>();
+                _atlas.group = null; _atlas.onValueChanged.RemoveAllListeners();
+                for (int i = _atlas.onValueChanged.GetPersistentEventCount() - 1; i >= 0; i--)
+                    _atlas.onValueChanged.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+                _atlas.SetIsOnWithoutNotify(false);
+                _atlas.navigation = new Navigation { mode = Navigation.Mode.None };
+                _atlas.onValueChanged.AddListener(value =>
+                {
+                    if (!value) return;
+                    _atlas.SetIsOnWithoutNotify(false); PlanetView.Open();
+                });
                 foreach (TMP_Text label in button.GetComponentsInChildren<TMP_Text>(true)) label.text = "Planet atlas";
                 _hud = hud;
             }
@@ -118,7 +127,7 @@ namespace TruePlanet
                 var destination = _transaction.Tiles.FirstOrDefault(t => t.TileId == tileId);
                 string path = destination == null ? null : _store.Resolve(new TileContext
                     { Planet = source.Planet, TileId = tileId, CampaignId = source.CampaignId }, destination);
-                _carry = CampaignCarry.Capture(); _sourceManager = GameManager.Instance;
+                _carry = CampaignCarry.Capture(_transaction.Carry); _sourceManager = GameManager.Instance;
                 _sourcePaused = _sourceManager.isPaused; _sourceSpeed = _sourceManager.currProgressionSpeed;
                 _loggerWasEnabled = Debug.unityLogger.logEnabled; Debug.unityLogger.logEnabled = true;
                 UIManager.Instance.Pause();
@@ -172,7 +181,7 @@ namespace TruePlanet
             RecoveryPath = _store.Resolve(_source, _transaction.Tiles.Single(t => t.TileId == _source.TileId));
             Stage = TravelStage.LoadingTarget; _teardown = true;
             var previous = GameManager.Instance;
-            if (path == null) TileGame.Play(_source.Planet, tile, _source.CampaignId);
+            if (path == null) TileGame.Play(_source.Planet, tile, _source.CampaignId, _carry);
             else { SaveManager.Instance.saveCurrentProgressManager.SetCurrentSaveDataPath(path); UIManager.Instance.optionsMenu.LoadSave(); }
             yield return Ready(previous, tile, path == null);
             Stage = TravelStage.RestoringCarry; _carry.Apply();
@@ -209,12 +218,39 @@ namespace TruePlanet
                 && TileGame.Active != null && TileGame.Active.TileId == tile && TileGame.Active.CampaignId == _source.CampaignId
                 && (firstVisit || PlayerManager.Instance != null && PlayerManager.Instance.player != null)
                 && !LevelLoaderManager.Instance.IsLoadingScreenActive(), 1200, "native target generation/load");
-            // First visits deliberately wait for the player's native Portal/loadout interaction.
-            if (firstVisit)
-                while (!GameManager.Instance.gameHasStarted || UIManager.Instance.IsShowingStartScreen())
-                { CheckNativeError(); yield return null; }
+            if (firstVisit) yield return AutomaticFirstVisit();
             else yield return Wait(() => GameManager.Instance.gameHasStarted && !UIManager.Instance.IsShowingStartScreen(), 120, "native player restore");
             UIManager.Instance.Pause(); yield return new WaitForEndOfFrame(); yield return null; CheckNativeError();
+        }
+        private IEnumerator AutomaticFirstVisit()
+        {
+            _automaticSetup = true;
+            try
+            {
+                yield return Wait(() => PlayerManager.Instance != null && PlayerManager.pickPortalInputModule != null
+                    && InnerMapManager.Instance != null && GridMap.Instance != null && GridMap.Instance.mainRegion != null
+                    && UIManager.Instance.initialWorldSetupMenu != null, 300, "automatic native setup readiness");
+                LocationStructureObject portalPrefab = InnerMapManager.Instance.GetStructurePrefabsForStructure(
+                    FACTION_TYPE.Demons, STRUCTURE_TYPE.THE_PORTAL, RESOURCE.NONE).First().GetComponent<LocationStructureObject>();
+                LocationGridTile site = GridMap.Instance.mainRegion.areas
+                    .OrderBy(area => area.gridTileComponent.centerGridTile.localPlace.x)
+                    .ThenBy(area => area.gridTileComponent.centerGridTile.localPlace.y)
+                    .Select(area => area.gridTileComponent.centerGridTile)
+                    .FirstOrDefault(tile => portalPrefab.HasEnoughSpaceIfPlacedOn(tile, out _)
+                        && tile.area.structureComponent.CanBuildDemonicStructureHere(STRUCTURE_TYPE.THE_PORTAL, out _));
+                if (site == null) throw new InvalidDataException("No valid automatic Portal site exists on the destination tile.");
+                AccessTools.Method(typeof(Player_Input.PickPortalInputModule), "PlacePortal")
+                    .Invoke(PlayerManager.pickPortalInputModule, new object[] { site });
+                UIManager.Instance.initialWorldSetupMenu.OnClickConfigureLoadOut();
+                UIManager.Instance.initialWorldSetupMenu.loadOutMenu.OnClickContinue();
+                yield return Wait(() => GameManager.Instance.gameHasStarted
+                    && (WorldConfigManager.Instance.mapGenerationData == null || !WorldConfigManager.Instance.mapGenerationData.isGeneratingTileObjects)
+                    && !UIManager.Instance.IsShowingStartScreen()
+                    && !UIManager.Instance.initialWorldSetupMenu.gameObject.activeInHierarchy
+                    && !UIManager.Instance.initialWorldSetupMenu.loadOutMenu.gameObject.activeInHierarchy,
+                    900, "automatic Portal/loadout completion");
+            }
+            finally { _automaticSetup = false; }
         }
         private IEnumerator Recover()
         {
@@ -239,7 +275,7 @@ namespace TruePlanet
             GameManager.Instance.SetProgressionSpeed(_sourceSpeed);
             if (_sourcePaused) UIManager.Instance.Pause(); else UIManager.Instance.Unpause();
         }
-        private void Finish() { Stage = TravelStage.Idle; Debug.unityLogger.logEnabled = _loggerWasEnabled; CampaignObjective.WorldReady(); }
+        private void Finish() { Stage = TravelStage.Idle; _automaticSetup = false; Debug.unityLogger.logEnabled = _loggerWasEnabled; CampaignObjective.WorldReady(); }
         private void ShowError() { if (PlayerUI.Instance != null) PlayerUI.Instance.ShowGeneralConfirmation("Tile travel failed", LastError); }
         internal static bool HasPortal() => PlayerManager.Instance != null && PlayerManager.Instance.player != null
             && PlayerManager.Instance.player.playerSettlement.GetFirstStructureOfType(STRUCTURE_TYPE.THE_PORTAL) != null;
@@ -251,6 +287,20 @@ namespace TruePlanet
             PlayerManager.Instance.RemovePlayerInputModule(_replacementModule);
             _replacementModule = null;
             InputManager.Instance.SetCursorTo(Cursor_Type.Default);
+        }
+        [HarmonyPatch(typeof(SkillTreeSelector), "GetSelectedArchetype")]
+        private static class AutomaticArchetype
+        {
+            private static bool Prefix(ref PLAYER_ARCHETYPE __result)
+            {
+                if (!AutomaticSetupActive) return true;
+                __result = Instance._carry.Archetype; return false;
+            }
+        }
+        [HarmonyPatch(typeof(UIManager), nameof(UIManager.ShowStartScenario))]
+        private static class AutomaticTravelIntro
+        {
+            private static bool Prefix() => !AutomaticSetupActive;
         }
         [HarmonyPatch(typeof(Player_Input.PickPortalInputModule), "PlacePortal")]
         private static class ReplacePortal
@@ -298,7 +348,7 @@ namespace TruePlanet
             CampaignManifest manifest = TileGame.Campaign;
             TileSnapshot current = manifest.Tiles.FirstOrDefault(t => t.TileId == TileGame.Active.TileId);
             if (current != null) current.Held = false;
-            manifest.Carry = CampaignCarry.Capture(); TileGame.CommitCampaign(manifest);
+            manifest.Carry = CampaignCarry.Capture(manifest.Carry); TileGame.CommitCampaign(manifest);
             if (!manifest.Tiles.Any(t => t.TileId != manifest.ActiveTile && t.Held)) ui.LoseGameOver(message);
             else ui.ShowGeneralConfirmation("Portal lost", "Other held tiles remain. Open Planet atlas to continue the campaign.");
         }

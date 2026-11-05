@@ -7,7 +7,20 @@ namespace TruePlanet
 {
 	internal static class NationalProvinces
 	{
-		internal static void Build(Planet planet, Random random, TileLand land)
+    private struct CapitalCandidate
+    {
+        internal int Tile;
+        internal double Score;
+    }
+    private static void ShortlistCapital(List<CapitalCandidate> candidates, int tile, double score, int limit)
+    {
+        int index = 0;
+        while (index < candidates.Count && candidates[index].Score >= score) index++;
+        candidates.Insert(index, new CapitalCandidate { Tile = tile, Score = score });
+        if (candidates.Count > limit) candidates.RemoveAt(candidates.Count - 1);
+    }
+
+    internal static void Build(Planet planet, Random random, TileLand land)
 		{
 			TileMesh mesh = planet.Mesh; int count = mesh.Centers.Length;
 			var geography = new PlanetGeography(planet);
@@ -27,18 +40,58 @@ namespace TruePlanet
 			planet.Nations = new Nation[nations];
 			for (int owner = 0; owner < nations; owner++)
 			{
-				int capital = -1; double best = double.NegativeInfinity; bool elven = owner % 2 != 0;
-				int first = owner == 0 ? random.Next(eligible.Count) : 0;
-				for (int i = 0; i < eligible.Count; i++)
-				{
-					int tile = eligible[(first + i) % eligible.Count];
-					if (owners[tile] >= 0) continue;
-					TerrainSample sample = planet.TileTerrain[tile]; double score = owner == 0 ? 1 : separation[tile] * (.6 + sample.Moisture) * (1 - sample.Mountains * .5);
-					if (score <= best || !settlementTerrain.Suitable(tile, elven)) continue;
-					best = score; capital = tile;
-					if (owner == 0) break;
-				}
-				if (capital < 0) throw new InvalidDataException("No native settlement terrain is available for nation " + (owner + 1) + ".");
+                int capital = -1; double best = double.NegativeInfinity; bool elven = owner % 2 != 0;
+                int first = owner == 0 ? random.Next(eligible.Count) : 0;
+                var shortlist = new List<CapitalCandidate>(); var baseCandidates = new List<CapitalCandidate>();
+                for (int i = 0; i < eligible.Count; i++)
+                {
+                    int tile = eligible[(first + i) % eligible.Count];
+                    if (owners[tile] >= 0) continue;
+                    TerrainSample sample = planet.TileTerrain[tile]; double score = owner == 0 ? 1 : separation[tile] * (.6 + sample.Moisture) * (1 - sample.Mountains * .5);
+                    if (planet.NationalGenerationVersion == 1)
+                    {
+                        if (score <= best || !settlementTerrain.Suitable(tile, elven)) continue;
+                        best = score; capital = tile;
+                        if (owner == 0) break;
+                    }
+                    else ShortlistCapital(baseCandidates, tile, score, 64);
+                }
+                if (planet.NationalGenerationVersion >= 2)
+                {
+                    var considered = new HashSet<int>(); bool preferredFound = false;
+                    void Evaluate(CapitalCandidate candidate)
+                    {
+                        LocalTerrainPlan plan = LocalTerrainPlan.Build(planet, candidate.Tile);
+                        double open = (double)plan.Open / plan.Count, mountains = (double)plan.Mountains / plan.Count;
+                        bool preferred = open >= .65 && mountains <= .25;
+                        double score = candidate.Score + open * 2 - mountains * 2 + (preferred ? 4 : 0);
+                        if (score > best) { best = score; capital = candidate.Tile; }
+                        preferredFound |= preferred;
+                    }
+                    foreach (CapitalCandidate candidate in baseCandidates)
+                    {
+                        considered.Add(candidate.Tile);
+                        if (!settlementTerrain.Suitable(candidate.Tile, elven)) continue;
+                        ShortlistCapital(shortlist, candidate.Tile, candidate.Score, 8);
+                        if (shortlist.Count == 8) break;
+                    }
+                    foreach (CapitalCandidate candidate in shortlist) Evaluate(candidate);
+                    if (!preferredFound)
+                        foreach (CapitalCandidate candidate in baseCandidates)
+                        {
+                            if (!considered.Add(candidate.Tile) || !settlementTerrain.Suitable(candidate.Tile, elven)) continue;
+                            Evaluate(candidate); if (preferredFound) break;
+                        }
+                    if (!preferredFound)
+                        foreach (int tile in eligible)
+                        {
+                            if (owners[tile] >= 0 || !considered.Add(tile) || !settlementTerrain.Suitable(tile, elven)) continue;
+                            TerrainSample sample = planet.TileTerrain[tile];
+                            double score = owner == 0 ? 1 : separation[tile] * (.6 + sample.Moisture) * (1 - sample.Mountains * .5);
+                            Evaluate(new CapitalCandidate { Tile = tile, Score = score }); if (preferredFound) break;
+                        }
+                }
+                if (capital < 0) throw new InvalidDataException("No native settlement terrain is available for nation " + (owner + 1) + ".");
 				capitals[owner] = capital; owners[capital] = owner; claimed += land.Cells[capital].LandArea; rates[owner] = .75 + random.NextDouble() * .5;
 				planet.Nations[owner] = new Nation { Id = owner, Name = "Nation " + (owner + 1), Capital = -1, Elven = owner % 2 != 0,
 					Hue = (owner * .618033988749895 + .12) % 1, Emblem = "sigil-" + (owner % 8 + 1) };

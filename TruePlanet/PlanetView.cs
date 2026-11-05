@@ -41,7 +41,7 @@ namespace TruePlanet
 		private AtlasProgress _progress;
 		private bool _generating, _drawFinished;
 		private int _terrainTile = -1;
-		private string _terrainSummary;
+		private LocalTerrainPlan _terrainPlan;
 		private Button[] _generationControls;
 		private TMP_InputField[] _inputs;
 		private bool _controlsReady = true;
@@ -126,23 +126,23 @@ namespace TruePlanet
 			_wild = Field(advanced, "Wild %", (defaults.WildShare * 100).ToString("0"), 205);
 			var size = Button(advanced, "", () =>
 			{
-				if (_planet == null || _planet.FormatVersion == 3) { _localSize = (LocalMapSize)(((int)_localSize + 1) % 5); _sizeLabel.text = "Map: " + Size(_localSize); }
+				if (_planet == null || _planet.FormatVersion == 3) { _localSize = (LocalMapSize)(((int)_localSize + 1) % 5); _sizeLabel.text = "Map: " + TilePresentation.MapSize(_localSize); }
 				else { _largest = (ProvinceSize)(((int)_largest + 1) % 3); _sizeLabel.text = "Max: " + Size(_largest); }
 			});
-			_sizeLabel = size.GetComponentInChildren<TextMeshProUGUI>(); _sizeLabel.text = "Map: " + Size(_localSize);
+			_sizeLabel = size.GetComponentInChildren<TextMeshProUGUI>(); _sizeLabel.text = "Map: " + TilePresentation.MapSize(_localSize);
 			var detail = Button(advanced, "", () => { _resolution = _resolution == TileResolution.Standard ? TileResolution.Detailed : TileResolution.Standard; _resolutionLabel.text = Detail(_resolution); });
 			_resolutionLabel = detail.GetComponentInChildren<TextMeshProUGUI>(); _resolutionLabel.text = Detail(_resolution);
 			_advanced.SetActive(false); _worldPanel.SetActive(false);
 
 			var right = _provincePanel = _skin.Panel("Selection inspector", transform);
 			At(right, new Vector2(1, 0), Vector2.one, new Vector2(-354, 160), new Vector2(-24, -150));
-			_heading = Label(right.transform, "World / Tile", 23);
+			_heading = Label(right.transform, TilePresentation.Heading, 23);
 			At(_heading.gameObject, new Vector2(0, 1), Vector2.one, new Vector2(20, -54), new Vector2(-20, -14));
 			var inspectArea = New("Selection details", right.transform); At(inspectArea, Vector2.zero, Vector2.one, new Vector2(20, 80), new Vector2(-20, -66));
 			_inspector = Label(Scroll(inspectArea.transform), "Select land to inspect this world.", 18);
 			_inspector.gameObject.GetComponent<LayoutElement>().preferredHeight = -1;
 			_inspector.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-			_play = Button(right.transform, _inGame ? "Switch tile" : "Play", Play);
+			_play = Button(right.transform, _inGame ? "Travel" : "Play", Play);
 			At(_play.gameObject, Vector2.zero, new Vector2(1, 0), new Vector2(20, 20), new Vector2(-20, 64)); _play.interactable = false;
 
 			var controls = _skin.Panel("View controls", transform);
@@ -266,7 +266,7 @@ namespace TruePlanet
 				else
 				{
 					_planet.Name = _name.text.Trim();
-					if (_planet.FormatVersion == 3) TileGame.Play(_planet, _selected);
+					if (_planet.FormatVersion == 3) TileGame.Play(_planet, _selected, null, null);
 					else LegacyProvinceGame.Play(_planet, _selected);
 				}
 				Destroy(gameObject);
@@ -346,23 +346,17 @@ namespace TruePlanet
 		private void Display(Planet planet)
 		{
 			_drawFinished = false; _terrainTile = -1;
-			_planet = planet; _selected = -1; _name.text = planet.Name; _map.ResetView(); _globe.ResetView(); RefreshViews(); _surface.Show(planet); _save.interactable = false; _play.interactable = false;
+			_planet = planet; _selected = -1; _terrainPlan = null; _name.text = planet.Name; _map.ResetView(); _globe.ResetView(); RefreshViews(); _surface.Show(planet); _save.interactable = false; _play.interactable = false;
 			_worldTitle.text = planet.Name;
 			_generate.GetComponentInChildren<TextMeshProUGUI>().text = "Re-generate";
 			_seed.text = planet.Seed.ToString(CultureInfo.InvariantCulture); _count.text = planet.Options.Provinces.ToString(); _land.text = (planet.Options.LandShare * 100).ToString("0");
 			_nations.text = planet.Options.Nations.ToString(); _wild.text = (planet.Options.WildShare * 100).ToString("0");
 			_largest = planet.Options.LargestProvince; _localSize = planet.Options.LocalSize;
-			_sizeLabel.text = planet.FormatVersion == 3 ? "Map: " + Size(_localSize) : "Max: " + Size(_largest);
+			_sizeLabel.text = planet.FormatVersion == 3 ? "Map: " + TilePresentation.MapSize(_localSize) : "Max: " + Size(_largest);
 			_resolution = planet.Options.Resolution; _resolutionLabel.text = Detail(_resolution);
-			double wild = 0;
-			if (planet.FormatVersion == 3)
-			{
-				TileLand land = TileLand.For(planet);
-				for (int i = 0; i < land.Cells.Length; i++) if (planet.TileOwners[i] < 0) wild += land.Cells[i].LandArea;
-			}
-			_heading.text = planet.FormatVersion == 3 ? "World / Tile" : "World / Province";
+			_heading.text = planet.FormatVersion == 3 ? TilePresentation.Heading : "World / Province";
 			_inspector.text = planet.Name + "\n\n" + planet.Provinces.Length + " provinces\n" + (planet.TopologyVersion == 1 ? planet.TileOwners.Length + " tiles\n" : "") + planet.Nations.Length + " nations\n" + planet.Provinces.Sum(p => p.Villages.Length) + " villages\n\n"
-				+ (planet.FormatVersion == 3 ? "Unclaimed land area: " + wild.ToString("0.000") + " sr\nFixed map size: " + Size(planet.Options.LocalSize) + "\nSelect a land tile to inspect its settlements." : "Tiles form provinces; nations own whole provinces.\nSelect land to inspect its province and settlements.");
+				+ (planet.FormatVersion == 3 ? "Fixed map size: " + TilePresentation.MapSize(planet.Options.LocalSize) + "\nSelect a land tile to inspect its settlements." : "Tiles form provinces; nations own whole provinces.\nSelect land to inspect its province and settlements.");
 			_status.text = "Seed " + planet.Seed + ". Drawing map.";
 		}
 		private void Inspect(int id)
@@ -388,44 +382,18 @@ namespace TruePlanet
 		}
 		private void InspectTile(int tile)
 		{
-			int owner = _planet.TileOwners[tile]; Province province = owner < 0 ? null : _planet.Provinces[owner];
-			var text = new StringBuilder(); text.AppendLine("Geographic tile " + tile);
-			text.AppendLine(province == null ? "Unclaimed wilderness" : "Province: " + province.Name);
-			if (province != null) text.AppendLine("Nation: " + _planet.Nations[province.Nation].Name);
-			text.AppendLine("Fixed map size: " + Size(_planet.Options.LocalSize));
 			TileLandSample land = TileLand.For(_planet).Cells[tile];
-			text.AppendLine("Land area: " + land.LandArea.ToString("0.00000") + " sr");
 			TerrainSample sample = _surface.Geography.Sample(land.DryPoint);
-			text.AppendLine("Temperature: " + (sample.Temperature * 100).ToString("0") + "% / Moisture: " + (sample.Moisture * 100).ToString("0") + "%");
 			if (_terrainTile != tile)
 			{
-				var footprint = _surface.Geography.TileFootprint(tile);
-				int open = 0, mountains = 0, water = 0;
-				for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++)
-				{
-					float elevation = _surface.Geography.Elevation(_surface.Geography.Sample(footprint.Direction((x + .5) / 16, (y + .5) / 16)));
-					if (elevation < .23f) water++; else if (elevation > .78f) mountains++; else open++;
-				}
-				float count = open + mountains + water;
-				_terrainSummary = "Sampled local terrain: " + (open * 100 / count).ToString("0") + "% open land / " + (mountains * 100 / count).ToString("0") + "% mountain / " + (water * 100 / count).ToString("0") + "% water";
+				_terrainPlan = LocalTerrainPlan.Build(_planet, tile);
 				_terrainTile = tile;
 			}
-			text.AppendLine(_terrainSummary);
-			text.AppendLine("Village culture does not determine terrain.");
-			int villages = 0;
-			if (province != null) foreach (Village village in province.Villages) if (village.TileId == tile)
-			{
-				text.AppendLine("\n" + village.Name + (village.Capital ? " (capital)" : "") + "\n" + (village.Elven ? "Elven" : "Human")); villages++;
-			}
-			if (villages == 0) text.AppendLine("\nNo recorded settlements on this tile.");
-			if (_inGame)
-			{
-				TileSnapshot snapshot = TileGame.Campaign.Tiles.FirstOrDefault(t => t.TileId == tile);
-				text.AppendLine(tile == TileGame.Active.TileId ? "\nCurrent tile" : snapshot == null ? "\nUnvisited" : "\nVisited");
-				text.AppendLine(tile == TileGame.Active.TileId ? (TileTravel.HasPortal() ? "Portal held" : "No standing Portal") : snapshot != null && snapshot.Held ? "Portal held" : "Not held");
-			}
-			_inspector.text = text.ToString(); _play.interactable = land.Eligible && (!_inGame || tile != TileGame.Active.TileId);
-			_status.text = "Selected tile " + tile + (_inGame ? ". Switch saves the source first; first visits require native setup." : ". Play creates this tile; place your Portal normally.");
+            CampaignManifest campaign = _inGame ? TileGame.Campaign : null;
+			_inspector.text = TilePresentation.Details(_planet, tile, sample, _terrainPlan, campaign,
+                _inGame ? TileGame.Active.TileId : -1, _inGame && TileTravel.HasPortal());
+			_play.interactable = land.Eligible && (!_inGame || tile != TileGame.Active.TileId);
+			_status.text = TilePresentation.Status(_inGame);
 		}
 		private void Save() => Attempt(() => { _planet.Name = _name.text.Trim(); string path = PlanetStore.Save(TruePlanetMod.SaveRoot, _planet); _status.text = "Saved " + _planet.Name + " to " + path; RefreshSaves(); });
 		private void RefreshSaves()
@@ -451,11 +419,6 @@ namespace TruePlanet
 			try { action(); } catch (Exception e) { _status.text = e.Message; TruePlanetMod.Log.Warning("Atlas operation failed: " + e.Message); }
 		}
 		private static string Size(ProvinceSize size) => size == ProvinceSize.Huge ? "Huge (32x20)" : size == ProvinceSize.ExtraLarge ? "Extra Large (24x14)" : "Large (20x12)";
-		private static string Size(LocalMapSize size)
-		{
-			Vector2Int areas = TileGame.Areas(size);
-			return (size == LocalMapSize.ExtraLarge ? "Extra Large" : size.ToString()) + " (" + areas.x + "x" + areas.y + ")";
-		}
 		private static string Detail(TileResolution resolution) => resolution == TileResolution.Standard ? "Tiles: Standard (10,242)" : "Tiles: Detailed (40,962)";
 		private GameObject New(string name, Transform parent) => GlobeSkin.Node(name, parent);
 		private static void At(GameObject go, Vector2 min, Vector2 max, Vector2 low, Vector2 high) { var rect = (RectTransform)go.transform; rect.anchorMin = min; rect.anchorMax = max; rect.offsetMin = low; rect.offsetMax = high; }

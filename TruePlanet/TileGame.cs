@@ -66,7 +66,12 @@ namespace TruePlanet
 			foreach (Type type in typeof(TileGame).GetNestedTypes(System.Reflection.BindingFlags.NonPublic))
 				if (type.GetCustomAttributes(typeof(HarmonyPatch), false).Length != 0) harmony.CreateClassProcessor(type).Patch();
 		}
-		internal static Vector2Int Areas(LocalMapSize size)
+        internal static VILLAGE_SIZE NativeVillageSize(Village village, LocalMapSize mapSize)
+        {
+            if (!village.Capital) return VILLAGE_SIZE.Small;
+            return mapSize == LocalMapSize.Small ? VILLAGE_SIZE.Medium : VILLAGE_SIZE.Large;
+        }
+        internal static Vector2Int Areas(LocalMapSize size)
 		{
 			PlanetOptions.NativeDimensions(size, out int columns, out int rows);
 			return new Vector2Int(columns, rows);
@@ -81,12 +86,14 @@ namespace TruePlanet
 		{
 			_map = _climateMap = null; _geography = null; _temperature = _moisture = _elevation = null;
 		}
-		internal static void Play(Planet planet, int tileId, string campaignId = null)
+		internal static void Play(Planet planet, int tileId, string campaignId, CampaignCarry carry)
 		{
 			planet.Validate();
+			carry?.Validate();
 			if (planet.FormatVersion != 3 || (uint)tileId >= planet.Mesh.Centers.Length || !TileLand.For(planet).Cells[tileId].Eligible)
 				throw new InvalidOperationException("Select a dry geographic tile to play.");
 			var settings = new WorldSettingsData(); settings.SetDefaultSettings(); settings.ApplyCustomWorldSettings();
+			if (carry != null) settings.playerSkillSettings.startingPortalLevel = carry.PortalLevel;
 			settings.mapSettings.SetMapSize(planet.Options.LocalSize == LocalMapSize.Huge ? MAP_SIZE.Extra_Large : (MAP_SIZE)planet.Options.LocalSize);
 			foreach (var group in planet.Provinces.SelectMany(p => p.Villages).Where(v => v.TileId == tileId).GroupBy(v => new { v.Nation, v.Elven }))
 			{
@@ -96,7 +103,7 @@ namespace TruePlanet
 				if (FactionEmblemRandomizer.allEmblems == null || FactionEmblemRandomizer.allEmblems.Count == 0)
 					throw new InvalidOperationException("Native faction emblems are unavailable.");
 				template.SetFactionEmblem(FactionEmblemRandomizer.allEmblems[nation.Id % FactionEmblemRandomizer.allEmblems.Count]);
-				foreach (Village village in group) template.AddVillageSetting(new VillageSetting { villageName = village.Name, villageSize = VILLAGE_SIZE.Small });
+                foreach (Village village in group) template.AddVillageSetting(new VillageSetting { villageName = village.Name, villageSize = NativeVillageSize(village, planet.Options.LocalSize) });
 			}
 			if (!settings.AreSettingsValid(out string reason)) throw new InvalidOperationException(reason);
 			_pending = new TileContext { Planet = planet, TileId = tileId, CampaignId = campaignId ?? Guid.NewGuid().ToString("N") };
@@ -131,7 +138,7 @@ namespace TruePlanet
 			{
 				EnsureCampaign();
 				CampaignObjective.Refresh();
-				_campaign.Carry = CampaignCarry.Capture(); _campaign.ActiveTile = Active.TileId;
+				_campaign.Carry = CampaignCarry.Capture(_campaign.Carry); _campaign.ActiveTile = Active.TileId;
 				_store.RecordRevision(_campaign); Active.CampaignRevision = _campaign.Revision;
 			}
 			catch (Exception error) { NativeSaveError = error.Message; throw; }
@@ -169,14 +176,9 @@ namespace TruePlanet
 			InnerTileMap map = GridMap.Instance.mainRegion.innerMap;
 			if (map == null || map.width != width || map.height != height) return false;
 			if (_map == map && _temperature != null) return true;
-			_map = map; _geography = new PlanetGeography(Active.Planet);
-			_temperature = new float[width, height]; _moisture = new float[width, height]; _elevation = new float[width, height];
-			LocalTileFootprint footprint = _geography.TileFootprint(Active.TileId);
-			for (int x = 0; x < width; x++) for (int y = 0; y < height; y++)
-			{
-				TerrainSample sample = _geography.Sample(footprint.Direction((x + .5) / width, (y + .5) / height));
-				_temperature[x, y] = (float)sample.Temperature; _moisture[x, y] = (float)sample.Moisture; _elevation[x, y] = _geography.Elevation(sample);
-			}
+            _map = map;
+            LocalTerrainPlan plan = LocalTerrainPlan.Build(Active.Planet, Active.TileId);
+            _temperature = plan.Temperature; _moisture = plan.Moisture; _elevation = plan.Elevation;
 			return true;
 		}
 		private static IEnumerator Climate(IEnumerator original, InnerTileMap map)

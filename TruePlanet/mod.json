@@ -1,9 +1,9 @@
 {
   "id": "trueplanet",
   "name": "TruePlanet",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "author": "Xm0x",
-  "description": "Seeded spherical planets with a rotatable globe, optional flat map and native floating controls. Responsive planet generation and real loading stages; cached gameplay atlas beside Achievements and selected/current-tile Reset view. Nations, provinces, settlements and orange roads share persistent geographic tiles, including wilderness. Standard/Detailed resolution and fixed local map size. Single-scene travel saves native snapshots and carries campaign currencies/skill progression; local worlds remain separate. Legacy province saves remain readable. Requires RuinarchModLoader 0.9.0. No Travel Portal structures, offscreen simulation or seamless streaming.",
+  "description": "Seeded spherical planets with a rotatable globe, optional flat map and native floating controls. Responsive planet generation and real loading stages; cached gameplay atlas beside Achievements and selected/current-tile Reset view. Nations, provinces, settlements and orange roads share persistent geographic tiles, including wilderness. Standard/Detailed resolution and fixed local map size. Single-scene travel saves native snapshots, automatically reuses Portal/loadout setup and carries campaign currencies, skills, Portal levels and upgrade choices; local worlds remain separate. Legacy province saves remain readable. Requires RuinarchModLoader 0.9.0. No Travel Portal structures, offscreen simulation or seamless streaming.",
   "loader": "RuinarchModLoader",
   "loaderApi": 2,
   "type": "code",

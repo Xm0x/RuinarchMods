@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using HarmonyLib;
+using Inner_Maps.Location_Structures;
 
 namespace TruePlanet
 {
@@ -14,8 +15,17 @@ namespace TruePlanet
         public float Pierce;
         public bool Unlocked;
     }
+    internal sealed class CampaignPortalChoice
+    {
+        public int Tier, ItemIndex;
+        public PLAYER_SKILL_TYPE ChosenPower;
+        public PLAYER_SKILL_TYPE[] PowerChoices = new PLAYER_SKILL_TYPE[0];
+    }
     internal sealed class CampaignCarry
     {
+        public PLAYER_ARCHETYPE Archetype = PLAYER_ARCHETYPE.Normal;
+        public int PortalLevel = 1;
+        public CampaignPortalChoice[] PortalChoices = new CampaignPortalChoice[0];
         public int Mana, SpiritEnergy, ChaoticEnergy, MaxChaoticEnergy;
         public CampaignSkill[] Skills = new CampaignSkill[0];
         public PLAYER_SKILL_TYPE[] Powers = new PLAYER_SKILL_TYPE[0];
@@ -24,7 +34,12 @@ namespace TruePlanet
         private static readonly AccessTools.FieldRef<CurrenciesComponent, int> Spirit =
             AccessTools.FieldRefAccess<CurrenciesComponent, int>("<spiritEnergy>k__BackingField");
 
-        internal static CampaignCarry Capture()
+        private static CampaignPortalChoice[] CopyPortalChoices(CampaignPortalChoice[] choices) => choices?.Select(choice => new CampaignPortalChoice
+        {
+            Tier = choice.Tier, ItemIndex = choice.ItemIndex, ChosenPower = choice.ChosenPower,
+            PowerChoices = choice.PowerChoices?.ToArray() ?? new PLAYER_SKILL_TYPE[0]
+        }).ToArray() ?? new CampaignPortalChoice[0];
+        internal static CampaignCarry Capture(CampaignCarry previous = null)
         {
             var player = PlayerManager.Instance.player; var currency = player.currenciesComponent;
             var component = player.playerSkillComponent;
@@ -33,8 +48,17 @@ namespace TruePlanet
                 component.playerActions, component.demonicStructuresSkills, component.buildSkills, component.minionsSkills, component.summonsSkills })
                 foreach (PLAYER_SKILL_TYPE type in list)
                     if (!PlayerSkillManager.Instance.GetSkillData(type).isTemporarilyInUse) available.Add(type);
+            ThePortal portal = player.playerSettlement.GetFirstStructureOfType(STRUCTURE_TYPE.THE_PORTAL) as ThePortal;
             var carry = new CampaignCarry { Mana = currency.mana, SpiritEnergy = currency.spiritEnergy,
                 ChaoticEnergy = currency.chaoticEnergy, MaxChaoticEnergy = currency.maxChaoticEnergy,
+                Archetype = PlayerSkillManager.Instance.selectedArchetype,
+                PortalLevel = portal == null ? previous?.PortalLevel ?? 1 : portal.level,
+                PortalChoices = portal == null ? CopyPortalChoices(previous?.PortalChoices) : component.portalUpgradeItems
+                    .OrderBy(pair => pair.Key).SelectMany(pair => pair.Value.OrderBy(item => item.itemIndex).Select(item => new CampaignPortalChoice
+                    {
+                        Tier = pair.Key, ItemIndex = item.itemIndex, ChosenPower = item.chosenPowerForUpgrade,
+                        PowerChoices = item.powerChoices.ToArray()
+                    })).ToArray(),
                 Powers = available.OrderBy(t => (int)t).ToArray(),
                 Skills = PlayerSkillManager.Instance.allPlayerSkillsData.Values.OrderBy(s => (int)s.type).Select(s => new CampaignSkill
                 {
@@ -57,15 +81,74 @@ namespace TruePlanet
             var powers = new HashSet<PLAYER_SKILL_TYPE>();
             foreach (PLAYER_SKILL_TYPE type in Powers)
                 if (!types.Contains(type) || !powers.Add(type)) throw new InvalidDataException("Portable power has no unique skill progression record.");
+            if (!Enum.IsDefined(typeof(PLAYER_ARCHETYPE), Archetype) || PortalLevel < 1 || PortalChoices == null)
+                throw new InvalidDataException("Invalid portable Portal progression.");
+            var upgradeIdentities = new HashSet<long>();
+            foreach (CampaignPortalChoice choice in PortalChoices)
+            {
+                if (choice == null || choice.Tier < 1 || choice.ItemIndex < 0 || choice.PowerChoices == null
+                    || !Enum.IsDefined(typeof(PLAYER_SKILL_TYPE), choice.ChosenPower)
+                    || !upgradeIdentities.Add((long)choice.Tier << 32 | (uint)choice.ItemIndex))
+                    throw new InvalidDataException("Invalid or duplicate portable Portal upgrade.");
+                var offered = new HashSet<PLAYER_SKILL_TYPE>();
+                foreach (PLAYER_SKILL_TYPE power in choice.PowerChoices)
+                    if (!Enum.IsDefined(typeof(PLAYER_SKILL_TYPE), power) || power != PLAYER_SKILL_TYPE.NONE && !offered.Add(power))
+                        throw new InvalidDataException("Invalid or duplicate portable Portal power choice.");
+                if (choice.ChosenPower != PLAYER_SKILL_TYPE.NONE && offered.Count != 0 && !offered.Contains(choice.ChosenPower))
+                    throw new InvalidDataException("Portable Portal power was not offered by its upgrade.");
+            }
+        }
+        private void ValidateDestination(PlayerSkillManager manager, PlayerSkillComponent component, ThePortal portal)
+        {
+            PLAYER_ARCHETYPE expected = Archetype == PLAYER_ARCHETYPE.Normal ? PLAYER_ARCHETYPE.Progression_Ravager : Archetype;
+            if (manager.selectedArchetype != expected) throw new InvalidDataException("Destination loadout does not match the portable lord.");
+            if (component.portalUpgradeItems.Count == 0 || PortalLevel > component.portalUpgradeItems.Keys.Max())
+                throw new InvalidDataException("Destination does not provide the portable Portal level.");
+            if (portal != null && portal.level != PortalLevel) throw new InvalidDataException("Destination Portal level differs from portable progression.");
+            if (PortalChoices.Length == 0) return;
+            if (PortalChoices.Length != component.portalUpgradeItems.Values.Sum(items => items.Length))
+                throw new InvalidDataException("Portable Portal upgrades do not cover the destination loadout.");
+            foreach (CampaignPortalChoice saved in PortalChoices)
+            {
+                if (!component.portalUpgradeItems.TryGetValue(saved.Tier, out PortalUpgradeItem[] items)
+                    || saved.ItemIndex >= items.Length) throw new InvalidDataException("Destination lacks a portable Portal tier/item.");
+                PortalUpgradeItem native = items[saved.ItemIndex];
+                if (native.itemIndex != saved.ItemIndex || saved.PowerChoices.Length != native.powerChoices.Length)
+                    throw new InvalidDataException("Portable Portal tier/item identity differs from the destination.");
+                if (saved.PowerChoices.Any(power => power != PLAYER_SKILL_TYPE.NONE && !manager.allPlayerSkillsData.ContainsKey(power))
+                    || saved.ChosenPower != PLAYER_SKILL_TYPE.NONE && !manager.allPlayerSkillsData.ContainsKey(saved.ChosenPower))
+                    throw new InvalidDataException("Destination does not provide a portable Portal power.");
+                if (native.portalUpgradeType == Portal_Upgrade_Type.Essential)
+                {
+                    if (saved.ChosenPower != native.essentialSkillToUnlock)
+                        throw new InvalidDataException("Portable essential Portal power differs from the destination.");
+                }
+                else if (saved.ChosenPower != PLAYER_SKILL_TYPE.NONE && !saved.PowerChoices.Contains(saved.ChosenPower))
+                    throw new InvalidDataException("Portable Portal power was not offered by its upgrade.");
+            }
+        }
+        private void ApplyPortalChoices(PlayerSkillComponent component)
+        {
+            if (PortalChoices.Length == 0) return;
+            foreach (CampaignPortalChoice saved in PortalChoices)
+            {
+                PortalUpgradeItem native = component.portalUpgradeItems[saved.Tier][saved.ItemIndex];
+                for (int i = 0; i < native.powerChoices.Length; i++) native.powerChoices[i] = saved.PowerChoices[i];
+                native.SetChosenPowerForUpgrade(saved.ChosenPower);
+            }
         }
         internal void Apply()
         {
             Validate();
             var manager = PlayerSkillManager.Instance; var player = PlayerManager.Instance.player;
+            var component = player.playerSkillComponent;
+            ThePortal portal = player.playerSettlement.GetFirstStructureOfType(STRUCTURE_TYPE.THE_PORTAL) as ThePortal;
+            ValidateDestination(manager, component, portal);
             foreach (CampaignSkill saved in Skills)
                 if (!manager.allPlayerSkillsData.ContainsKey(saved.Type))
                     throw new InvalidDataException("Destination does not provide campaign skill " + saved.Type + ".");
-            var powers = new HashSet<PLAYER_SKILL_TYPE>(Powers); var component = player.playerSkillComponent;
+            ApplyPortalChoices(component);
+            var powers = new HashSet<PLAYER_SKILL_TYPE>(Powers);
             foreach (CampaignSkill saved in Skills)
             {
                 SkillData skill = manager.GetSkillData(saved.Type);

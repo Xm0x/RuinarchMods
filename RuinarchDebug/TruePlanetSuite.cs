@@ -65,9 +65,9 @@ namespace RuinarchDebug
                     (JsonConvert.SerializeObject(world) == serialized, "territory, settlements and road endpoints"));
                 foreach (string field in new[] { "LocalMapVersion", "NationalGenerationVersion" })
                 {
-                    var invalid = (JObject)original.DeepClone(); invalid[field] = 2;
+                    var invalid = (JObject)original.DeepClone(); invalid[field] = 3;
                     bool rejected = RejectTileWorld(invalid, planetType, validate);
-                    Check("unknown " + field + " is refused (resolution " + resolution + ")", () => (rejected, field + "=2"));
+                    Check("unknown " + field + " is refused (resolution " + resolution + ")", () => (rejected, field + "=3"));
                 }
                 foreach (int owner in new[] { -2, original["Provinces"].Count() })
                 {
@@ -87,8 +87,8 @@ namespace RuinarchDebug
                 validate.Invoke(generated, null);
                 var output = JObject.Parse(JsonConvert.SerializeObject(generated));
                 Check("new generation emits geographic tile worlds with the requested fixed dimensions (resolution " + resolution + ")", () =>
-                    ((int)output["FormatVersion"] == 3 && (int)output["NationalGenerationVersion"] == 1
-                        && (int)output["LocalMapVersion"] == 1 && JToken.DeepEquals(output["Options"]["LocalSize"], JToken.FromObject(size.GetValue(options)))
+                    ((int)output["FormatVersion"] == 3 && (int)output["GeographyVersion"] == 4
+                        && (int)output["NationalGenerationVersion"] == 2 && (int)output["LocalMapVersion"] == 2 && JToken.DeepEquals(output["Options"]["LocalSize"], JToken.FromObject(size.GetValue(options)))
                         && output["Provinces"].SelectMany(p => p["Villages"]).All(v => (int)v["TileId"] >= 0),
                         "format, versions, map size and settlement anchors"));
             }
@@ -109,6 +109,7 @@ namespace RuinarchDebug
                     (UnityEngine.Object.FindObjectsOfType<BookmarkTextItemUI>().Where(item => item.gameObject.activeInHierarchy)
                         .Any(item => ((TMPro.TMP_Text)label.GetValue(item)).text == objective), "actual bookmark text, not a stale loading-stage title"));
             }
+            yield return TruePlanetRevisionSuite();
         }
 
         private void TruePlanetGlobeChecks(Assembly assembly)

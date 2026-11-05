@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TruePlanet
 {
@@ -32,7 +33,41 @@ namespace TruePlanet
 		internal static List<SphericalSegment> BuildSpherical(Planet planet, PlanetGeography geography)
 		{
 			var lines = new List<SphericalSegment>(); Traverse(planet, geography, null, lines);
-			lines.Sort((a, b) => a.Kind.CompareTo(b.Kind)); return lines;
+			return lines.OrderBy(line => line.Kind).ToList();
+		}
+		internal static List<SphericalSegment> BuildSphericalLod(Planet planet, PlanetGeography geography, IReadOnlyList<SphericalSegment> segments)
+		{
+			const double maximumArc = .016;
+			var result = new List<SphericalSegment>(segments.Count);
+			SphericalSegment pending = default;
+			double pendingLength = 0;
+			bool hasPending = false;
+			for (int i = 0; i < segments.Count; i++)
+			{
+				SphericalSegment segment = segments[i];
+				double segmentLength = Angle(segment.A, segment.B);
+				UnitVector gap = pending.B - segment.A;
+				if (hasPending && pending.Kind == segment.Kind && pending.Left == segment.Left && pending.Right == segment.Right
+					&& UnitVector.Dot(gap, gap) <= 1e-20)
+				{
+					double joinedLength = pendingLength + segmentLength;
+					UnitVector chord = pending.A - segment.B;
+					// Bound the traversed path, not just its chord: backtracking must not erase a stroke.
+					if (joinedLength <= maximumArc + 1e-9 && UnitVector.Dot(chord, chord) > 1e-20
+						&& geography.Sample((pending.A + segment.B).Normalized()).Height > 0)
+					{
+						pending.B = segment.B;
+						pendingLength = joinedLength;
+						continue;
+					}
+				}
+				if (hasPending) result.Add(pending);
+				pending = segment;
+				pendingLength = segmentLength;
+				hasPending = true;
+			}
+			if (hasPending) result.Add(pending);
+			return result;
 		}
 		private struct Route
 		{

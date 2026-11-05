@@ -16,7 +16,8 @@ namespace TruePlanet
 		private TMP_FontAsset _font;
 		private Material _labelMaterial;
 		private List<SphericalSegment> _geometry;
-		private int _borderStart, _roadStart;
+		private List<SphericalSegment> _lowGeometry;
+		private int _borderStart, _roadStart, _lowBorderStart, _lowRoadStart;
 		private UnitVector _projectX, _projectY;
 		private Vector2 _projectOrigin, _projectScale;
 		private readonly List<SphericalSegment> _outline = new List<SphericalSegment>();
@@ -54,10 +55,15 @@ namespace TruePlanet
 			if (!ReferenceEquals(_world, _surface.Planet))
 			{
 				_world = _surface.Planet; _geometry = _surface.SphericalGeometry;
+                _lowGeometry = MapGeometry.BuildSphericalLod(_world, _surface.Geography, _geometry);
 				_borderStart = 0;
 				while (_borderStart < _geometry.Count && _geometry[_borderStart].Kind == 0) _borderStart++;
 				_roadStart = _borderStart;
 				while (_roadStart < _geometry.Count && _geometry[_roadStart].Kind < 3) _roadStart++;
+                _lowBorderStart = 0;
+                while (_lowBorderStart < _lowGeometry.Count && _lowGeometry[_lowBorderStart].Kind == 0) _lowBorderStart++;
+                _lowRoadStart = _lowBorderStart;
+                while (_lowRoadStart < _lowGeometry.Count && _lowGeometry[_lowRoadStart].Kind < 3) _lowRoadStart++;
 				_outline.Clear(); _outlineFor = -1; BuildLabels();
 			}
 			if (_outlineFor != _selected)
@@ -77,19 +83,21 @@ namespace TruePlanet
 			_projectOrigin = new Vector2(_bounds.xMin + center.x * _bounds.width, _bounds.yMin + center.y * _bounds.height);
 			_projectScale = new Vector2(_bounds.width * _radius / (2 * _camera.orthographicSize * _camera.aspect), _bounds.height * _radius / (2 * _camera.orthographicSize));
 			_strokes.Clear();
-			if (_grid) for (int i = 0; i < _borderStart; i++)
-				if (Visible(_geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Grid);
-			if (_borders) for (int i = _borderStart; i < _roadStart; i++)
+            List<SphericalSegment> geometry = zoom < 2 ? _lowGeometry : _geometry;
+            int borderStart = zoom < 2 ? _lowBorderStart : _borderStart, roadStart = zoom < 2 ? _lowRoadStart : _roadStart;
+			if (_grid) for (int i = 0; i < borderStart; i++)
+				if (Visible(geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Grid);
+			if (_borders) for (int i = borderStart; i < roadStart; i++)
 			{
-				SphericalSegment segment = _geometry[i];
+				SphericalSegment segment = geometry[i];
 				if (!Visible(segment, out Vector2 a, out Vector2 b)) continue;
 				if (segment.Kind == 1) Stroke(a, b, MapStyle.Province);
 				else { Stroke(a, b, MapStyle.NationOuter); Stroke(a, b, MapStyle.NationInner); }
 			}
 			foreach (SphericalSegment segment in _outline)
 				if (Visible(segment, out Vector2 a, out Vector2 b)) { Stroke(a, b, MapStyle.SelectionOuter); Stroke(a, b, MapStyle.SelectionInner); }
-			if (_roads) for (int i = _roadStart; i < _geometry.Count; i++)
-				if (Visible(_geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Road);
+			if (_roads) for (int i = roadStart; i < geometry.Count; i++)
+				if (Visible(geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Road);
 			int needed = (_strokes.Count + MapStyle.BatchSize - 1) / MapStyle.BatchSize;
 			while (_batches.Count < needed)
 			{

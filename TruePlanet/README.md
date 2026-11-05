@@ -1,17 +1,23 @@
-# TruePlanet 0.3.1
+# TruePlanet 0.4.0
 
 Generate a seeded planet, inspect it on a rotatable globe and play its geographic
 tiles. Nations, settlements and orange roads share one world; unclaimed land is
 playable wilderness. Works without Ruinarch+.
 
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263) ·
-[Download 0.3.1](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.1) ·
+[Download 0.4.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.4.0) ·
 [Loader 0.9.1](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.1)
 
 > [!IMPORTANT]
-> 0.3.1 adds responsive atlas generation, a cached gameplay atlas and persistent
-> planet-wide subjugation. Use loader **0.9.1** for shared native loading feedback;
-> the mod remains compatible with the 0.9.0 core/framework.
+> 0.4.0 adds one campaign setup across tile travel, carried Portal/loadout
+> progression, developed capitals, revised local terrain, concise land details
+> and cached line rendering. Existing saved geography is not regenerated.
+> Use loader **0.9.1** for shared native loading feedback; the mod remains
+> compatible with the 0.9.0 core/framework.
+
+> [!NOTE]
+> The linked Workshop item still carries **0.3.1**. Use the GitHub package below
+> for 0.4.0; this release does not replace or update the Workshop upload.
 
 [Install](#install) · [Play and travel](#play-and-travel) · [Options](#options) · [Verification](#verification-and-measured-limits)
 
@@ -24,9 +30,8 @@ scroll to zoom, then select land to play. The **Globe / Map** button changes the
 
 1. Install [RuinarchModLoader 0.9.1](https://github.com/Xm0x/RuinarchModLoader/releases/tag/v0.9.1)
    first; TruePlanet does not replace the loader.
-2. Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263),
-   or extract `TruePlanet-0.3.1.zip` from
-   [the release](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.3.1)
+2. Extract `TruePlanet-0.4.0.zip` from
+   [the GitHub release](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.4.0)
    into the game's `Mods/` directory, producing `Mods/TruePlanet/`.
 3. Restart Ruinarch. Use one distribution path: a local copy takes precedence
    when local and Workshop packages both exist.
@@ -49,11 +54,13 @@ Do not downgrade conquest-bearing 0.3.1 saves to the 0.3.0 reader.
 4. Click actual land to select a geographic tile, then **Play**. Unclaimed dry
    tiles are playable wilderness without invented settlements. Ocean and coastal
    water clicks preserve the previous selection. Place the normal native Portal
-   and configure the native loadout on a first visit.
+   and configure the native loadout when creating a campaign. Later first visits
+   place the Portal and continue the same loadout automatically.
 5. During gameplay, open **Planet atlas** beside **Achievements**, select another
-   dry tile and use **Switch tile**. A visited tile reloads its committed native snapshot.
-   Currency and portable skill progression follow the campaign; villagers,
-   jobs, buildings, minions, corruption and local clocks stay with their map.
+   dry tile and use **Travel**. A visited tile reloads its committed native snapshot.
+   Lord/archetype, Portal level, upgrade choices, currency and portable skill
+   progression follow the campaign; villagers, jobs, buildings, minions,
+   corruption and local clocks stay with their map.
 6. If a Portal is destroyed while another tile remains held, the campaign
    continues. Returning to the unheld tile permits Portal replacement without
    regenerating its world. Losing the final held Portal ends the campaign.
@@ -65,7 +72,7 @@ immutable campaign revisions. **Back** returns to the existing menu.
 The planet fills the viewport behind translucent, native-styled floating panels.
 Buttons and text stay opaque. Decorative circular frame ornaments are omitted;
 control captions are centered. Selection details and long status messages scroll,
-and Play / Switch tile stays anchored in the inspector. **Escape** closes the
+and Play / Travel stays anchored in the inspector. **Escape** closes the
 open drawer first, then the atlas. Atlas interactions suppress source-world
 mouse actions, movement and shortcuts until the original input state is restored.
 
@@ -83,8 +90,8 @@ tile with new opposition makes it contested again. Older campaign revisions with
 recorded conquest do not assume that other maps have already been subjugated;
 visit them to establish their state. An older tile-local win flag no longer ends
 an incomplete planet campaign. Legacy province worlds keep their original victory
-condition. Native Portal placement, lord/loadout selection and local retaliation
-remain in use.
+condition. Initial native Portal placement and lord/loadout selection remain in use;
+later travel reuses that campaign setup. Local retaliation remains in use.
 
 ## Loading and atlas performance
 
@@ -105,9 +112,9 @@ Native world-generation and save-loading status now belongs to the loader's
 completed/running/pending native stages and threaded load-batch counts even with
 TruePlanet disabled, then restores the borrowed loading-screen layout and art.
 
-Village culture does not prescribe terrain. Selection details report a sampled
-local footprint mix of open land, mountains and water without flattening the
-seeded geography to make Human villages look grassy.
+Selection details name the biome from actual temperature and moisture, report those
+climate values separately, and show the exact local-footprint percentages of open
+land, mountains and water. Village culture does not prescribe terrain.
 
 
 ## Know the boundaries
@@ -119,6 +126,12 @@ seamless streaming. Travel Portal structures are not implemented.
 New worlds use format three. Existing format-one/two worlds keep their original
 province gameplay, saved identities and dimensions rather than being migrated to
 new geographic tile IDs.
+
+New 0.4.0 planets use Geography 4, NationalGeneration 2 and LocalMap 2.
+Existing worlds keep their recorded algorithms and native snapshots. New local
+maps constrain each connected mountain mass to at most a quarter of the map,
+taper mountain relief at dry map edges and retain varying coastal water depths.
+Inspector terrain percentages classify the same arrays used by native generation.
 
 <details>
 <summary>Optional flat view</summary>
@@ -167,6 +180,15 @@ The requested province count is subject to available claimed-land capacity.
   reconstructs exact shared spherical cell edges; coast clipping and seam splits
   prevent lines through water or across the full projection.
   Terrain itself remains a raster and can soften at maximum zoom.
+- Below 2x zoom, a cached coastline-safe overlay mesh joins compatible strokes;
+  full geometry remains authoritative for picking, selection and closer views.
+  Fully deep ocean uses a 3x3 median filter to suppress narrow submerged raster
+  ridges. Land and coastal pixels retain their original height and shading.
+  Line batches reuse eight shared vertices per stroke, cached triangle indices
+  and packed mesh buffers, preserving the original anti-aliased triangles.
+- Developed capitals use native Medium villages on Small maps and Large villages
+  on larger maps. Ordinary villages remain Small. New capital placement scores
+  complete local footprints for open land and bounded mountain coverage.
 - Nations own whole political provinces, not playable maps. Borders are exact
   shared cell edges clipped to actual land. Capitals are on owned land;
   wilderness retains neutral land tints.
@@ -231,6 +253,101 @@ native saves clear both contexts. Missing/corrupt known destinations are rejecte
 before teardown rather than silently regenerated.
 
 ## Verification and measured limits
+
+### 0.4.0 qualification
+
+One exact release DLL passed **32 native cases across 13 modes** against the
+published loader **0.9.1** dependencies: **1,858 probe assertions** and **87 actual
+consumer checks per Small/Large fixture**, with zero failures or skips. Unexpected
+Unity errors and pathfinder faults were zero.
+
+The final matrix repeats automatic campaign setup, carried progression, both
+rollback paths, native save/reload/return, capitals, old geographic snapshots,
+legacy formats, ordinary native loading with TruePlanet disabled, conquest,
+responsive generation, HUD sizes and resource lifetime. The native capital
+fixtures produced **9 dwellings / 4 facilities** on Small and **13 / 5** on Large.
+
+Detailed-grid profiling found line mesh construction/upload dominated rotation
+cost. Line batches now reuse eight vertices instead of twenty per stroke, cache
+triangle indices and upload one packed position/color/UV stream. No grid cells,
+roads, borders or selection detail are removed by this optimization.
+
+Focused rotation measurements use the same persisted world and 120 measured
+frames per configuration:
+
+| Detailed / grid | Before median / p95 (ms) | 0.4.0 median / p95 (ms) |
+|---|---:|---:|
+| 1x zoom | 188.68 / 207.07 | 38.45 / 52.68 |
+| 6x zoom | 58.89 / 62.21 | 28.83 / 30.98 |
+
+Mean uGUI rebuild work fell from **129.53 to 17.84 ms/frame** at 1x and from
+**31.53 to 4.95 ms/frame** at 6x. These instrumented observations are not GPU
+timings or an FPS guarantee. Detailed grid remains more expensive than the
+default layers, and close-up terrain remains a filtered 1536x768 raster.
+
+Verification also covers:
+
+- **4,800 measured rotation frames** across the focused and full/LOD comparisons.
+- **Eight controlled same-scene original/candidate image pairs, pixel-identical**;
+  projected stroke sequences and expanded rendered triangle attributes remain exact.
+- Native batch growth, shrinkage, empty batches and owned-mesh destruction;
+  unchanged frames perform no line rebuild, overlay projection or preview render.
+- **264 primary screenshots** covered by visual review: 192 unique decoded frames
+  inspected, with 72 exact pixel-identical duplicates mapped to their originals.
+  Four HUD sizes, seam/pole views, routes, loading and recovery screens are included.
+- **20,673 unobscured road samples, zero missing**; the independent ocean oracle
+  still preserves every exercised land/coastal pixel.
+- **112 protected files restored independently after every batch**, including
+  permissions, timestamps and exact file/directory sets.
+
+The earlier 240-frame checkpoint below predates packed buffers and uses different
+instrumentation; its timings are retained as history, not current 0.4.0 limits.
+
+
+### Campaign/terrain checkpoint before cached-buffer rendering
+
+The reviewed local candidate passed **30 native cases across 12 modes** against
+the exact public loader **0.9.1** dependencies: **1,773 probe assertions** plus
+**87 actual consumer checks on each Small/Large fixture**, with no failures or
+skips. Unexpected Unity errors and pathfinder faults were zero.
+
+- Automatic first visits, carried lord/Portal/loadout progression, native reload,
+  return travel and source recovery after invalid Portal placement or an
+  unavailable destination skill passed on both map sizes.
+- Native capitals produced nine dwellings/four tier facilities on Small and
+  fourteen dwellings/five tier facilities on Large. The deterministic sweep
+  covered 16 worlds, 466 interior anchors and 32 preferred capitals.
+- Legacy formats, preserved geographic snapshots, ordinary native loading with
+  TruePlanet disabled, conquest, responsive generation, cache lifetime and
+  failure cleanup passed the retained matrix.
+- All **236 primary screenshots** were inspected, including the four HUD sizes,
+  coastlines, seam/pole views, native toggle appearance and ocean comparisons.
+  Road checks found **zero missing pixels among 20,673 unobscured samples**.
+- The independent raster oracle preserved all **507,881 land/coastal pixels** in
+  the exercised geography. Its strongest narrow submerged ridge changed from
+  **-0.221805111 to -0.290202975**; broad ocean relief remains visible.
+
+Same-scene sustained rotation measured 240 frames per configuration, **3,840
+frames total**, comparing full geometry with the cached low-zoom geometry:
+
+| Resolution / layers at 1x | Full frame median / p95 (ms) | LOD frame median / p95 (ms) |
+|---|---:|---:|
+| Standard / default | 54.12 / 61.74 | 15.71 / 17.60 |
+| Standard / grid | 309.08 / 386.48 | 80.10 / 93.49 |
+| Detailed / default | 45.80 / 52.71 | 13.09 / 15.74 |
+| Detailed / grid | 653.70 / 810.97 | 164.87 / 197.30 |
+
+At 6x, both paths use full geometry: all four paired screenshots and per-frame
+stroke sequences were identical. Thirty unchanged visible frames performed zero
+overlay projections and zero preview renders in each resolution. These are
+instrumented native frame intervals, not GPU timings or an FPS guarantee:
+Detailed grid rotation remains expensive, and close terrain remains a raster.
+
+Every batch independently restored **112 protected files**, including permissions,
+timestamps and exact file/directory sets. The candidate and private evidence are
+local to that earlier checkpoint; it did not update the 0.3.1 package or Workshop.
+Earlier runs using a local development framework are supplementary and excluded
+from these totals.
 
 ### 0.3.1 qualification
 
@@ -709,6 +826,18 @@ second argument builds and installs directly.
 
 ## Earlier builds
 
+
+### 0.4.0
+
+One initial Portal/loadout setup for the campaign; automatic later first visits;
+carried lord, Portal level and upgrade choices; failure recovery without a
+partially committed destination. New planets receive interior settlement anchors,
+developed capitals and versioned local terrain shared with the inspector.
+
+Cached packed line buffers preserve anti-aliased geometry while reducing
+Detailed-grid rotation work. Low-zoom overlay LOD, coast-safe deep-ocean filtering,
+concise land details and the native atlas-toggle appearance complete this revision.
+Existing saved geography and local snapshots are not regenerated.
 
 ### 0.3.1
 

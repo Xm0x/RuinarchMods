@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -10,6 +11,20 @@ namespace RuinarchDebug
 {
     public partial class AutoTest
     {
+        private void PortableCheck(string name, Func<bool> assertion)
+        {
+            Check(name, () => (assertion(), "portable campaign setup"));
+        }
+
+        private static void StorageSet(object target, string name, object value)
+        {
+            FieldInfo field = target.GetType().GetField(name, RevisionMembers);
+            if (field != null) { field.SetValue(target, value); return; }
+            PropertyInfo property = target.GetType().GetProperty(name, RevisionMembers);
+            if (property != null) { property.SetValue(target, value, null); return; }
+            throw new InvalidOperationException("Missing " + target.GetType().FullName + "." + name);
+        }
+
         private void TruePlanetStorageChecks(Type planetType, string nativeSave)
         {
             const BindingFlags instance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -21,6 +36,89 @@ namespace RuinarchDebug
             using (var reader = new StreamReader(archive.GetEntry("ModData/trueplanet.tile.json").Open()))
                 context = JsonConvert.DeserializeObject(reader.ReadToEnd(), contextType);
             object world = contextType.GetField("Planet").GetValue(context);
+            Type carryType = assembly.GetType("TruePlanet.CampaignCarry", true);
+            MethodInfo capture = carryType.GetMethod("Capture", RevisionMembers), apply = carryType.GetMethod("Apply", RevisionMembers);
+            object originalCarry = capture.Invoke(null, new object[] { null });
+            PortableCheck("campaign setup preserves lord, Portal level and upgrade choices", () =>
+            {
+                object candidate = JsonConvert.DeserializeObject(JsonConvert.SerializeObject(originalCarry), carryType);
+                PLAYER_ARCHETYPE archetype = PlayerSkillManager.Instance.selectedArchetype;
+                StorageSet(candidate, "Archetype", archetype == PLAYER_ARCHETYPE.Normal ? PLAYER_ARCHETYPE.Eradication_Puppet_Master : archetype);
+                StorageSet(candidate, "PortalLevel", 2);
+                Type choiceType = assembly.GetType("TruePlanet.CampaignPortalChoice", true);
+                object choice = Activator.CreateInstance(choiceType);
+                StorageSet(choice, "Tier", 2); StorageSet(choice, "ItemIndex", 0);
+                StorageSet(choice, "ChosenPower", PLAYER_SKILL_TYPE.SNARE_TRAP);
+                StorageSet(choice, "PowerChoices", new[] { PLAYER_SKILL_TYPE.SNARE_TRAP, PLAYER_SKILL_TYPE.BALL_LIGHTNING, PLAYER_SKILL_TYPE.HEAT_WAVE });
+                Array choices = Array.CreateInstance(choiceType, 1); choices.SetValue(choice, 0);
+                StorageSet(candidate, "PortalChoices", choices);
+                object restored = JsonConvert.DeserializeObject(JsonConvert.SerializeObject(candidate), carryType);
+                return Equals(RevisionMember(restored, "Archetype"), RevisionMember(candidate, "Archetype"))
+                    && Equals(RevisionMember(restored, "PortalLevel"), RevisionMember(candidate, "PortalLevel"))
+                    && JsonConvert.SerializeObject(RevisionMember(restored, "PortalChoices")) == JsonConvert.SerializeObject(RevisionMember(candidate, "PortalChoices"))
+                    && JsonConvert.SerializeObject(RevisionMember(restored, "Skills")) == JsonConvert.SerializeObject(RevisionMember(candidate, "Skills"))
+                    && (int)RevisionMember(restored, "Mana") == (int)RevisionMember(candidate, "Mana")
+                    && (int)RevisionMember(restored, "SpiritEnergy") == (int)RevisionMember(candidate, "SpiritEnergy")
+                    && (int)RevisionMember(restored, "ChaoticEnergy") == (int)RevisionMember(candidate, "ChaoticEnergy");
+            });
+            PortableCheck("older campaign setup defaults safely without new manifest fields", () =>
+            {
+                object restored = JsonConvert.DeserializeObject("{\"Skills\":[]}", carryType);
+                carryType.GetMethod("Validate", RevisionMembers).Invoke(restored, null);
+                return (PLAYER_ARCHETYPE)RevisionMember(restored, "Archetype") == PLAYER_ARCHETYPE.Normal
+                    && (int)RevisionMember(restored, "PortalLevel") == 1
+                    && ((Array)RevisionMember(restored, "PortalChoices")).Length == 0;
+            });
+            PortableCheck("invalid portable Portal level is rejected before campaign mutation", () =>
+            {
+                object before = capture.Invoke(null, new object[] { null }); int mana = PlayerManager.Instance.player.currenciesComponent.mana;
+                try
+                {
+                    object candidate = JsonConvert.DeserializeObject(JsonConvert.SerializeObject(before), carryType);
+                    StorageSet(candidate, "Mana", mana + 17); StorageSet(candidate, "PortalLevel", 0);
+                    bool rejected = false;
+                    try { apply.Invoke(candidate, null); }
+                    catch (TargetInvocationException error) { rejected = error.InnerException is InvalidDataException; }
+                    return rejected && PlayerManager.Instance.player.currenciesComponent.mana == mana;
+                }
+                finally { apply.Invoke(before, null); }
+            });
+            PortableCheck("duplicate portable Portal tier and item are rejected before campaign mutation", () =>
+            {
+                object before = capture.Invoke(null, new object[] { null }); int mana = PlayerManager.Instance.player.currenciesComponent.mana;
+                try
+                {
+                    object candidate = JsonConvert.DeserializeObject(JsonConvert.SerializeObject(before), carryType);
+                    Array source = (Array)RevisionMember(candidate, "PortalChoices"); if (source.Length == 0) return false;
+                    Array duplicate = Array.CreateInstance(source.GetType().GetElementType(), 2);
+                    duplicate.SetValue(source.GetValue(0), 0); duplicate.SetValue(source.GetValue(0), 1);
+                    StorageSet(candidate, "PortalChoices", duplicate); StorageSet(candidate, "Mana", mana + 17);
+                    bool rejected = false;
+                    try { apply.Invoke(candidate, null); }
+                    catch (TargetInvocationException error) { rejected = error.InnerException is InvalidDataException; }
+                    return rejected && PlayerManager.Instance.player.currenciesComponent.mana == mana;
+                }
+                finally { apply.Invoke(before, null); }
+            });
+            PortableCheck("unavailable portable Portal power is rejected before campaign mutation", () =>
+            {
+                object before = capture.Invoke(null, new object[] { null }); int mana = PlayerManager.Instance.player.currenciesComponent.mana;
+                try
+                {
+                    object candidate = JsonConvert.DeserializeObject(JsonConvert.SerializeObject(before), carryType);
+                    Array source = (Array)RevisionMember(candidate, "PortalChoices");
+                    object choice = source.Cast<object>().First();
+                    StorageSet(choice, "PowerChoices", new[] { PLAYER_SKILL_TYPE.SNARE_TRAP, PLAYER_SKILL_TYPE.BALL_LIGHTNING, PLAYER_SKILL_TYPE.HEAT_WAVE });
+                    var offered = new HashSet<PLAYER_SKILL_TYPE>((PLAYER_SKILL_TYPE[])RevisionMember(choice, "PowerChoices"));
+                    PLAYER_SKILL_TYPE unavailable = PlayerSkillManager.Instance.allPlayerSkillsData.Keys.First(power => !offered.Contains(power));
+                    StorageSet(choice, "ChosenPower", unavailable); StorageSet(candidate, "Mana", mana + 17);
+                    bool rejected = false;
+                    try { apply.Invoke(candidate, null); }
+                    catch (TargetInvocationException error) { rejected = error.InnerException is InvalidDataException; }
+                    return rejected && PlayerManager.Instance.player.currenciesComponent.mana == mana;
+                }
+                finally { apply.Invoke(before, null); }
+            });
             string root = Path.Combine(Path.GetTempPath(), "ruinarch-campaign-regression-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             try

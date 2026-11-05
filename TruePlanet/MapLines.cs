@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace TruePlanet
@@ -112,25 +114,95 @@ namespace TruePlanet
 	}
 	internal sealed class MapLineGraphic : MaskableGraphic
 	{
+		[StructLayout(LayoutKind.Sequential)]
+		private struct LineVertex
+		{
+			internal Vector3 Position;
+			internal Color32 Color;
+			internal Vector2 UV;
+		}
+		private static readonly VertexAttributeDescriptor[] Layout = {
+			new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+			new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.UNorm8, 4),
+			new VertexAttributeDescriptor(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 2)
+		};
+		private static readonly ushort[] Indices = BuildIndices();
 		private List<MapStroke> _strokes;
-		private int _start, _count;
+		private LineVertex[] _vertices = Array.Empty<LineVertex>();
+		private Mesh _lineMesh;
+		private int _start, _count, _meshVertices = -1;
 		private float _fringe;
 		internal void Show(List<MapStroke> strokes, int start, int count, float unit) { _strokes = strokes; _start = start; _count = count; _fringe = .75f * unit; SetVerticesDirty(); }
-		protected override void OnPopulateMesh(VertexHelper mesh)
+		protected override void UpdateGeometry()
 		{
-			mesh.Clear(); if (_strokes == null) return;
-			for (int i = _start; i < _start + _count; i++)
+			if (_strokes == null) return;
+			BuildVertices();
+			int vertexCount = _count * 8;
+			if (_lineMesh == null)
 			{
-				MapStroke stroke = _strokes[i]; Vector2 along = (stroke.B - stroke.A).normalized, side = new Vector2(-along.y, along.x);
-				Vector2 a = stroke.A + side * (stroke.Width * .5f), b = stroke.B + side * (stroke.Width * .5f), c = stroke.B - side * (stroke.Width * .5f), d = stroke.A - side * (stroke.Width * .5f);
-				Color32 clear = stroke.Color; clear.a = 0;
-				Quad(a, b, c, d, stroke.Color, stroke.Color);
-				Quad(a, b, b + (side + along) * _fringe, a + (side - along) * _fringe, stroke.Color, clear);
-				Quad(b, c, c + (along - side) * _fringe, b + (along + side) * _fringe, stroke.Color, clear);
-				Quad(c, d, d - (side + along) * _fringe, c + (along - side) * _fringe, stroke.Color, clear);
-				Quad(d, a, a + (side - along) * _fringe, d - (side + along) * _fringe, stroke.Color, clear);
+				_lineMesh = new Mesh { name = "TruePlanet line mesh" };
+				_lineMesh.MarkDynamic();
 			}
-			void Quad(Vector2 a, Vector2 b, Vector2 c, Vector2 d, Color32 inside, Color32 outside) { int at = mesh.currentVertCount; mesh.AddVert(a, inside, Vector2.zero); mesh.AddVert(b, inside, Vector2.zero); mesh.AddVert(c, outside, Vector2.zero); mesh.AddVert(d, outside, Vector2.zero); mesh.AddTriangle(at, at + 1, at + 2); mesh.AddTriangle(at, at + 2, at + 3); }
+			if (_meshVertices != vertexCount)
+			{
+				_lineMesh.SetVertexBufferParams(vertexCount, Layout);
+				_lineMesh.SetIndices(Indices, 0, _count * 30, MeshTopology.Triangles, 0, false);
+				_meshVertices = vertexCount;
+			}
+			// UI/Default consumes position, color and UV only. Upload one packed stream;
+			// keep the exact triangle topology instead of rebuilding VertexHelper's lists.
+			if (vertexCount > 0) _lineMesh.SetVertexBufferData(_vertices, 0, 0, vertexCount, 0, MeshUpdateFlags.DontRecalculateBounds);
+			_lineMesh.RecalculateBounds();
+			canvasRenderer.SetMesh(_lineMesh);
+		}
+		private void BuildVertices()
+		{
+			int vertexCount = _count * 8;
+			if (_vertices.Length < vertexCount)
+				_vertices = new LineVertex[Math.Min(MapStyle.BatchSize * 8, Math.Max(vertexCount, _vertices.Length * 2))];
+			for (int i = 0; i < _count; i++)
+			{
+				MapStroke stroke = _strokes[_start + i]; Vector2 along = (stroke.B - stroke.A).normalized, side = new Vector2(-along.y, along.x);
+				float halfWidth = stroke.Width * .5f;
+				Vector2 a = stroke.A + side * halfWidth, b = stroke.B + side * halfWidth, c = stroke.B - side * halfWidth, d = stroke.A - side * halfWidth;
+				Color32 clear = stroke.Color; clear.a = 0;
+				int at = i * 8;
+				Vertex(at, a, stroke.Color); Vertex(at + 1, b, stroke.Color);
+				Vertex(at + 2, c, stroke.Color); Vertex(at + 3, d, stroke.Color);
+				Vertex(at + 4, a + (side - along) * _fringe, clear);
+				Vertex(at + 5, b + (side + along) * _fringe, clear);
+				Vertex(at + 6, c + (along - side) * _fringe, clear);
+				Vertex(at + 7, d - (side + along) * _fringe, clear);
+			}
+		}
+		private void Vertex(int index, Vector2 position, Color32 color)
+		{
+			_vertices[index].Position = position;
+			_vertices[index].Color = color;
+		}
+		private static ushort[] BuildIndices()
+		{
+			var result = new ushort[MapStyle.BatchSize * 30]; int next = 0;
+			for (int i = 0; i < MapStyle.BatchSize; i++)
+			{
+				int at = i * 8;
+				Quad(result, ref next, at, at + 1, at + 2, at + 3);
+				Quad(result, ref next, at, at + 1, at + 5, at + 4);
+				Quad(result, ref next, at + 1, at + 2, at + 6, at + 5);
+				Quad(result, ref next, at + 2, at + 3, at + 7, at + 6);
+				Quad(result, ref next, at + 3, at, at + 4, at + 7);
+			}
+			return result;
+		}
+		private static void Quad(ushort[] indices, ref int next, int a, int b, int c, int d)
+		{
+			indices[next++] = (ushort)a; indices[next++] = (ushort)b; indices[next++] = (ushort)c;
+			indices[next++] = (ushort)a; indices[next++] = (ushort)c; indices[next++] = (ushort)d;
+		}
+		protected override void OnDestroy()
+		{
+			if (_lineMesh != null) Destroy(_lineMesh);
+			base.OnDestroy();
 		}
 	}
 }
