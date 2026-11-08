@@ -3,7 +3,7 @@
   "name": "Performance Mod",
   "version": "0.4.1",
   "author": "Xm0x",
-  "description": "Speeds up loading with linear tile-object traversal, compiled native field accessors, memoized enum decoding and an optional one-save background preload cache. Also removes map-wide listener scans and finished-job listeners, redraws the minimap only when it changes, and supports high-refresh screens without changing gameplay or save formats.",
+  "description": "Reduce loading delays and some causes of stuttering, especially on large maps and in long games. Prepare selected saves before loading and match the frame-rate cap to your screen. Save preloading uses extra memory and can be switched off. Does not change gameplay rules or save formats. Requires RuinarchModLoader 0.8.0 or newer.",
   "loader": "RuinarchModLoader",
   "loaderApi": 2,
   "type": "code",
