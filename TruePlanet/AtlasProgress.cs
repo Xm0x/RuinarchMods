@@ -28,12 +28,13 @@ namespace TruePlanet
 			rect.anchorMin = new Vector2(0, 1); rect.anchorMax = Vector2.one; rect.pivot = new Vector2(0, 1); rect.offsetMin = new Vector2(position.x, position.y - 94); rect.offsetMax = new Vector2(-24, position.y);
 			var label = go.AddComponent<TextMeshProUGUI>(); label.font = skin.Font; label.fontSharedMaterial = skin.FontMaterial; label.fontSize = size; label.color = new Color32(238, 224, 196, 255); label.richText = false; label.raycastTarget = false; return label;
 		}
-		internal void Show(string stage, int completed, int total, int units = 0, int unitTotal = 0, string pending = null)
+		internal void Show(string stage, int completed, int total, int units = 0, int unitTotal = 0)
 		{
 			_panel.SetActive(true); _panel.transform.SetAsLastSibling(); _title.text = stage;
-			_detail.text = completed + " / " + total + " stages complete" + (unitTotal > 0 ? "\nCurrent stage: " + units + " / " + unitTotal + " rows" : "\nCurrent stage is running") + (pending == null ? "" : "\nPending: " + pending);
 			float partial = unitTotal > 0 ? (float)units / unitTotal : 0;
-			_fill.anchorMax = new Vector2(Mathf.Clamp01((completed + partial) / total), 1);
+			float progress = Mathf.Clamp01((completed + partial) / total);
+			_detail.text = Mathf.FloorToInt(progress * 100) + "% complete";
+			_fill.anchorMax = new Vector2(progress, 1);
 		}
 		internal void Hide() => _panel.SetActive(false);
 	}

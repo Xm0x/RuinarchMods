@@ -150,6 +150,7 @@ namespace TruePlanet
 			if (_dragged && data.pointerId == _dragPointer && data.clickTime == _dragClickTime) return;
 			if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(_viewport, data.position, data.pressEventCamera, out Vector2 point)) return;
 			Rect bounds = _viewport.rect; if (!bounds.Contains(point)) return;
+			if (_overlays.TryPickSettlement(data.position, data.pressEventCamera, out int settlement)) { _picked?.Invoke(settlement); return; }
 			Ray ray = _camera.ViewportPointToRay(new Vector3((point.x - bounds.xMin) / bounds.width, (point.y - bounds.yMin) / bounds.height, 0));
 			if (GlobeProjection.TryDirection(ray, _sphere.position, _sphere.rotation, Radius, out UnitVector direction)
 				&& _surface.TryPick(direction, out int selected)) _picked?.Invoke(selected);

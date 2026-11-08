@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace TruePlanet
 {
@@ -8,13 +9,24 @@ namespace TruePlanet
     internal sealed class LocalTerrainPlan
     {
         internal int Width, Height, Open, Mountains, Water;
+        internal int Grassland, Forest, Desert, Snow;
         internal float[,] Temperature, Moisture, Elevation;
         internal int Count => Width * Height;
 
-        internal string TerrainSummary() =>
-            (Open * 100.0 / Count).ToString("0", CultureInfo.InvariantCulture) + "% open land · "
-            + (Mountains * 100.0 / Count).ToString("0", CultureInfo.InvariantCulture) + "% mountains · "
-            + (Water * 100.0 / Count).ToString("0", CultureInfo.InvariantCulture) + "% water";
+        internal string TerrainSummary()
+        {
+            var text = new StringBuilder();
+            Add("Grassland", Grassland); Add("Forest", Forest); Add("Desert", Desert); Add("Snow", Snow);
+            Add("Mountains", Mountains, true); Add("Water", Water, true);
+            return text.ToString().TrimEnd();
+            void Add(string label, int cells, bool showZero = false)
+            {
+                if (cells == 0 && !showZero) return;
+                double percent = cells * 100.0 / Count;
+                text.Append(label).Append(": ").Append(percent > 0 && percent < .1
+                    ? "<0.1" : percent.ToString("0.#", CultureInfo.InvariantCulture)).AppendLine("%");
+            }
+        }
 
         internal static LocalTerrainPlan Build(Planet planet, int tileId)
         {
@@ -27,7 +39,7 @@ namespace TruePlanet
                 Elevation = new float[columns * 14, rows * 14]
             };
             plan.Populate(planet, tileId);
-            if (planet.LocalMapVersion >= 2) plan.ConstrainMountains();
+            if (planet.LocalMapVersion == 2) plan.ConstrainMountains();
             plan.CountClassifications();
             return plan;
         }
@@ -131,12 +143,24 @@ namespace TruePlanet
 
         private void CountClassifications()
         {
-            Open = Mountains = Water = 0;
-            foreach (float elevation in Elevation)
+            Open = Mountains = Water = Grassland = Forest = Desert = Snow = 0;
+            for (int x = 0; x < Width; x++) for (int y = 0; y < Height; y++)
             {
+                float elevation = Elevation[x, y];
                 if (elevation < .23f) Water++;
                 else if (elevation > .78f) Mountains++;
-                else Open++;
+                else
+                {
+                    Open++;
+                    switch (NativeClimate.Classify(Temperature[x, y], Moisture[x, y]).GetMainBiomeForTileType())
+                    {
+                        case BIOMES.GRASSLAND: Grassland++; break;
+                        case BIOMES.FOREST: Forest++; break;
+                        case BIOMES.DESERT: Desert++; break;
+                        case BIOMES.SNOW: Snow++; break;
+                        default: throw new InvalidOperationException("Unsupported native ground biome.");
+                    }
+                }
             }
         }
     }

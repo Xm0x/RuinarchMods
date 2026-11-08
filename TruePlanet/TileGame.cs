@@ -19,12 +19,14 @@ namespace TruePlanet
 		public int LocalMapVersion = 1;
 		public Planet Planet;
 		public int TileId;
+		public int BaseTile = -1;
 		public string CampaignId;
 		public string CampaignRevision;
 		// Native saves omit this logical state and recompute it from wall sprites.
 		public byte[] GroundTypes;
 		// Same-type template floors may remain native-default and lose their TileBase.
 		public Dictionary<int, string> DefaultGroundAssets;
+		public Dictionary<string, PortalMemory> PortalMemories = new Dictionary<string, PortalMemory>(StringComparer.Ordinal);
 	}
 	internal static class TileGame
 	{
@@ -33,7 +35,8 @@ namespace TruePlanet
 		private static TileContext _pending;
 		private static string _restoredJson;
 		private static InnerTileMap _map, _climateMap;
-		private static PlanetGeography _geography;
+		private static LocalTerrainPlan _terrainPlan;
+		private static List<CavePlan.Exit> _caveExits;
 		private static float[,] _temperature, _moisture, _elevation;
 		private static readonly JsonSerializerSettings Json = new JsonSerializerSettings { MissingMemberHandling = MissingMemberHandling.Error };
 		private static TileStore _store;
@@ -50,6 +53,10 @@ namespace TruePlanet
 				? new CampaignManifest { CampaignId = Active.CampaignId, WorldId = Active.Planet.Id, ActiveTile = Active.TileId, Carry = new CampaignCarry() }
 				: store.Read(Active.CampaignId, Active.CampaignRevision);
 			if (campaign.ActiveTile != Active.TileId) throw new InvalidDataException("Native tile and campaign revision disagree.");
+			int travellingBase = TileTravel.SourceBaseTile;
+			if (travellingBase >= 0) campaign.BaseTile = travellingBase;
+			else if (campaign.BaseTile < 0) campaign.BaseTile = Active.BaseTile >= 0 ? Active.BaseTile : Active.TileId;
+			Active.BaseTile = campaign.BaseTile;
 			_store = store; _campaign = campaign;
 		}
 		internal static void CommitCampaign(CampaignManifest campaign)
@@ -58,6 +65,7 @@ namespace TruePlanet
 			if (campaign.CampaignId != Active.CampaignId || campaign.WorldId != Active.Planet.Id || campaign.ActiveTile != Active.TileId)
 				throw new InvalidDataException("Campaign commit does not match the active native world.");
 			_store.Commit(campaign); _campaign = campaign; Active.CampaignRevision = campaign.Revision;
+			Active.BaseTile = campaign.BaseTile;
 		}
 
 		internal static void Install(Harmony harmony)
@@ -84,7 +92,7 @@ namespace TruePlanet
 		}
 		private static void ClearTerrain()
 		{
-			_map = _climateMap = null; _geography = null; _temperature = _moisture = _elevation = null;
+			_map = _climateMap = null; _terrainPlan = null; _caveExits = null; _temperature = _moisture = _elevation = null;
 		}
 		internal static void Play(Planet planet, int tileId, string campaignId, CampaignCarry carry)
 		{
@@ -93,6 +101,7 @@ namespace TruePlanet
 			if (planet.FormatVersion != 3 || (uint)tileId >= planet.Mesh.Centers.Length || !TileLand.For(planet).Cells[tileId].Eligible)
 				throw new InvalidOperationException("Select a dry geographic tile to play.");
 			var settings = new WorldSettingsData(); settings.SetDefaultSettings(); settings.ApplyCustomWorldSettings();
+			if (carry != null) settings = carry.RestoreConfiguration(settings);
 			if (carry != null) settings.playerSkillSettings.startingPortalLevel = carry.PortalLevel;
 			settings.mapSettings.SetMapSize(planet.Options.LocalSize == LocalMapSize.Huge ? MAP_SIZE.Extra_Large : (MAP_SIZE)planet.Options.LocalSize);
 			foreach (var group in planet.Provinces.SelectMany(p => p.Villages).Where(v => v.TileId == tileId).GroupBy(v => new { v.Nation, v.Elven }))
@@ -106,7 +115,8 @@ namespace TruePlanet
                 foreach (Village village in group) template.AddVillageSetting(new VillageSetting { villageName = village.Name, villageSize = NativeVillageSize(village, planet.Options.LocalSize) });
 			}
 			if (!settings.AreSettingsValid(out string reason)) throw new InvalidOperationException(reason);
-			_pending = new TileContext { Planet = planet, TileId = tileId, CampaignId = campaignId ?? Guid.NewGuid().ToString("N") };
+			_pending = new TileContext { Planet = planet, TileId = tileId, BaseTile = carry == null ? tileId : TileTravel.SourceBaseTile,
+				CampaignId = campaignId ?? Guid.NewGuid().ToString("N") };
 			Active = null; _restoredJson = null; ClearTerrain();
 			_store = null; _campaign = null;
 			CampaignObjective.Clear();
@@ -134,11 +144,13 @@ namespace TruePlanet
 				defaults.Add(index, actual == null ? null : actual.name);
 			}
 			Active.GroundTypes = types; Active.DefaultGroundAssets = defaults;
+			if (NativeWorker.IsWorker) return JsonConvert.SerializeObject(Active, Json);
 			try
 			{
 				EnsureCampaign();
 				CampaignObjective.Refresh();
 				_campaign.Carry = CampaignCarry.Capture(_campaign.Carry); _campaign.ActiveTile = Active.TileId;
+				CampaignMissions.BeforeSave(_campaign);
 				_store.RecordRevision(_campaign); Active.CampaignRevision = _campaign.Revision;
 			}
 			catch (Exception error) { NativeSaveError = error.Message; throw; }
@@ -158,6 +170,9 @@ namespace TruePlanet
 			if ((uint)saved.TileId >= saved.Planet.Mesh.Centers.Length || !TileLand.For(saved.Planet).Cells[saved.TileId].Eligible
 				|| saved.CampaignId == null || saved.CampaignId.Length != 32 || saved.CampaignId.Any(c => !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f')))
 				throw new InvalidDataException("Invalid saved tile or campaign identity.");
+			if (saved.BaseTile < -1 || saved.BaseTile >= saved.Planet.Mesh.Centers.Length
+				|| saved.BaseTile >= 0 && !TileLand.For(saved.Planet).Cells[saved.BaseTile].Eligible)
+				throw new InvalidDataException("Invalid saved main-base tile.");
 			Vector2Int size = Areas(saved.Planet.Options.LocalSize);
 			if (saved.GroundTypes == null || saved.GroundTypes.Length != size.x * size.y * 196
 				|| saved.GroundTypes.Any(value => value > (byte)LocationGridTile.Ground_Type.Water_Shore))
@@ -177,8 +192,8 @@ namespace TruePlanet
 			if (map == null || map.width != width || map.height != height) return false;
 			if (_map == map && _temperature != null) return true;
             _map = map;
-            LocalTerrainPlan plan = LocalTerrainPlan.Build(Active.Planet, Active.TileId);
-            _temperature = plan.Temperature; _moisture = plan.Moisture; _elevation = plan.Elevation;
+            _terrainPlan = LocalTerrainPlan.Build(Active.Planet, Active.TileId);
+            _temperature = _terrainPlan.Temperature; _moisture = _terrainPlan.Moisture; _elevation = _terrainPlan.Elevation;
 			return true;
 		}
 		private static IEnumerator Climate(IEnumerator original, InnerTileMap map)
@@ -205,6 +220,19 @@ namespace TruePlanet
 				Active = _pending; _pending = null; ClearTerrain();
 				UnityEngine.Random.InitState(new PlanetGeography(Active.Planet).NativeTileSeed(Active.TileId));
 			}
+		}
+		[HarmonyPatch(typeof(InitialWorldSetupMenu), nameof(InitialWorldSetupMenu.Show))]
+		private static class GeographicSetup
+		{
+			private static void Postfix(InitialWorldSetupMenu __instance)
+			{
+				if (Active != null) __instance.regenerateWorldBtnGO.SetActive(false);
+			}
+		}
+		[HarmonyPatch(typeof(InitialWorldSetupMenu), nameof(InitialWorldSetupMenu.OnClickReloadWorld))]
+		private static class PreventGeographicRegeneration
+		{
+			private static bool Prefix() => Active == null;
 		}
 		[HarmonyPatch(typeof(MapSettings), nameof(MapSettings.GetMapSize))]
 		private static class Dimensions
@@ -291,6 +319,32 @@ namespace TruePlanet
                 // Restore only this saved counter, not destination-local skill state.
                 if (Active != null && Active.CampaignRevision != null) Campaign.Carry.RestoreSpiritEnergy();
             }
+		}
+		[HarmonyPatch(typeof(Cellular_Automata.CellularAutomataGenerator), nameof(Cellular_Automata.CellularAutomataGenerator.GenerateMap))]
+		private static class SparseMountainCaves
+		{
+			private static bool Prefix(LocationGridTile[,] tileMap, List<LocationGridTile> allTiles, string seed, ref int[,] __result)
+			{
+				if (Active == null || Active.Planet.LocalMapVersion < 3 || allTiles.Count == 0 || !string.IsNullOrEmpty(seed)
+					|| !(allTiles[0].structure is Inner_Maps.Location_Structures.Cave)) return true;
+				InnerTileMap map = allTiles[0].parentMap;
+				if (map != GridMap.Instance.mainRegion.innerMap || !Terrain(map.width, map.height)) return true;
+				if (_caveExits == null) _caveExits = CavePlan.Exits(Active.Planet, Active.TileId);
+				int width = tileMap.GetLength(0), height = tileMap.GetLength(1);
+				var mountain = new bool[width, height];
+				int offsetX = int.MaxValue, offsetY = int.MaxValue;
+				foreach (LocationGridTile tile in allTiles)
+				{
+					offsetX = Math.Min(offsetX, tile.localPlace.x); offsetY = Math.Min(offsetY, tile.localPlace.y);
+				}
+				for (int x = 0; x < width; x++) for (int y = 0; y < height; y++) mountain[x, y] = tileMap[x, y] != null;
+				bool[,] floors = CavePlan.Build(mountain, _terrainPlan, _caveExits,
+					Active.Planet.Seed ^ Active.TileId, offsetX, offsetY);
+				var mask = new int[width, height];
+				for (int x = 0; x < width; x++) for (int y = 0; y < height; y++) mask[x, y] = floors[x, y] ? 0 : 1;
+				__result = mask;
+				return false;
+			}
 		}
 		[HarmonyPatch(typeof(InnerTileMap), "BiomePerlin")]
 		private static class ClimateScope

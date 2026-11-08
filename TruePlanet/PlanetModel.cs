@@ -138,10 +138,11 @@ namespace TruePlanet
 				|| (FormatVersion >= 2 && TopologyVersion != 1)) throw new InvalidDataException("Unsupported planet topology.");
             if (FormatVersion == 3
                 ? !((GeographyVersion == 3 && NationalGenerationVersion == 1 && LocalMapVersion == 1)
-                    || (GeographyVersion == 4 && NationalGenerationVersion == 2 && LocalMapVersion == 2))
+                    || (GeographyVersion == 4 && NationalGenerationVersion == 2 && LocalMapVersion == 2)
+                    || (GeographyVersion == 5 && NationalGenerationVersion == 3 && LocalMapVersion == 3))
                 : NationalGenerationVersion != 0 || LocalMapVersion != 0)
                 throw new InvalidDataException("Unsupported national or local map version.");
-            if (GeographyVersion < 0 || GeographyVersion > 4 || !PlanetOptions.Finite(SeaLevel))
+            if (GeographyVersion < 0 || GeographyVersion > 5 || !PlanetOptions.Finite(SeaLevel))
 				throw new InvalidDataException("Unsupported or invalid planet geography.");
 			if (Options == null || string.IsNullOrWhiteSpace(Name) || string.IsNullOrEmpty(Id)
 				|| Id.Any(c => !(char.IsLetterOrDigit(c) || c == '-')))

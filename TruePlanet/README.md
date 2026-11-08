@@ -9,17 +9,17 @@ Each place keeps its own villagers, buildings, minions, and damage when you leav
 TruePlanet works without Ruinarch+.
 
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3819054263)
-| [Download 0.4.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.4.0)
+| [Download 0.5.0](https://github.com/Xm0x/RuinarchMods/releases/tag/trueplanet-v0.5.0)
 
-![TruePlanet globe with nations, settlement names, and roads](../assets/readme/trueplanet-globe.webp)
+![TruePlanet globe with nations, settlement names, and roads](https://raw.githubusercontent.com/Xm0x/RuinarchMods/trueplanet-v0.5.0/assets/readme/trueplanet-globe.webp)
 
 ## Install
 
-Requires [RuinarchModLoader 0.9.0 or newer](https://github.com/Xm0x/RuinarchModLoader).
+Requires [RuinarchModLoader 0.9.1 or newer](https://github.com/Xm0x/RuinarchModLoader).
 Install the loader first, subscribe to TruePlanet on Steam Workshop, then restart
 Ruinarch. The main-menu **Mods** window should list TruePlanet.
 
-For a manual installation, download `TruePlanet-0.4.0.zip` from the release
+For a manual installation, download `TruePlanet-0.5.0.zip` from the release
 and extract its `TruePlanet` folder into the game's `Mods/` folder instead
 of subscribing on Workshop.
 
@@ -42,10 +42,11 @@ Open **Planet atlas**, beside **Achievements**, during play. Select another
 land tile and click **Travel**. Your current map is saved before you leave.
 Return to a place to continue with its existing inhabitants and buildings.
 
-Your initial lord and loadout choices apply throughout the campaign. On first
-visits to other maps, your Portal is placed automatically. Portal level,
-upgrade choices, currencies, and portable skill progression travel with you.
-Villagers, local jobs, minions, corruption, and local time stay on their own maps.
+Your first Portal is your main base. On first visits to other lands, choose where
+to place a **Travel Portal**; you do not choose another lord or starting loadout.
+Portal level, upgrades, currencies, and portable skill progression follow you.
+Idle minions stay at your main base. You can still summon a minion where you
+need one using its normal skill.
 
 Use **Globe / Map** to switch between the globe and a flat map. Dragging pans
 the flat map. **Layers** lets you show terrain, national colors, borders,
@@ -53,7 +54,22 @@ roads, and the tile grid. **Reset view** returns to your selected location,
 or to your current campaign location if nothing is selected.
 Press **Escape** to close an open panel, then the atlas.
 
-![Flat map view of the same planet](../assets/readme/trueplanet-map.webp)
+![Flat map view of the same planet](https://raw.githubusercontent.com/Xm0x/RuinarchMods/trueplanet-v0.5.0/assets/readme/trueplanet-map.webp)
+
+## Send expeditions
+
+Visit a destination and place its Travel Portal before sending a raid there.
+At your main base, open a Kennel's party selector, choose a raid behavior and
+the destination settlement, then select your leader and followers. The party
+walks to your main Portal before leaving; pausing the game pauses its departure.
+
+Raiders and defenders fight on the destination map even while you watch another
+land. Deaths and damage are kept. Surviving raiders return through the Portals;
+successful snatch parties bring their captive back to the main base. Visiting a
+map with an expedition lets you watch and continue that same fight.
+
+Only one offscreen expedition runs at a time. Other inactive lands remain
+paused. Expeditions pause with the game.
 
 ## Win the campaign
 
@@ -79,12 +95,25 @@ Set your defaults under **Settings > Mods > TruePlanet**.
 **Save world / Load world** saves or opens a planet before starting play.
 After starting a campaign, use Ruinarch's normal save and load controls.
 
-## Before you install
+## Requirements and compatibility
 
-In version 0.4.0, only the local map you are viewing runs. Other maps pause
-until you return. Travel has a loading screen; Travel Portal buildings and
-raids into maps you are not viewing are not available in this version.
-Large local maps and the Detailed grid require more resources.
+Offscreen expeditions run another copy of the game's simulation and use
+substantial extra memory. Small local maps are the lighter choice, especially
+when sending parties while playing elsewhere. Large maps and Detailed tile
+detail also require more resources. Travel still has a loading screen.
+
+On Linux, use Proton-GE for offscreen expeditions. On Windows, enable
+**Developer Mode** so the game can create the private data links they need.
+If an expedition stops with an error, reload the campaign to resume its saved
+checkpoint rather than sending the same party again.
+
+Newly generated mountains have sparse cave passages. Where a passage meets a
+neighboring land, both maps have matching openings. Existing maps keep their
+saved terrain rather than being regenerated.
+
+Back up your saves before updating. Campaign data is stored alongside native
+saves in `Ruinarch Game Saves/TruePlanet/`; keep that folder when moving or
+backing up a campaign. Do not downgrade a campaign saved with 0.5.0 to 0.4.0.
 
 Older province-based worlds keep their original maps and victory rules.
 Do not open a campaign saved with TruePlanet 0.3.1 or later in version 0.3.0;

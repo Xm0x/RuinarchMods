@@ -107,13 +107,13 @@ ground. Hearts share a limit on how much corruption they can add each hour.
 Ruinarch+ fixes problems with spells, prisoners, villagers, and buildings,
 including these:
 
-- Poison and frozen explosions and chain lightning caused by your side spare
-  your demonic buildings and walls.
+- Poison explosions, frozen explosions, and chain lightning caused by your side
+  spare your demonic buildings and walls.
 - Released prisoners do not leave your base with a queued report of the Portal.
 - Demonic construction refuses indestructible objects instead of deleting them.
 - Frozen Vigilant characters cannot intercept stealth actions.
 - Villagers stop attacks when the target's faction is no longer hostile.
-- Recuperating stops suppressing hunger, tiredness, and boredom when recovery ends.
+- Characters resume getting hungry, tired, and bored when recuperation ends.
 - Purified cultists return to their race's normal religion.
 - Eye Wards require their resource cost before placement.
 

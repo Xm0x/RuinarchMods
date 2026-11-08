@@ -32,6 +32,7 @@ namespace TruePlanet
         private CampaignCarry _carry;
         private bool _sourcePaused, _teardown, _loggerWasEnabled, _automaticSetup;
         private static bool AutomaticSetupActive => Instance != null && Instance._automaticSetup && Instance._carry != null;
+        internal static int SourceBaseTile => Instance != null && Instance.Stage != TravelStage.Idle ? Instance._transaction?.BaseTile ?? -1 : -1;
         private PROGRESSION_SPEED _sourceSpeed;
         private volatile string _nativeError;
         private Ruinarch.Custom_UI.RuinarchToggle _atlas;
@@ -103,7 +104,7 @@ namespace TruePlanet
                 _replacementModule = PlayerManager.pickPortalInputModule;
                 PlayerManager.Instance.AddPlayerInputModule(_replacementModule);
                 PlayerManager.Instance.ShowStructurePlacementVisual(STRUCTURE_TYPE.THE_PORTAL);
-                PlayerUI.Instance.ShowGeneralConfirmation("Replace Portal", "Place a new Portal to reclaim this tile. Its existing world and campaign progression remain.");
+                PlayerUI.Instance.ShowGeneralConfirmation("Replace Portal", "Place a new Portal to reconnect this land. Its world and your campaign progress are kept.");
             }
         }
         internal void SwitchTo(int tileId)
@@ -119,6 +120,8 @@ namespace TruePlanet
             var saver = SaveManager.Instance.saveCurrentProgressManager;
             if (saver.isSaving || saver.isWritingToDisk || !saver.CanSaveCurrentProgress())
                 throw new InvalidOperationException("Finish the native save or current setup before travelling.");
+            if (CampaignMissions.Instance != null && CampaignMissions.Instance.Busy)
+                throw new InvalidOperationException("Wait for the expedition transfer to finish.");
             Stage = TravelStage.Validating; LastError = null; RecoveryPath = null; _nativeError = null; _teardown = false;
             try
             {
@@ -169,16 +172,20 @@ namespace TruePlanet
             if (recoveryError != null)
             {
                 TileGame.Clear(); LastError += "; source recovery failed: " + recoveryError.Message + ". Retained native source: " + RecoveryPath;
-                TruePlanetMod.Log.Error(LastError); ShowError(); yield break;
+                TruePlanetMod.Log.Error(LastError); Finish(); ShowError(false); yield break;
             }
             Finish(); ShowError();
         }
         private IEnumerator Transition(int tile, string path)
         {
+            if (CampaignMissions.Instance != null) yield return CampaignMissions.Instance.PrepareTravel(tile);
             Stage = TravelStage.SavingSource;
             yield return SaveSnapshot(_source.TileId);
             _transaction = JsonConvert.DeserializeObject<CampaignManifest>(JsonConvert.SerializeObject(TileGame.Campaign));
             RecoveryPath = _store.Resolve(_source, _transaction.Tiles.Single(t => t.TileId == _source.TileId));
+            TileSnapshot latest = _transaction.Tiles.FirstOrDefault(value => value.TileId == tile);
+            path = latest == null ? null : _store.Resolve(new TileContext
+                { Planet = _source.Planet, CampaignId = _source.CampaignId, TileId = tile }, latest);
             Stage = TravelStage.LoadingTarget; _teardown = true;
             var previous = GameManager.Instance;
             if (path == null) TileGame.Play(_source.Planet, tile, _source.CampaignId, _carry);
@@ -204,9 +211,9 @@ namespace TruePlanet
             // Publish new references only after the disk commit succeeds.
             var manifest = new CampaignManifest
             {
-                FormatVersion = current.FormatVersion, CampaignId = current.CampaignId, WorldId = current.WorldId,
+                FormatVersion = current.FormatVersion, CampaignId = current.CampaignId, WorldId = current.WorldId, BaseTile = current.BaseTile,
                 Revision = current.Revision, ActiveTile = tile, Carry = _carry,
-                SubjugatedTiles = current.SubjugatedTiles,
+                SubjugatedTiles = current.SubjugatedTiles, Missions = current.Missions,
                 Tiles = current.Tiles.Where(t => t.TileId != tile).Concat(new[] { snapshot }).ToArray()
             };
             TileGame.CommitCampaign(manifest);
@@ -232,16 +239,12 @@ namespace TruePlanet
                     && UIManager.Instance.initialWorldSetupMenu != null, 300, "automatic native setup readiness");
                 LocationStructureObject portalPrefab = InnerMapManager.Instance.GetStructurePrefabsForStructure(
                     FACTION_TYPE.Demons, STRUCTURE_TYPE.THE_PORTAL, RESOURCE.NONE).First().GetComponent<LocationStructureObject>();
-                LocationGridTile site = GridMap.Instance.mainRegion.areas
-                    .OrderBy(area => area.gridTileComponent.centerGridTile.localPlace.x)
-                    .ThenBy(area => area.gridTileComponent.centerGridTile.localPlace.y)
-                    .Select(area => area.gridTileComponent.centerGridTile)
-                    .FirstOrDefault(tile => portalPrefab.HasEnoughSpaceIfPlacedOn(tile, out _)
-                        && tile.area.structureComponent.CanBuildDemonicStructureHere(STRUCTURE_TYPE.THE_PORTAL, out _));
-                if (site == null) throw new InvalidDataException("No valid automatic Portal site exists on the destination tile.");
-                AccessTools.Method(typeof(Player_Input.PickPortalInputModule), "PlacePortal")
-                    .Invoke(PlayerManager.pickPortalInputModule, new object[] { site });
-                UIManager.Instance.initialWorldSetupMenu.OnClickConfigureLoadOut();
+                if (!GridMap.Instance.mainRegion.areas.Select(area => area.gridTileComponent.centerGridTile)
+                    .Any(tile => portalPrefab.HasEnoughSpaceIfPlacedOn(tile, out _)
+                        && tile.area.structureComponent.CanBuildDemonicStructureHere(STRUCTURE_TYPE.THE_PORTAL, out _)))
+                    throw new InvalidDataException("No valid Travel Portal site exists on the destination tile.");
+                // The player chooses the destination anchor; the existing lord continues without a loadout screen.
+                yield return Wait(() => HasPortal(), 3600, "Travel Portal placement");
                 UIManager.Instance.initialWorldSetupMenu.loadOutMenu.OnClickContinue();
                 yield return Wait(() => GameManager.Instance.gameHasStarted
                     && (WorldConfigManager.Instance.mapGenerationData == null || !WorldConfigManager.Instance.mapGenerationData.isGeneratingTileObjects)
@@ -276,7 +279,13 @@ namespace TruePlanet
             if (_sourcePaused) UIManager.Instance.Pause(); else UIManager.Instance.Unpause();
         }
         private void Finish() { Stage = TravelStage.Idle; _automaticSetup = false; Debug.unityLogger.logEnabled = _loggerWasEnabled; CampaignObjective.WorldReady(); }
-        private void ShowError() { if (PlayerUI.Instance != null) PlayerUI.Instance.ShowGeneralConfirmation("Tile travel failed", LastError); }
+        private void ShowError(bool recovered = true)
+        {
+            if (PlayerUI.Instance == null) return;
+            PlayerUI.Instance.ShowGeneralConfirmation("Travel interrupted", recovered
+                ? "Travel could not finish. Your previous land is ready; try travelling again."
+                : "Travel could not finish. Return to the main menu and reload your campaign. Your previous land is saved.");
+        }
         internal static bool HasPortal() => PlayerManager.Instance != null && PlayerManager.Instance.player != null
             && PlayerManager.Instance.player.playerSettlement.GetFirstStructureOfType(STRUCTURE_TYPE.THE_PORTAL) != null;
         private void CompletePortalReplacement(LocationGridTile tile)
@@ -287,6 +296,29 @@ namespace TruePlanet
             PlayerManager.Instance.RemovePlayerInputModule(_replacementModule);
             _replacementModule = null;
             InputManager.Instance.SetCursorTo(Cursor_Type.Default);
+        }
+        [HarmonyPatch(typeof(WorldSettings), nameof(WorldSettings.SetWorldSettingsData))]
+        private static class PortableNativeConfiguration
+        {
+            private static void Prefix(ref WorldSettingsData data)
+            {
+                if (Instance == null || Instance._carry == null
+                    || Instance.Stage != TravelStage.LoadingTarget && Instance.Stage != TravelStage.RecoveringSource
+                    || SaveManager.Instance == null || SaveManager.Instance.currentSaveDataProgress == null
+                    || !ReferenceEquals(data, SaveManager.Instance.currentSaveDataProgress.worldSettingsData)) return;
+                data = Instance._carry.RestoreConfiguration(data);
+            }
+        }
+        [HarmonyPatch(typeof(VillageSettings), nameof(VillageSettings.RandomizeCultistCreationThresholds))]
+        private static class PortableCultistThresholds
+        {
+            private static void Postfix(VillageSettings __instance)
+            {
+                VillageSettings saved = Instance?._carry?.Configuration?.villageSettings;
+                if (saved == null || Instance.Stage != TravelStage.LoadingTarget && Instance.Stage != TravelStage.RecoveringSource) return;
+                __instance.divineCultistPointThreshold = saved.divineCultistPointThreshold;
+                __instance.natureCultistPointThreshold = saved.natureCultistPointThreshold;
+            }
         }
         [HarmonyPatch(typeof(SkillTreeSelector), "GetSelectedArchetype")]
         private static class AutomaticArchetype

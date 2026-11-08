@@ -167,10 +167,13 @@ namespace RuinarchDebug
                     (failed && File.ReadAllBytes(pointer).SequenceEqual(committed)
                         && current["Tiles"][0]["SnapshotId"].ToString() == JObject.FromObject(next)["SnapshotId"].ToString()
                         && File.ReadAllBytes((string)resolve.Invoke(store, new[] { context, next })).SequenceEqual(File.ReadAllBytes(changed)), "failed temporary-file write"));
-                int tile = (int)contextType.GetField("TileId").GetValue(context);
                 var legacyProgress = (int[])manifestType.GetField("SubjugatedTiles").GetValue(manifest);
                 Check("older campaign manifests begin with no assumed conquest", () => (legacyProgress.Length == 0, "missing progress is not a victory"));
-                data["SubjugatedTiles"] = new JArray(tile);
+                // A wilderness save is valid input; conquest belongs to a settled active tile.
+                int settledTile = JObject.FromObject(world)["Provinces"].SelectMany(province => province["Villages"])
+                    .Select(village => (int)village["TileId"]).First();
+                data["ActiveTile"] = settledTile;
+                data["SubjugatedTiles"] = new JArray(settledTile);
                 object conquest = JsonConvert.DeserializeObject(data.ToString(), manifestType);
                 commit.Invoke(store, new[] { conquest });
                 string conqueredRevision = (string)manifestType.GetField("Revision").GetValue(conquest);
@@ -179,9 +182,9 @@ namespace RuinarchDebug
                 var conquered = JObject.FromObject(read.Invoke(store, new object[] { campaign, conqueredRevision }));
                 var reopened = JObject.FromObject(read.Invoke(store, new object[] { campaign, null }));
                 Check("subjugation persists per revision and later opposition does not rewrite history", () =>
-                    (conquered["SubjugatedTiles"].Values<int>().SequenceEqual(new[] { tile }) && !reopened["SubjugatedTiles"].Any(), "completed and reopened native tile"));
+                    (conquered["SubjugatedTiles"].Values<int>().SequenceEqual(new[] { settledTile }) && !reopened["SubjugatedTiles"].Any(), "completed and reopened settlement"));
                 committed = File.ReadAllBytes(pointer);
-                foreach (JToken progress in new JToken[] { JValue.CreateNull(), new JArray(tile, tile), new JArray(-1) })
+                foreach (JToken progress in new JToken[] { JValue.CreateNull(), new JArray(settledTile, settledTile), new JArray(-1) })
                 {
                     data["SubjugatedTiles"] = progress;
                     bool rejected = false;

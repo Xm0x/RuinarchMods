@@ -2,7 +2,7 @@
 
 Reduce loading delays and some causes of stuttering in Ruinarch, especially
 on large maps and in long-running games. The mod also lets the frame-rate cap
-follow a high-refresh screen.
+match a high-refresh screen.
 
 It does not change gameplay rules or save formats. Saves made with the mod
 can be loaded without it. Works with or without Ruinarch+ and TruePlanet.
@@ -54,8 +54,8 @@ until you restart Ruinarch.
 ## Save preloading uses extra memory
 
 Preparing a selected save uses RAM and can cause stutters while the Load
-window is open. Turn off **Preload selected saves** if you prefer a longer
-load to that extra work. Loading still benefits from the other fixes.
+window is open. Turn off **Preload selected saves** to stop preparing saves
+in advance. The other loading fixes still apply.
 
 The mod cannot remove every loading pause or guarantee a particular frame rate.
 Map size, save contents, and your computer affect the result.

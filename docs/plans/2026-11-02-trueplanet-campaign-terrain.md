@@ -617,3 +617,184 @@ git -c user.name=RuinarchRE -c user.email=re@local commit -m "docs: record verif
 ```
 
 If no listed file changed during final verification, do not create an empty commit. Report the actual commits, checks, measurements, compatibility boundary, and local-only status. Publication requires a separate owner decision.
+
+## Screenshot remediation and offscreen missions: 2026-11-05
+
+This is a new implementation pass, not unfinished 0.4.0 qualification. The
+corresponding design section records all 32 supplied images and the owner's
+explicit requirement that raids fight while offscreen. Execute inline.
+
+### Current constraints and evidence
+
+- Evidence root: `/home/deniz/ruinarch-runs/trueplanet-remediation-20261105`.
+- Preserve unrelated source and local Git state against `workspace-before.json`.
+  `source-before/` retains the existing TruePlanet/debug source.
+- The normal local package is 0.3.1 and overrides Workshop 0.4.0. Do not mistake
+  its old setup/inspector behavior for execution of the new candidate.
+- `GeographyContinuity.exe` against the actual 0.4.0 DLL fails across 15 genuine
+  second-nearest-plate boundaries: maximum height jump 0.015231691877541587
+  over a 2e-9 angular perturbation. Keep this failing-before evidence.
+- `headless-world-proof.json` proves stock Small native load, tick 160 to 161
+  and native save with Unity's Null graphics device. It does not prove combat,
+  simultaneous foreground isolation, native actor transfers or acceptable total
+  memory. The earlier main-menu `UIManager` readiness check was invalid and is
+  retained with its diagnostic correction.
+- New terrain algorithms must use new saved generation identities. Existing
+  world algorithms and visited maps remain intact. Do not publish a partially
+  implemented candidate or update installed packages during source development.
+
+### Task A: Continuous terrain and coherent mountain eligibility
+
+**Files:** `PlanetGeography.cs`, `PlanetGenerator.cs`, `PlanetModel.cs`,
+`TileLand.cs`, `LocalTerrainPlan.cs`, `SettlementTerrain.cs`,
+`NationalProvinces.cs`, `RuinarchDebug/TruePlanetRevisionSuite.cs`.
+
+- [x] Preserve the plate-boundary diagnostic's actual failing result, then make
+  newly generated geography continuous without changing the old `Raw` branch.
+- [x] Replace nearest-pair ridge selection for the new version with continuous
+  normalized plate weights and symmetric convergent-pair contributions.
+  Precompute pair convergence in the geography constructor, not per sample:
+
+  ```csharp
+  // For each pair i < j; weights are normalized softmax plate influence.
+  ridge += 2 * weights[i] * weights[j] * convergence[i, j];
+  ```
+
+- [x] Keep new mountain relief tied to continuous ranges. Lower-frequency
+  foothill relief must not independently turn every noise peak into a mountain.
+  Preserve the old geography and map branches exactly for old saves.
+- [x] Add explicit traversability and settlement eligibility from the actual
+  local terrain plan. Interior mountain cells are not playable destinations,
+  political settlement seeds or road shortcuts. Preserve playable valleys.
+- [ ] Replace the new-version straight-corridor component limiter with coherent
+  range/foothill generation. Count actual exclusive terrain classes for display.
+- [ ] Update all strict version gates and identity construction together.
+  Exercise coastal and inland maps, both resolutions, all native sizes, legacy
+  version readers and deterministic regeneration.
+
+Run the actual continuity executable against the new compiled DLL. It must
+exercise genuine plate-pair changes and pass the existing 1e-6 continuity bound,
+not replace the test with a version/string check. Retain old-version sample
+outputs as compatibility oracles.
+
+### Task B: Sparse caves and geographic edge connections
+
+**Files:** `LocalTerrainPlan.cs`, new `CavePlan.cs`, `TileGame.cs`,
+`PlanetGeography.cs`, `RuinarchDebug/TruePlanetRevisionSuite.cs`.
+
+**Contract:** `CavePlan` is deterministic from immutable planet/cell/edge
+identities. `TileGame` applies its actual solid/open mask during native mountain
+generation. Both neighboring maps consume the same edge connection identity;
+neither independently randomizes an opening.
+
+- [x] Capture native mountain mask behavior before replacement. Native
+  `InnerTileMap.DrawCave` first makes the whole island cave ground and then runs
+  `MountainCellAutomata`; its first `Count > 200` branch also makes the later
+  `> 300` and `> 500` density branches unreachable.
+- [x] Use a solid default and sparse carved chambers/passages for new-version
+  terrain. Keep native wall objects, passability, resources and save data
+  consistent with the mask rather than painting over passable ground.
+- [ ] Pair cross-map exits using canonical geographic edges and orientation.
+  Only connected exits remain open at a map edge. Verify both ends, traversal,
+  native save/reload and disconnected-neighbor sealing.
+- [ ] Preserve old native cave snapshots and old algorithm generation.
+
+### Task C: Atlas ownership, rendering and reusable preparation
+
+**Files:** `GlobeOverlays.cs`, `PlanetGlobe.cs`, `PlanetCanvas.cs`,
+`MapGeometry.cs`, `MapLines.cs`, `PlanetSurface.cs`, `PlanetView.cs`.
+
+- [x] Exercise marker interaction at coastal junctions against the current
+  renderer. Route marker selection through its recorded village cell, never an
+  ambiguous neighboring ray sample; preserve drag/scroll behavior.
+- [x] Measure low/high zoom, Standard/Detailed, default/Grid separately.
+  Move rotation-invariant line work out of per-frame CPU rebuilds while
+  retaining visible roads, borders, selection and limb occlusion. Qualify any
+  changed overlay rendering on native screenshots before adopting it.
+- [x] Verify continuous new geography through raster color and shading, not
+  just numerical height samples. Do not introduce a new filter boundary.
+- [ ] Cache prepared immutable world surface/geometry independently from a
+  scene-owned atlas view. Reopening reuses it; world identity changes invalidate
+  it; eviction releases owned CPU/GPU resources.
+- [ ] Keep the existing opaque sphere material/culling and no-work unchanged
+  frames. Measure actual UI, projection and upload cost instead of only FPS.
+
+### Task D: Native worker and transactional mission execution
+
+**Files:** new `NativeWorker.cs`, `MissionStore.cs`, `CampaignMissions.cs`,
+`PortalTransport.cs`; `TileStore.cs`, `TileGame.cs`, `TileTravel.cs`,
+`CampaignCarry.cs`, `TruePlanet.cs`; protected native qualification helpers.
+
+**Contracts:**
+
+- `MissionStore` owns durable mission identities, native snapshot input/output,
+  map leases and actor/cargo ownership transitions. Canonical campaign revisions
+  are committed only by the foreground campaign owner.
+- `NativeWorker` owns only its launched process and private files. It boots
+  the stock patched game with native headless execution and a worker command,
+  redirects all worker writes, and cannot recursively start mission workers.
+- `CampaignMissions` coordinates dispatch, pause/speed, execution results and
+  foreground handoff. An arrival record is not completion or simulated combat.
+- `PortalTransport` serializes/resolves real native actors and their dependencies
+  at transfer boundaries. Preserve persistent IDs and actual cargo; no cloned
+  units, charge-based stand-ins or discarded references.
+
+- [x] Qualify private worker save/settings/log/mod-root isolation before
+  concurrent execution. Protect the foreground even when a worker crashes.
+- [x] Prove actual native combat while a different map remains viewed. Retain
+  casualties, defender changes and native save/reload. Measure memory and CPU;
+  bound workers rather than starting an unrestricted game per mission.
+- [x] Implement durable dispatch/arrival/return commits with exclusive actor
+  ownership. Interrupted saves and repeated result delivery must not duplicate
+  or lose actors, prisoners or inventory.
+- [x] Reuse native raid and snatch jobs, timers, party behavior and failure
+  outcomes. Exercise physical portal departure/arrival and actual return cargo.
+- [x] Visiting a worker-owned map requests a validated save/handoff and stops
+  its worker before the foreground loads that revision.
+- [x] Exercise mid-mission save/reload, worker termination, invalid output,
+  blocked/destroyed portal, defeated party and source/destination recovery.
+
+### Task E: Main base, Travel Portal and continuous campaign setup
+
+**Files:** new `TravelPortal.cs`; `TileTravel.cs`, `CampaignCarry.cs`,
+`TileGame.cs`, `TileStore.cs`, `TruePlanet.cs`; worker/transport modules above.
+
+- [x] Register one stable content-framework Travel Portal identity and real
+  native save/load factories. Keep the main Portal distinct and unique to the
+  campaign base; do not implement the distinction only as text.
+- [x] Later first visits use player-selected Travel Portal placement and
+  continue the existing archetype/loadout without opening configuration.
+  Hide only the inappropriate native local-map regeneration action.
+- [x] Keep idle minions at the main base and preserve native skill summoning.
+  Route snatch cargo home through the Travel Portal. Route kennel raid parties
+  from the main Portal to the requested destination portal.
+- [x] Restore charges/cooldowns without repeated subscriptions or replenishment.
+  Test repeated travel plus real ticks and native charge totals/availability;
+  do not merely suppress notifications.
+- [x] Cover existing campaigns through explicit saved base/portal roles without
+  regenerating worlds or discarding native progression.
+
+### Task F: Player UI, objective and integrated qualification
+
+**Files:** `TilePresentation.cs`, `LocalTerrainPlan.cs`, `PlanetView.cs`,
+`AtlasProgress.cs`, `GenerationProgress.cs`, `CampaignObjective.cs`,
+`TileTravel.cs`, player README and existing design/plan.
+
+- [x] Remove inspector IDs/steradians/repeated size and technical disclaimers.
+  Separate climate lines and exclusive native terrain percentages. Use the
+  native Whittaker diagram's actual biome classification, not invented forest
+  coverage from moisture alone.
+- [x] Display settlement name, actual Village/City/Capital type and race.
+  Match the native atlas button's resting/hover appearance.
+- [x] Count settlement objectives and actual living local settlers correctly,
+  preserving native alliance/subjugation eligibility. Keep messages brief;
+  log diagnostic details instead of exposing routine internals.
+- [x] Exercise every screenshot report in the native surface and inspect the
+  images. Do not retain wording/source-text/default-pinning tests.
+- [x] Build and qualify one exact candidate with released dependencies. Cover
+  marker ownership, coasts, mountain eligibility, cave connections, real
+  offscreen missions, all deployment/return paths, progression and notifications,
+  repeated atlas opens and old/new native saves.
+- [x] Independently verify file bytes, modes, timestamps, directory sets and
+  owned-process cleanup. Update documentation with observed results and limits.
+  Preserve the exact qualified binary; publication remains a separate decision.

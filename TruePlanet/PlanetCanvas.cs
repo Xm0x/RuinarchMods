@@ -25,7 +25,7 @@ namespace TruePlanet
 		private Vector2 _dragStart, _origin;
 		private readonly List<MapLabel> _labels = new List<MapLabel>();
 		private readonly List<Rect> _occupied = new List<Rect>();
-		private sealed class MapLabel { public RectTransform Marker, Text; public TMP_Text Caption; public UnitVector Position; public Vector2 BaseSize; public bool Nation, Capital; public int Owner; public TerritoryLabel Territory; }
+		private sealed class MapLabel { public RectTransform Marker, Text; public TMP_Text Caption; public UnitVector Position; public Vector2 BaseSize; public bool Nation, Capital; public int Owner, Selection; public TerritoryLabel Territory; }
 		internal bool Ready => _surface != null && _surface.Ready;
 		internal float Zoom => _zoom;
 		internal void Configure(PlanetSurface surface, TMP_FontAsset font, Material material, Action<int> picked)
@@ -83,7 +83,7 @@ namespace TruePlanet
 			var aspects = new double[Planet.Nations.Length];
 			foreach (Nation nation in Planet.Nations)
 			{
-				MapLabel label = AddLabel(nation.Name, Planet.Provinces[nation.Capital].Direction, true, false, nation.Id);
+				MapLabel label = AddLabel(nation.Name, Planet.Provinces[nation.Capital].Direction, true, false, nation.Id, -1);
 				aspects[nation.Id] = label.Text.sizeDelta.x / label.Text.sizeDelta.y;
 			}
 			const int step = 4; int width = Width / step, height = Height / step;
@@ -100,16 +100,16 @@ namespace TruePlanet
 				label.Position = UnitVector.FromMap(label.Territory.Center.X * Math.PI * 2 - Math.PI, label.Territory.Center.Y * Math.PI - Math.PI / 2);
 			}
 			foreach (Province p in Planet.Provinces) foreach (Village village in p.Villages)
-				AddLabel(village.Name, UnitVector.Dot(village.Position, village.Position) > .5 ? village.Position : p.Direction, false, village.Capital, village.Nation);
+				AddLabel(village.Name, UnitVector.Dot(village.Position, village.Position) > .5 ? village.Position : p.Direction, false, village.Capital, village.Nation, Planet.FormatVersion == 3 ? village.TileId : p.Id);
 		}
-		private MapLabel AddLabel(string name, UnitVector point, bool nation, bool capital, int owner)
+		private MapLabel AddLabel(string name, UnitVector point, bool nation, bool capital, int owner, int selection)
 		{
 			var go = GlobeSkin.Node((nation ? "Nation " : "Village ") + name, _overlay);
 			var text = go.AddComponent<TextMeshProUGUI>(); text.font = _font; text.fontSharedMaterial = _labelMaterial; text.text = name;
 			text.fontSize = nation ? 22 : 15; text.fontStyle = nation ? FontStyles.Bold : FontStyles.Normal; text.color = nation ? new Color32(249, 231, 180, 255) : new Color32(249, 246, 226, 255);
 			text.characterSpacing = nation ? 2 : 0;
 			text.richText = false; text.enableWordWrapping = false; text.raycastTarget = false; text.alignment = nation ? TextAlignmentOptions.Center : TextAlignmentOptions.MidlineLeft;
-			var label = new MapLabel { Text = (RectTransform)go.transform, Caption = text, Position = point, Nation = nation, Capital = capital, Owner = owner };
+			var label = new MapLabel { Text = (RectTransform)go.transform, Caption = text, Position = point, Nation = nation, Capital = capital, Owner = owner, Selection = selection };
 			Vector2 preferred = text.GetPreferredValues(name);
 			label.Text.anchorMin = label.Text.anchorMax = new Vector2(.5f,.5f); label.Text.pivot = new Vector2(nation ? .5f : 0,.5f); label.Text.sizeDelta = new Vector2(preferred.x + 8, nation ? preferred.y + 2 : 28);
 			label.BaseSize = label.Text.sizeDelta;
@@ -216,6 +216,14 @@ namespace TruePlanet
 			if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rect,data.position,data.pressEventCamera,out Vector2 point)) return;
 			float u = (point.x-rect.rect.xMin)/rect.rect.width, v = (point.y-rect.rect.yMin)/rect.rect.height;
 			if (u < 0 || u > 1 || v < 0 || v > 1) return;
+			for (int i = _labels.Count - 1; i >= 0; i--)
+			{
+				MapLabel label = _labels[i];
+				if (label.Nation) continue;
+				if ((label.Marker != null && label.Marker.gameObject.activeInHierarchy && RectTransformUtility.RectangleContainsScreenPoint(label.Marker, data.position, data.pressEventCamera))
+					|| (label.Text.gameObject.activeInHierarchy && RectTransformUtility.RectangleContainsScreenPoint(label.Text, data.position, data.pressEventCamera)))
+				{ _picked?.Invoke(label.Selection); return; }
+			}
 			UnitVector location = UnitVector.FromMap(u*Math.PI*2-Math.PI,v*Math.PI-Math.PI/2);
 			if (_surface.TryPick(location, out int selected)) _picked?.Invoke(selected);
 		}

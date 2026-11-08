@@ -219,3 +219,562 @@ Visual review covers all 264 primary screenshots: 192 unique decoded RGBA frames
 All 13 batches independently restored 112 protected files byte-for-byte with modes, modification/access timestamps and exact file/directory sets. Unexpected Unity errors and pathfinder faults were zero. The game is stopped, Steam is idle and the installed helper/active backup are absent.
 
 Authoritative private records: `~/ruinarch-runs/trueplanet-detailed-grid-20261105/release-qualification-b/qualified-release.json`, `visual-review.json`, `source-provenance.json`, and the sibling `performance-provenance.json` / `geometry-smoke.json`. The GitHub update is scoped to TruePlanet, its three consumer-test files and related documentation. Existing 0.3.1 assets, loader 0.9.1, unrelated mods, local Git state and Workshop remain outside the update.
+
+## 2026-11-05 screenshot remediation and offscreen missions
+
+Status: implementation in progress. Settlement picking, inspector classification,
+sparse native caves and isolated offscreen combat feasibility are verified.
+Production mission ownership, return trips and remaining acceptance cases are
+not yet qualified.
+This section supersedes the earlier revision's gameplay requirements where they
+conflict. Requirements remain acceptance gates; only the recorded evidence below
+is qualified.
+
+### Installed version evidence
+
+The owner's local `Mods/TruePlanet` remains 0.3.1, DLL SHA-256
+`73d070dc3b9794c686f4663a79137c20eb4cc784efb6a1f4f05c7db4b062711e`.
+The downloaded Workshop item is 0.4.0, DLL SHA-256
+`7a3bb6bf3eccecd665834e7882cdd8ea3495dd68d621adba334a52125d43a9f3`.
+The loader reserves local package IDs before loading subscribed Workshop items.
+Do not diagnose the supplied 0.3.1 screens as proof that the 0.4.0 setup/copy
+changes ran. Conversely, do not dismiss the remaining geography, performance,
+mountain, cave, portal and mission requirements as a version problem.
+
+### Atlas, selection and geography
+
+- A settlement belongs to one recorded geographic cell. Its visible marker must
+  select that cell, including on coasts; adjacent selections must not appear to
+  share that settlement. Labels and markers must remain distinguishable.
+- Profile full-globe dragging at low zoom separately from close zoom, Standard
+  separately from Detailed, and default layers separately from Grid. Preserve
+  coverage and picking; do not obtain a better result merely by hiding content.
+- Remove discontinuities caused by switching the nearest tectonic plate pair.
+  Blend compatible height/ridge contributions continuously, including underwater.
+  Shore depth, ocean colour and shading must not introduce abrupt unrelated bands.
+- New geography uses coherent mountain ranges and foothills rather than
+  high-frequency disconnected mountain blobs. Do not split a range with artificial
+  straight plain corridors to satisfy the earlier 25-percent component limit.
+- Mountain interiors can be impassable and unavailable for play, settlement
+  placement and expansion. Playable valleys and foothills remain distinct.
+- Mountains are predominantly solid. Caves occupy a minority of mountain cells
+  as small chambers or connected passages, not the entire mountain footprint.
+  Cross-map cave connections share a stable geographic-edge identity and paired
+  openings. An opening is left unsealed only when the adjacent map has the
+  corresponding connection.
+- New terrain and cave algorithms receive new saved generation versions and
+  world identities. Existing visited maps and saved geography are not silently
+  regenerated. UI, campaign restoration and rendering fixes also cover old worlds.
+
+### Main base, Travel Portals and minions
+
+The owner explicitly rejected a travelling squad as the minion model:
+
+1. Idle minions belong at the main base and retain native on-demand summoning.
+2. Native snatching summons the minion and runs the actual native job. After
+   taking its target, the minion walks to the local Travel Portal. Passing through
+   returns the minion and its cargo to the main base.
+3. Kennel raid parties physically leave through the main Portal and arrive
+   through the destination Travel Portal.
+4. Dispatch is valid when the destination is not the viewed map.
+5. The owner selected **Fight while offscreen**: the raid, defenders, casualties
+   and return journey must progress without opening that map. Merely recording
+   an arrival and waiting for a visit is not an implementation of this requirement.
+
+There is one main Portal and campaign loadout, not a fresh main Portal/loadout
+per destination. Later first visits ask the player to place a Travel Portal.
+Hide native local-map regeneration during planet tile setup; keep planet
+generation controls in the new-world atlas. Do not globally disable regeneration
+for unrelated stock games.
+
+Transfer ownership is transactional. A character, captive, carried object or
+kennel creature must have exactly one owner across source, in-transit and
+destination states. Preserve identity, health, equipment, cargo, faction,
+progression and relevant native references. Save/load and interrupted transfers
+must neither duplicate nor lose actors, prisoners, charges or items. Native
+snatch failure, party defeat, blocked portals and destination recovery remain
+real outcomes, not synthetic success.
+
+### Offscreen execution boundary
+
+Native raids bind to the active `GameManager`, map databases, signals and
+`SchedulingManager`. The current campaign snapshot system does not simulate
+inactive maps. Genuine background missions require isolated execution of those
+native systems rather than concurrent mutation of their foreground singletons.
+
+The selected investigation route is a mission-scoped native worker process:
+
+- Prove batch/headless native boot, real map loading, combat, save/reload and
+  foreground/worker isolation before depending on this architecture.
+- A worker receives a private immutable snapshot and mission input, runs the
+  native world, then returns validated snapshot/transfer results. Only the
+  foreground campaign owner commits canonical revisions.
+- Isolate saves, temporary files, settings, logs, mod configuration and process
+  ownership. A worker must never launch another worker or alter Steam
+  subscriptions, player settings or unrelated worlds.
+- Lease each mission map to exactly one simulator. Visiting an executing map
+  requires a save/handoff, not a second copy of that map.
+- Pause and progression controls govern mission execution. Non-mission maps do
+  not acquire invented populations, combat or passive simulation.
+- Bound concurrency and measure memory/CPU use on the actual 16-GB workstation.
+  Do not launch an unrestricted full game instance per raid. Feasibility must
+  include a viewed map and a fighting offscreen map at the same time.
+- Fail visibly and preserve the last committed state if worker launch, native
+  loading, combat/save execution or result validation fails. Do not silently
+  replace native combat with calculated outcomes or a dormant arrival queue.
+
+### Player-facing text and controls
+
+- Inspector heading is the actual biome, not a geographic number.
+- Remove repeated map size, steradian area, culture disclaimers and implementation
+  terminology. Temperature and moisture occupy separate lines.
+- Report actual native terrain classes separately: grassland, forest, desert,
+  snow, hills, mountains and water where present. Do not call every non-mountain
+  cell grassland or present overlapping percentages as exclusive coverage.
+- Settlement entries have three lines: name, Village/City/Capital, race.
+  Classification must reflect the generated settlement, not an invented label.
+- The atlas top-bar control uses the native unselected appearance without
+  inherited shine. Opening it should reuse prepared data; rebuilding a texture
+  on every open is not acceptable cache behavior.
+- Conquest progress counts settlements, not an internal tile identifier:
+  `Subjugate the Planet: x / y settlements`. The local line reports the actual
+  living settler population and settlement type. Preserve native alliance and
+  subjugation eligibility instead of confusing population with opposition.
+- Loading, travel, selection and error messages are short player instructions.
+  File paths, row/stage implementation counters, native setup terminology and
+  diagnostic exceptions belong in logs, not routine gameplay messages.
+- Restore charge values and cooldown subscriptions correctly across travel.
+  Suppressing replenishment notifications without fixing repeated replenishment
+  is not a solution.
+
+### Acceptance evidence
+
+Exercise marker selection at coastal cell junctions; full-globe drag profiles;
+seams, poles, coasts and ocean shading; new mountain/foothill generation; blocked
+mountain interiors; sparse cave coverage and paired cave openings; all inspector
+classes and settlement types; main/Travel Portal setup; one-time loadout; repeated
+save/load/travel cooldown behavior; settlement conquest transitions; repeated
+atlas opens; and every new native deployment/return path.
+
+Offscreen acceptance requires real native combat while another map remains
+viewed, persisted casualties and cargo, successful and defeated raids, snatch
+return to the main base, entering an active mission map, save/reload mid-mission,
+and interruption recovery without duplicate ownership. Capture actual resource
+use and independently verify protected saves/settings and owned-process cleanup.
+
+### Remediation evidence checkpoint
+
+- The released 0.4.0 atlas reproduced the settlement-click defect: clicking
+  Sahari's visible name selected cell 7309 rather than its recorded cell 7308.
+  The corrected candidate passed real EventSystem clicks on text and markers in
+  both globe and flat views. All four clicks selected 7308. Both resulting
+  surfaces were inspected; all 166 protected files were independently checked
+  for identical bytes, mode and modification/access timestamps afterward.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/marker-ownership-before-b/`
+  and `marker-ownership-after/`.
+- A real-assembly continuity check reproduced a 0.01523 height jump at a nearest
+  plate-pair boundary. The version-five field reduced the largest tested jump to
+  about 5.63e-9. Geometry-three/four samples across four seeds remained
+  byte-identical between released and candidate assemblies: 8,192 samples.
+- The new cell-bounded native chart passed 39,285 sample locations across 4,365
+  eligible cells with zero samples outside their recorded owner. The previous
+  chart put 22,548 sampled locations outside their owner. These are geometry
+  checks, not completed new-terrain/cave native qualification.
+- The concurrent worker experiment loaded the actual native stock map in a
+  Direct3D11 foreground process and a Null-device batch process. The foreground
+  advanced from tick 160 to 213 while the worker loaded, advanced to tick 161 and
+  wrote a native save. Worker saves/mods used private paths; the foreground
+  persistent-path rewrite count was zero, versus four isolated worker callsites.
+  Observed managed memory was 775,876,608 bytes foreground and 1,107,197,952 bytes
+  worker. All 165 protected files and exact directory sets were restored.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/worker-isolation-b/`.
+  This verifies concurrent loading/ticking/saving, not combat or raid recovery.
+- Controlled rendering qualification completed for Standard/Detailed, zooms one
+  and six, and default/Grid layers. Shared endpoint projections and direct
+  scalar vertex construction preserve every measured stroke count in all eight
+  cases. Line-mesh construction cost fell about 38 to 40 percent. New line
+  batches explicitly remain behind settlement labels and markers; the small
+  intentional foreground-order change is not reported as pixel equality.
+  The default-layer native frames remain approximately 6.94 ms in this fixture.
+  Grid median frame intervals were:
+
+  | Resolution | Zoom | Released 0.4.0 | Candidate |
+  |---|---:|---:|---:|
+  | Standard | 1 | 19.11 ms | 15.57 ms |
+  | Standard | 6 | 14.41 ms | 12.80 ms |
+  | Detailed | 1 | 46.24 ms | 38.13 ms |
+  | Detailed | 6 | 30.92 ms | 26.00 ms |
+
+  These are measured fixture results, not an FPS guarantee. Detailed grids
+  remain expensive. Both complete native surfaces were visually inspected;
+  all four batches restored 127 protected files with identical bytes, modes and
+  modification/access timestamps, independently verified after execution.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/globe-performance/`.
+- Solid mountain eligibility failed before the new traversability gate:
+  all 10,242 synthetic dry mountain cells were playable. It now rejects every
+  solid mountain cell while preserving all 10,242 lowland cells and treating
+  mountains as dry land, not ocean. The compiled permanent consumer regressions
+  pass continuity, cell-footprint ownership and mountain/lowland boundaries.
+  Actual new-terrain native generation and cave-mask qualification remain open.
+- New-identity Small generation reached real native play, advanced, saved and
+  reloaded. Its unchanged native cave algorithm made 4,346 of 4,974 mountain
+  cells passable (87.37 percent), confirming the oversized-interior defect.
+  The Large attempt stopped at selection: a per-pixel mountain rejection blocked
+  an otherwise eligible mixed-terrain cell. Selection now uses cell eligibility;
+  solid cell interiors remain excluded and native wall objects govern movement.
+  The batch independently restored all 127 protected files, including timestamps.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/terrain-native-before-caves/`.
+- The first deterministic replacement's compiled consumer produced 297 floor cells
+  inside a 5,376-cell mountain island. All floors and both entrances were mutually
+  reachable, repeated generation was exact, and other island boundaries stayed
+  sealed. Twelve shared geographic edges produced reciprocal exits through native
+  mountain terrain; both local chart inverses agreed with their sampled cells.
+  Initial qualification also separated geometric charts from playability checks.
+  Later passages use deterministic weighted routing
+  rather than long axis-first corridors; the same consumer now produces 249
+  connected floors. Small native generation/save/reload with that routed mask
+  produced 339 passable cells and 4,613 native wall objects in the 4,974-cell
+  mountain island, with no passable wall objects. Earlier Small/Large masks also
+  passed native saved wall-identity checks and exact canonical boundary openings.
+  Native qualification of both playable ends of a shared edge remains separate.
+- The charge-notification source is `CampaignCarry.Apply` calling native
+  `FinishCooldown` for every skill. Native `PlayerUI.OnSpellCooldownFinished`
+  displays “Charge Replenished” for that event. Restoration now detaches the
+  native tick callback without completing the cooldown, restores the saved
+  counters, and resumes only categorized skills. Actual native restoration was
+  repeated three times during a partial cooldown: no charge or completion
+  notification was emitted, and one tick subscription remained. Five real ticks
+  then earned exactly one charge and one native replenishment notification.
+  Native setup also hid and guarded regeneration; real atlas-tab clicks matched
+  the native sprite, interaction colors, font and height.
+- Portable rules now exclude destination-local faction templates and their Unity
+  Sprite references. Native skill/village rules, faction-policy flags and optional
+  loadout selection are captured separately from local settlement templates;
+  saved destinations receive campaign rules before native component creation.
+  Old campaign records without this field retain their readable legacy defaults.
+  Initial native qualification exposed the game's per-map cultist-threshold
+  randomization; those two campaign rules now retain their values during travel.
+  The corrected full Small campaign case passed 72 checks, including nondefault
+  first-visit rules, optional loadout state, return, normal reload, and recovery
+  from both a missing destination site and an unavailable destination skill.
+  All 127 protected files were independently identical afterward.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/terrain-native-rules-b/`.
+- A real native raid fought in an isolated Null-device worker while the viewed
+  Direct3D11 world continued from tick 160 to 270 without replacement. The worker
+  ran a native three-monster party quest from tick 161 to 240, recording 11
+  attacker hits, 24 defender hits and one casualty through actual health changes.
+  Its native save/reload preserved both surviving raiders' identities and health.
+  Managed memory observed was 779,812,864 bytes foreground and 1,198,530,560 bytes
+  worker. The independent audit found all 166 protected files unchanged in bytes,
+  modes and timestamps. This is real combat feasibility, not production mission
+  dispatch, transfer ownership, return trips or interruption recovery.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/worker-combat/`.
+- The live native Whittaker oracle passed 700 climate samples, including both
+  sides of every native range boundary. Actual Small and Large maps then matched
+  every predicted specific biome and every exclusive terrain count: respectively
+  19,600 and 47,040 cells, with zero mismatches. Native capital/village inspector
+  screenshots were inspected at both sizes: biome heading, separate temperature
+  and moisture, exclusive terrain percentages, settlement name/type/race and no
+  repeated size or geographic IDs. Native elevation has no hill class; do not
+  invent a percentage for relief that the native map does not classify as hills.
+  Both complete generation/tick/save/reload cases passed 28 checks with no
+  unexpected Unity errors or pathfinder faults. The runner restored 127 protected
+  files and exact directory sets. New weighted caves occupied 1,119 of 18,883
+  Large mountain cells (5.93%); 17,730 actual wall objects had zero passability
+  leaks. Paired-map traversal remains a separate acceptance gate.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/terrain-native-climate-ui-b/`.
+
+- The production worker reached a real native raid checkpoint while the original
+  base remained viewed and advanced 90 foreground ticks. The checkpoint and
+  requested terminal handoff both recorded exactly 64 worker ticks, unchanged
+  mission/run identity and no worker exception. Managed worker memory at
+  handoff was 1,071,464,448 bytes. This proves the production worker boundary,
+  not completed controller dispatch, combat casualties or return delivery.
+  The same integrated run failed its second cave actor-walk check after 143
+  passing checks; that failed observation remains retained.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/production-worker-a/native-f/`.
+- A focused Small-map case subsequently exercised both playable ends of shared
+  geographic edge 771, on cells 130 and 7428. Each actual Troll walked a
+  24-cell-connected corridor to its edge opening in 18 native ticks. Both
+  maps saved/reloaded with the same native wall identities and sealed unpaired
+  mountain boundaries. This focused case passed, but does not erase the prior
+  intermittent walk failure or qualify Large/legacy coverage. Movement traces
+  and pre-walk campaign snapshots are retained for diagnosis.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/production-worker-a/cave-diagnostic-a/`.
+- Both latest runners restored 123 protected files and exact directory sets.
+  An independent byte/mode/mtime/atime audit after `native-f` found no difference.
+  The runner now distinguishes an actual worker command line from the transient
+  inherited `Ruinarch.exe` process name. Worker parent identity uses PID plus
+  process start time; offline checks exercised living, exited and mismatched
+  parent identities. Native verification of the revised parent guard is pending.
+
+- Qualification now also boots the owner's separate `RuinarchRE/testgame` copy
+  directly through standalone Proton using `RuinarchRE/testprefix`, not a Steam
+  launch. A headless Gamescope display keeps test windows off the desktop while
+  retaining native NVIDIA Direct3D 11 rendering. The private probe selects the
+  game's offline Steamworks setting; this is not a production gameplay patch.
+  The standalone preflight passed 10 checks with no unexpected Unity errors
+  or pathfinder faults, and its rendered screenshot was inspected.
+  All 115 protected test files were restored byte-for-byte with their modes,
+  timestamps and directory sets. A separate 123-file read-only guard of the
+  normal Steam installation found no changes. Campaign qualification remains
+  separate from this launch/preflight result.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/isolated-game/standalone-preflight/`.
+
+- Isolated snatch qualification exposed an actual populated-relationship
+  serialization bug: the native serializer emits nonempty numeric dictionaries
+  as `[{Key, Value}, ...]`, but emits empty dictionaries as `{}`.
+  `PortalTransport` now captures either native empty/populated representation
+  and projects populated relationships back with integer keys. The actual
+  native serializer consumed all 112 populated relationship/opinion entries
+  from a 49-actor recorded save with destination-remapped keys.
+  Offline checks also covered absent-target filtering and restoration of the
+  original map-local keys and values. Qualification separately reproduced
+  duplicate actor/cargo classification for a carried captive. The transfer
+  producer now removes explicitly selected actor IDs from its cargo set;
+  the exclusive-ownership validator remains unchanged. Complete captive return
+  is not implied by the relationship-consumer result.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/isolated-game/snatch-boundary-before/`
+  and `snatch-cargo-before/` under the same isolated fixture.
+
+- The isolated worker data-link check passes with the installed Proton-GE
+  runtime. The same link was not traversable under the tested Proton 10.0
+  runtime, so the standalone runner now uses Proton-GE. Worker initialization
+  also honors the game's native offline Steamworks setting.
+- The first complete inactive-base snatch return exposed a missing action-hub
+  dependency: the captive's saved rumor component referenced witnessed assault
+  actions that arrival had discarded. Arrival now restores native actions and
+  their references before character references, without reconnecting ended
+  source jobs. In the Small native run, both living actors returned to the
+  original base and its original idle minion remained present.
+  The additional history assertion then failed because it queried the native
+  volatile action index, which the game clears after loading. It now checks
+  the captive's actual rumor objects instead; that corrected consumer and its
+  subsequent save/reload are not yet qualified by this observation.
+  The failed run restored all 115 protected test files and directory sets.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/isolated-game/snatch-history-after/`.
+
+- The subsequent isolated Small-map return/history case passed all 50 checks
+  with no unexpected Unity exceptions or pathfinder faults. A real native
+  snatch quest delivered its living target to the Travel Portal; both actors
+  then left that map while it remained viewed and arrived at the inactive
+  original base. Both witnessed assault identities, their actual actor/target
+  references and the base's original idle minion survived return and native
+  save/reload. Ended source jobs were not resumed.
+  This fixture gives only its test snatcher the native `Indestructible` trait
+  to isolate transfer/history from combat balance. It does not qualify
+  unmodified snatch combat or raid combat. An earlier unmodified capture
+  attempt ended with a genuine snatcher death before transfer.
+  Large-map return/history qualification remains separate.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/isolated-game/snatch-history-isolated/Small/`.
+
+- The corresponding isolated Large-map return/history case subsequently passed
+  all 50 checks with zero unexpected Unity exceptions or pathfinder faults,
+  using the same production DLL. Test saves now use unique names across cases
+  after a previous batched run collided with its earlier case's history save.
+  A separate Large attempt failed with native FullSerializer's
+  `Collection was modified` exception during the source-map save; the
+  controller rejected the incomplete archive rather than importing it.
+  That failure is retained and has not been explained or fixed. The next
+  run installed a non-suppressing dictionary-converter diagnostic and passed;
+  this does not erase the intermittent save risk.
+  Independent byte/mode/mtime/atime and exact-set audits verified restoration
+  of all 115 protected test files, plus no differences in the separate
+  123-file read-only Steam-installation guard.
+  Evidence: `~/ruinarch-runs/trueplanet-remediation-20261105/isolated-game/snatch-large-dictionary-trace/`
+  and the retained failure in `snatch-history-large-unique/`.
+
+The successful snatch-return runs sampled these process resources at roughly
+one-second intervals. These are whole qualification runs, including atlas
+generation, map loads and saves, not isolated transfer benchmarks:
+
+| Case | Foreground sampled RSS max (MiB) | Worker sampled RSS max (MiB) | Foreground CPU (s) | Worker CPU (s) | Concurrent workers max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Small | 4523.7 | 2859.2 | 680.57 | 70.30 | 1 |
+| Large | 9557.7 | 5150.2 | 2576.64 | 238.89 | 1 |
+
+The native-worker path has a substantial memory cost; one worker was observed,
+not a lightweight abstract battle simulator. Raw samples and the derived
+`isolated-game/snatch-history-resource-metrics.json` remain in private evidence.
+
+- The integrated raid probe now exercises the actual Kennel behavior dropdown,
+  rather than calling the selector with an unavailable raid behavior. The
+  stock Kennel exposed only snatching; campaign-base Kennels now offer the
+  four native raid behaviors, refresh their remote targets and display the
+  raid title and selected attacker. The native selector surface was inspected.
+  The candidate compiled with all 58 Harmony target checks passing.
+- The Small-map case in `isolated-game/controller-native-balance/` passed a
+  601-second paused departure with zero native ticks, both original actors
+  present and Mana unchanged at its actual 600 cap. After resuming, the real
+  actors left through the main Portal and the 100-Mana party cost was charged
+  exactly once. Offscreen raid combat, checkpoint adoption and raid return
+  are not qualified by that result: the fixture then clicked the native 4x
+  toggle a second time and paused progression. The redundant fixture click
+  was removed; the continuing qualification retains that paused-worker evidence.
+
+- A subsequent native trace identified an assembly race: the early-arriving
+  demon completed its walk and started native idle wandering before its
+  follower arrived. Dispatch now installs a scoped assembly behavior through
+  the native add/remove lifecycle, then removes it before source serialization
+  or on failure. A native save during assembly omits only that transient
+  behavior; the original actors remain owned by the source.
+- The Small diagnostic run in
+  `isolated-game/controller-assembly-native-instance/` passed physical departure,
+  exact deployment cost, real offscreen combat while the base remained viewed,
+  mid-mission native save/reload and the worker-owned destination visit. The
+  native damage observer recorded 7 raider hits and 23 defender hits. The
+  test then dereferenced its mission record before awaiting foreground rebind;
+  completed raid return is not qualified by this run. This diagnostic used a
+  short pause, not another full 601-second pause qualification.
+
+- Further qualification disproved the initial assumption that the missing
+  handoff record was only a fixture timing issue. Native population queries
+  rebound the controller during travel to a worker snapshot's older mission
+  list, before the canonical travel manifest was adopted. The subsequent save
+  could then publish an empty mission set. Population accounting now retains
+  the foreground owner until travel commits; the handoff regression explicitly
+  waits for and requires the same canonical mission on the destination.
+- A separate native worker arrival exposed an ended source walk action whose
+  target was a source-map floor object. Arrival now retains the dependency
+  closure of referenced native action history after detaching source jobs,
+  instead of loading every captured current-action node. The offline consumer
+  preserved four real witnessed actions unchanged and removed the actual
+  source-only walk from the retained failing raid payload. Native raid and
+  snatch-history qualification of this later candidate remains in progress.
+
+- The later `isolated-game/controller-complete-roster/Small/` run passed 80
+  native checks on candidate SHA256
+  `4da4b79e5c1d86596eb4f7800df12205a27146da1eda6468fc9c56433b2fe707`.
+  Its production source snapshot matched the source at that checkpoint.
+  The actual Kennel selector retained Wrath and all three selected Golems,
+  charged 200 Mana once, and dispatched them by walking through the main Portal.
+  Real offscreen combat, mid-mission save/reload, canonical destination handoff,
+  explicit native retreat, and delivery to the inactive base passed. Wrath's
+  actual death remained recorded; all three living Golems returned.
+- `isolated-game/controller-automatic-offscreen/Small/` subsequently reached
+  automatic mission completion without visiting the destination, but failed
+  a fixture assertion requiring a survivor after all four raiders died.
+  This is not evidence of living automatic return. The continuing native
+  matrix observes death transitions and checks exact casualty preservation,
+  native reload, and the full 601-second paused-departure boundary at both sizes.
+- The subsequent `final-distinct-roster` matrix passed 78 native checks on
+  Small, including automatic offscreen conclusion and final save/reload.
+  Both sizes passed the full 601-second pause and native combat/reload.
+  Large's final casualty observer omitted a death recorded before worker
+  restart; the observer now combines the retained pre-reload evidence with
+  subsequent worker evidence. The later `qualified-automatic` matrix passed
+  that assertion and native final reload at both sizes: 78 checks each, zero
+  unexpected Unity exceptions or pathfinder faults, on exact candidate SHA256
+  `c255c53aa9e114c84fc39329c20bef1c3d3f2a64fad6043b9cec75bb6304e5c8`.
+- Interrupted assembly qualification exposed two further boundary defects.
+  `assembly-reload-root-cause/Small/` recorded a native planner rejection:
+  a randomly selected passable Portal tile was not reachable by the actor,
+  although another Portal tile was. Dispatch and both foreground/worker
+  returns now select an actually reachable Portal tile before queuing the
+  native walk. No teleport or pathfinding bypass was added.
+- `assembly-reload-reachable/Small/` then reached reload and exposed the
+  assembly coroutine reading an old actor's grid after native scene cleanup.
+  Uncommitted assembly now ends when its source scene starts loading or is
+  replaced, before inspecting old actors or creating a transfer. On that same
+  candidate, `final-assembly-resumed` passed 68 checks each on Small and Large,
+  including 30 actual native ticks after reload, with zero unexpected Unity
+  errors or pathfinder faults. All original actors and Mana remained at source
+  with no stale transfer. Independent audits verified all 115 protected test
+  files and the unchanged 123-file normal Steam-installation guard.
+- `qualified-handoff-return/Small/` passed real combat, destination handoff
+  and native retreat but its surviving members died before reaching home.
+  It does not prove living return. The continuation protects one actual
+  survivor with native Indestructible only after the unmodified two-sided
+  combat checkpoint and foreground handoff, isolating transfer correctness
+  from combat balance without modifying production behavior.
+- The protected-return trace `return-death-observer/Small/` showed a living
+  survivor whose native stun cancelled its return walk. The controller's
+  one-shot walk never resumed. `PortalTransport` now registers a scoped native
+  behavior for dispatch assembly and foreground/worker returns. It re-plans
+  cancelled walks only when native movement/job gates allow them and holds
+  early arrivals at the Portal. Combat, stun and pathfinding rules are unchanged.
+  Process-local behavior names are excluded from native saves; committed
+  mission records restore the return intent after loading.
+- `return-native-scheduler/Small/` passed 83 native checks, including actual
+  two-sided combat, foreground handoff, a living return to the inactive base,
+  exclusive actor ownership and final save/reload with survivor identity and
+  health retained. The return fixture protects only one survivor after combat,
+  so this is transfer evidence, not unmodified combat-balance evidence.
+  Candidate SHA256:
+  `cc3559e1701d1f1ac904da638d92b3e44651d2b4bf48279c7287bd8385cb9076`.
+  The run reported zero unexpected Unity errors or pathfinder faults.
+  Independent audits verified all 115 protected test files and no changes to
+  the 123-file normal Steam-installation guard. Large return, automatic
+  offscreen completion, interrupted assembly, worker recovery, snatch history,
+  paired caves and legacy-save qualification of this exact candidate remain
+  separate acceptance gates.
+- The scheduler candidate also passed 84 Large-map living-return checks in
+  `qualified-mobile-scheduler-handoff-return/`. An earlier Large fixture
+  protected a 4-HP Wraith that native execution then killed; Indestructible
+  does not prevent execution. The revised transfer-only fixture selects the
+  healthiest uncaptured survivor, without releasing prisoners or changing
+  native combat rules.
+- `qualified-mobile-scheduler-automatic/` passed 78 Small-map checks, but
+  Large exposed a separate status-transfer defect. Native `Trait.OnRemoveTrait`
+  unregisters an expired singleton such as Injured while `TraitManager` keeps
+  its instance cached. Arrival remapped an incoming injury to that missing
+  database ID. `singleton-expiry-before/Small/` reproduced the failure through
+  an actual native add/remove status transition before arrival.
+- Portal arrival now restores the cached singleton's registration when absent,
+  preserving the native shared instance and incoming status instead of
+  discarding the injury or replaying its add effects. The deterministic
+  regression and full Small living-return scenario passed 86 checks in
+  `singleton-expiry-after/Small/`, with zero unexpected Unity errors or
+  pathfinder faults, on candidate SHA256
+  `e58454ba16aff2af2529640ecb1bf630e5ab1bfbb2252425fe720123c707a7ff`.
+  Independent audits verified 115 protected fixture files after each run.
+  The current 123-file normal-installation guard remains unchanged; the
+  older retained guard has newer user-state metadata/log differences and
+  was not restored over them. Exact-candidate cross-size qualification remains
+  in progress.
+- Small campaign/cave qualification passed 151 native checks in
+  `qualified-singleton-campaign-caves/Small/`. Large's first complete attempt
+  exceeded the private runner's overall deadline before paired traversal.
+  The extended run reached a real sealing failure on the second cave map.
+  `cave-large-border-trace/` identified canonical corner `(279,167)` on
+  tile 28139; reaching it also opened unpaired boundary cell `(278,167)`.
+  A corner cannot connect to an orthogonal interior path without another edge
+  opening. Canonical exit selection now rejects corner candidates on either
+  side, rather than sealing a floor cell and disconnecting the passage.
+- The captured-world offline regression failed on the prior candidate and
+  passed after the corner fix, retaining two valid side exits. Native
+  `cave-large-corner-after/TruePlanetLarge/` then passed 58 checks: both
+  reciprocal exits, actual actor walks through both corridors, disconnected
+  edge sealing, wall identity/passability after save/reload and return to base.
+  There were zero unexpected Unity errors or pathfinder faults. Candidate
+  SHA256 is
+  `962e0e16c6e97fa38a12fd26bd88ff14e35aa1842940f1f8a5cc158039666b98`.
+  Independent audits verified exact restoration of all 115 fixture files and
+  no changes to the current 123-file installation guard.
+
+### 0.5.0 release qualification
+
+The qualified DLL retains SHA256
+`962e0e16c6e97fa38a12fd26bd88ff14e35aa1842940f1f8a5cc158039666b98`.
+All 43 production source files match the retained successful terrain, cave,
+legacy-save, campaign-travel and worker-recovery runs. Those scenarios were
+not repeated for release.
+
+The remaining Large-map automatic raid check passed from a retained native
+campaign in `release-cached-automatic-large/`: actual two-sided combat,
+mid-mission reload, automatic return without changing the viewed base,
+observed casualty preservation and final native save/reload.
+`release-focused-storage-corrected/` passed blocked arrival, destroyed Travel
+Portal replacement and replacement identity through native save/reload.
+Its existing storage/globe consumers passed all 19 checks.
+
+The release checks used the exact qualified DLL and released dependencies.
+Independent audits verified restoration of all 115 isolated fixture files,
+including metadata and file/directory sets. The current 123-file normal Steam
+installation guard is unchanged. Release evidence and package hashes are in
+`~/ruinarch-runs/trueplanet-050-release-20261108/`.
+
+Offscreen expeditions still use another native game simulation and substantial
+memory. Native Windows expedition execution was not exercised; Windows users
+need Developer Mode for worker data links. Publication preserves the qualified
+DLL rather than rebuilding it.

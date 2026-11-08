@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using HarmonyLib;
 using Quests;
 
@@ -68,11 +69,36 @@ namespace TruePlanet
 		}
 		private static string Title()
 		{
-			Bind(); int remaining = Refresh();
-			string local = !TileGame.Store.IsSettledTile(TileGame.Active.TileId) ? "Current tile: wilderness (not a conquest target)"
-				: remaining < 0 ? "Current tile: preparing native world"
-				: remaining == 0 ? "Current tile: subjugated" : "Current tile: " + remaining + (remaining == 1 ? " villager opposes you" : " villagers oppose you");
-			return "Subjugate the planet: " + _subjugated.Count + " / " + TileGame.Store.SettledTileCount + " settled tiles\n" + local;
+			Bind(); Refresh();
+			var text = new StringBuilder("Subjugate the Planet: ");
+			text.Append(TileGame.Store.CountSubjugatedSettlements(_subjugated)).Append(" / ")
+				.Append(TileGame.Store.SettlementCount).Append(" settlements");
+			if (!Ready) return text.Append("\nPreparing settlement...").ToString();
+			int settlements = 0;
+			int nativeVillages = 0;
+			foreach (var location in GridMap.Instance.mainRegion.settlementsInRegion)
+				if (location is NPCSettlement && location.locationType == LOCATION_TYPE.VILLAGE) nativeVillages++;
+			foreach (var location in GridMap.Instance.mainRegion.settlementsInRegion)
+			{
+				if (!(location is NPCSettlement settlement) || settlement.locationType != LOCATION_TYPE.VILLAGE) continue;
+				int population = 0;
+				foreach (Character character in DatabaseManager.Instance.characterDatabase.aliveVillagersList)
+					if (character.homeSettlement == settlement) population++;
+				Village definition = null, only = null; int definitions = 0;
+				foreach (Province province in TileGame.Active.Planet.Provinces) foreach (Village village in province.Villages)
+					if (village.TileId == TileGame.Active.TileId)
+					{
+						only = village; definitions++;
+						if (village.Name == settlement.name) definition = village;
+					}
+				if (definition == null && definitions == 1 && nativeVillages == 1) definition = only;
+				string kind = definition == null ? "Settlement" : TilePresentation.SettlementKind(definition, TileGame.Active.Planet.Options.LocalSize);
+				text.Append('\n').Append(settlement.name).Append(" (").Append(kind).Append("): ")
+					.Append(population).Append(population == 1 ? " settler" : " settlers");
+				settlements++;
+			}
+			if (settlements == 0) text.Append("\nWilderness: ").Append(DatabaseManager.Instance.characterDatabase.aliveVillagersList.Count).Append(" settlers");
+			return text.ToString();
 		}
 		[HarmonyPatch(typeof(Eradication), "CheckForGameWin")]
 		private static class PlanetVictory
@@ -94,7 +120,7 @@ namespace TruePlanet
 			private static bool Prefix(ref string __result)
 			{
 				if (TileGame.Active == null) return true;
-				__result = "The planet " + TileGame.Active.Planet.Name + " has been subjugated. Every settled tile is free of opposition."; return false;
+				__result = "The planet " + TileGame.Active.Planet.Name + " has been subjugated. Every settlement is free of opposition."; return false;
 			}
 		}
 		[HarmonyPatch(typeof(UIManager), nameof(UIManager.ShowStartScenario))]
@@ -103,8 +129,8 @@ namespace TruePlanet
 			private static void Prefix(ref string __0)
 			{
 				if (TileGame.Active == null) return;
-				__0 = "Subjugate every settled tile on " + TileGame.Active.Planet.Name + ".\n\nThere are " + TileGame.Store.SettledTileCount
-					+ " settled conquest targets. A tile is subjugated when no living villagers oppose you; allied villagers count too. Clearing this tile alone does not win the planet.\n\nUse Planet atlas to travel. Empty wilderness is not a conquest target. Retaliation remains local to each map.";
+				__0 = "Subjugate all " + TileGame.Store.SettlementCount + " settlements on " + TileGame.Active.Planet.Name
+					+ ".\n\nDefeat their settlers or gain their allegiance. Clearing this map alone does not win the planet.\n\nUse Planet atlas to travel.";
 			}
 		}
 		[HarmonyPatch(typeof(Eradication), "OnCharacterAddedToAliveVillagers")]

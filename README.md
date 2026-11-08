@@ -41,8 +41,9 @@ Build menu; villagers construct Mass Graves, Town Halls, and Libraries themselve
 
 TruePlanet opens its globe when you choose **New Game**. Select land and click
 **Play**. During a campaign, open **Planet atlas** beside **Achievements** to
-travel elsewhere. In version 0.4.0, only the map you are viewing runs; other
-maps wait until you return.
+travel elsewhere. Place Travel Portals to connect lands to your main base.
+Kennel raids fight and return even while you watch another map; offscreen
+expeditions use substantial extra memory.
 
 Performance Mod needs no setup. If save preloading causes stutters or uses too
 much memory, turn off **Preload selected saves** in its settings.

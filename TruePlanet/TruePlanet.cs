@@ -28,12 +28,17 @@ namespace TruePlanet
 		{
 			Log = context.Logger; Settings = context.Settings.Register<PlanetSettings>();
 			var harmony = new Harmony(context.Info.id);
+			NativeWorker.Install(context, harmony);
+			PortalTransport.Install(harmony);
 			harmony.CreateClassProcessor(typeof(PlanetEntry)).Patch();
 			harmony.CreateClassProcessor(typeof(PlanetMenuReset)).Patch();
+			TravelPortal.Install(harmony);
 			LegacyProvinceGame.Install(harmony);
 			TileGame.Install(harmony);
 			TileTravel.Install(harmony);
 			AtlasInputScope.Install(harmony);
+			CampaignMissions.Install(harmony);
+			CampaignRaidUI.Install(harmony);
 			CampaignObjective.Install(harmony);
 			Log.Info("TruePlanet installed: New Game opens geographic world generation; dry tiles support native play and campaign travel.");
 		}

@@ -17,6 +17,7 @@ namespace TruePlanet
 		private Material _labelMaterial;
 		private List<SphericalSegment> _geometry;
 		private List<SphericalSegment> _lowGeometry;
+		private GlobeProjectionCache _fullProjection, _lowProjection;
 		private int _borderStart, _roadStart, _lowBorderStart, _lowRoadStart;
 		private UnitVector _projectX, _projectY;
 		private Vector2 _projectOrigin, _projectScale;
@@ -37,6 +38,7 @@ namespace TruePlanet
 			internal UnitVector Position;
 			internal RectTransform Text, Marker;
 			internal bool Nation, Capital;
+			internal int Selection;
 		}
 		internal void Configure(PlanetSurface surface, Camera camera, Transform sphere, RectTransform viewport, TMP_FontAsset font, Material material)
 		{
@@ -56,6 +58,7 @@ namespace TruePlanet
 			{
 				_world = _surface.Planet; _geometry = _surface.SphericalGeometry;
                 _lowGeometry = MapGeometry.BuildSphericalLod(_world, _surface.Geography, _geometry);
+				_fullProjection = _lowProjection = null;
 				_borderStart = 0;
 				while (_borderStart < _geometry.Count && _geometry[_borderStart].Kind == 0) _borderStart++;
 				_roadStart = _borderStart;
@@ -83,26 +86,38 @@ namespace TruePlanet
 			_projectOrigin = new Vector2(_bounds.xMin + center.x * _bounds.width, _bounds.yMin + center.y * _bounds.height);
 			_projectScale = new Vector2(_bounds.width * _radius / (2 * _camera.orthographicSize * _camera.aspect), _bounds.height * _radius / (2 * _camera.orthographicSize));
 			_strokes.Clear();
-            List<SphericalSegment> geometry = zoom < 2 ? _lowGeometry : _geometry;
-            int borderStart = zoom < 2 ? _lowBorderStart : _borderStart, roadStart = zoom < 2 ? _lowRoadStart : _roadStart;
+			bool low = zoom < 2;
+			GlobeProjectionCache projection;
+			if (low)
+			{
+				if (_lowProjection == null || !ReferenceEquals(_lowProjection.Source, _lowGeometry)) _lowProjection = new GlobeProjectionCache(_lowGeometry);
+				projection = _lowProjection;
+			}
+			else
+			{
+				if (_fullProjection == null || !ReferenceEquals(_fullProjection.Source, _geometry)) _fullProjection = new GlobeProjectionCache(_geometry);
+				projection = _fullProjection;
+			}
+			projection.BeginFrame(_facing, _projectX, _projectY, _projectOrigin, _projectScale);
+			int borderStart = low ? _lowBorderStart : _borderStart, roadStart = low ? _lowRoadStart : _roadStart;
 			if (_grid) for (int i = 0; i < borderStart; i++)
-				if (Visible(geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Grid);
+				if (VisibleProjected(projection, i, out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Grid);
 			if (_borders) for (int i = borderStart; i < roadStart; i++)
 			{
-				SphericalSegment segment = geometry[i];
-				if (!Visible(segment, out Vector2 a, out Vector2 b)) continue;
-				if (segment.Kind == 1) Stroke(a, b, MapStyle.Province);
+				if (!VisibleProjected(projection, i, out Vector2 a, out Vector2 b)) continue;
+				if (projection.Edges[i].Kind == 1) Stroke(a, b, MapStyle.Province);
 				else { Stroke(a, b, MapStyle.NationOuter); Stroke(a, b, MapStyle.NationInner); }
 			}
 			foreach (SphericalSegment segment in _outline)
 				if (Visible(segment, out Vector2 a, out Vector2 b)) { Stroke(a, b, MapStyle.SelectionOuter); Stroke(a, b, MapStyle.SelectionInner); }
-			if (_roads) for (int i = roadStart; i < geometry.Count; i++)
-				if (Visible(geometry[i], out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Road);
+			if (_roads) for (int i = roadStart; i < projection.Edges.Length; i++)
+				if (VisibleProjected(projection, i, out Vector2 a, out Vector2 b)) Stroke(a, b, MapStyle.Road);
 			int needed = (_strokes.Count + MapStyle.BatchSize - 1) / MapStyle.BatchSize;
 			while (_batches.Count < needed)
 			{
 				var go = Node("TruePlanet globe line batch"); var rect = (RectTransform)go.transform;
 				rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
+				rect.SetSiblingIndex(_batches.Count);
 				var batch = go.AddComponent<MapLineGraphic>(); batch.raycastTarget = false; _batches.Add(batch);
 			}
 			for (int i = 0; i < _batches.Count; i++)
@@ -112,6 +127,20 @@ namespace TruePlanet
 			}
 			ProjectLabels(zoom);
 		}
+		private bool VisibleProjected(GlobeProjectionCache projection, int index, out Vector2 a, out Vector2 b)
+		{
+			GlobeProjectionCache.Edge edge = projection.Edges[index]; a = b = default;
+			double ah = projection.Depth(edge.A), bh = projection.Depth(edge.B);
+			if (ah <= 0 && bh <= 0) return false;
+			if ((ah > 0) != (bh > 0))
+			{
+				Vector2 limb = Local(Limb(projection.Direction(edge.A), projection.Direction(edge.B), ah));
+				a = ah <= 0 ? limb : projection.Position(edge.A);
+				b = bh <= 0 ? limb : projection.Position(edge.B);
+			}
+			else { a = projection.Position(edge.A); b = projection.Position(edge.B); }
+			return true;
+		}
 		private bool Visible(SphericalSegment segment, out Vector2 a, out Vector2 b)
 		{
 			UnitVector start = segment.A, end = segment.B; a = b = default;
@@ -119,18 +148,23 @@ namespace TruePlanet
 			if (ah <= 0 && bh <= 0) return false;
 			if ((ah > 0) != (bh > 0))
 			{
-				double low = 0, high = 1;
-				for (int i = 0; i < 16; i++)
-				{
-					double t = (low + high) * .5;
-					bool near = UnitVector.Dot((start * (1 - t) + end * t).Normalized(), _facing) > 0;
-					if (near == (ah > 0)) low = t; else high = t;
-				}
-				double fraction = (low + high) * .5; UnitVector limb = (start * (1 - fraction) + end * fraction).Normalized();
+				UnitVector limb = Limb(start, end, ah);
 				if (ah <= 0) start = limb; else end = limb;
 			}
 			a = Local(start); b = Local(end);
 			return true;
+		}
+		private UnitVector Limb(UnitVector start, UnitVector end, double ah)
+		{
+			double low = 0, high = 1;
+			for (int i = 0; i < 16; i++)
+			{
+				double t = (low + high) * .5;
+				bool near = UnitVector.Dot((start * (1 - t) + end * t).Normalized(), _facing) > 0;
+				if (near == (ah > 0)) low = t; else high = t;
+			}
+			double fraction = (low + high) * .5;
+			return (start * (1 - fraction) + end * fraction).Normalized();
 		}
 		private Vector2 Local(UnitVector direction) => _projectOrigin + new Vector2(
 			(float)UnitVector.Dot(direction, _projectX) * _projectScale.x,
@@ -161,12 +195,12 @@ namespace TruePlanet
 			foreach (Label label in _labels) { Destroy(label.Text.gameObject); if (label.Marker != null) Destroy(label.Marker.gameObject); }
 			_labels.Clear();
 			foreach (Nation nation in _world.Nations)
-				if (NationAnchor(nation.Id, out UnitVector anchor)) AddLabel(nation.Name, anchor, true, false);
+				if (NationAnchor(nation.Id, out UnitVector anchor)) AddLabel(nation.Name, anchor, true, false, -1);
 			for (int priority = 0; priority < 2; priority++) foreach (Province province in _world.Provinces) foreach (Village village in province.Villages)
 			{
 				if (village.Capital != (priority == 0)) continue;
 				UnitVector point = UnitVector.Dot(village.Position, village.Position) > .5 ? village.Position : province.Direction;
-				AddLabel(village.Name, point, false, village.Capital);
+				AddLabel(village.Name, point, false, village.Capital, _world.FormatVersion == 3 ? village.TileId : province.Id);
 			}
 		}
 		private bool NationAnchor(int nation, out UnitVector anchor)
@@ -192,7 +226,7 @@ namespace TruePlanet
 			}
 			return best > -2;
 		}
-		private void AddLabel(string name, UnitVector point, bool nation, bool capital)
+		private void AddLabel(string name, UnitVector point, bool nation, bool capital, int selection)
 		{
 			var go = Node("TruePlanet globe label " + name); var text = go.AddComponent<TextMeshProUGUI>();
 			text.font = _font; text.fontSharedMaterial = _labelMaterial; text.text = name; text.richText = false; text.enableWordWrapping = false;
@@ -201,7 +235,7 @@ namespace TruePlanet
 			text.raycastTarget = false; text.alignment = nation ? TextAlignmentOptions.Center : TextAlignmentOptions.MidlineLeft;
 			var rect = (RectTransform)go.transform; rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(.5f, .5f);
 			rect.sizeDelta = text.GetPreferredValues(name) + new Vector2(8, 4);
-			var label = new Label { Text = rect, Position = point, Nation = nation, Capital = capital };
+			var label = new Label { Text = rect, Position = point, Nation = nation, Capital = capital, Selection = selection };
 			if (!nation)
 			{
 				var marker = Node("TruePlanet globe settlement"); label.Marker = (RectTransform)marker.transform;
@@ -236,6 +270,20 @@ namespace TruePlanet
 				}
 				label.Text.gameObject.SetActive(placed);
 			}
+		}
+		internal bool TryPickSettlement(Vector2 position, Camera eventCamera, out int selected)
+		{
+			selected = -1;
+			if (!ReferenceEquals(_world, _surface.Planet)) return false;
+			for (int i = _labels.Count - 1; i >= 0; i--)
+			{
+				Label label = _labels[i];
+				if (label.Nation) continue;
+				if ((label.Marker != null && label.Marker.gameObject.activeInHierarchy && RectTransformUtility.RectangleContainsScreenPoint(label.Marker, position, eventCamera))
+					|| (label.Text.gameObject.activeInHierarchy && RectTransformUtility.RectangleContainsScreenPoint(label.Text, position, eventCamera)))
+				{ selected = label.Selection; return true; }
+			}
+			return false;
 		}
 		private void OnDestroy() { if (_labelMaterial != null) Destroy(_labelMaterial); }
 	}

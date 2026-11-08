@@ -188,11 +188,11 @@ namespace TruePlanet
 				if (!_surface.Ready)
 				{
 					_status.text = _surface.WorkStage;
-					_progress.Show(_surface.WorkStage, _surface.Shading ? 5 : 4, 7, _surface.CompletedRows, PlanetSurface.Height, "texture upload and overlays");
+					_progress.Show(_surface.WorkStage, _surface.Shading ? 5 : 4, 7, _surface.CompletedRows, PlanetSurface.Height);
 				}
 				else
 				{
-					_progress.Show("Finishing atlas overlays", 6, 7, pending: "first complete globe frame");
+					if (!_surface.ReusedPreparation) _progress.Show("Finishing the atlas", 6, 7);
 				}
 			};
 			_surface.Failed += error => ShowFailure("Cannot draw world", error);
@@ -205,13 +205,12 @@ namespace TruePlanet
 		{
 			SetControlsReady(true); _save.interactable = _surface.Ready && _drawFinished; _play.interactable = false;
 			_progress?.Hide(); _generating = false;
-			_status.text = operation + ": " + error.Message; TruePlanetMod.Log.Warning(operation + ": " + error);
+			_status.text = operation + ". Try again or return with Back."; TruePlanetMod.Log.Warning(operation + ": " + error);
 		}
 		private void RenderFailed(Exception error)
 		{
 			ShowFailure("Cannot render globe", error);
-			// The renderer has released its resources. Keep the actual reason scrollable
-			// and Back/Escape available, but do not expose controls targeting a dead view.
+			// Only Back/Escape remain usable after the renderer releases its resources.
 			foreach (Button button in GetComponentsInChildren<Button>(true)) button.interactable = button == _back;
 			foreach (TMP_InputField input in GetComponentsInChildren<TMP_InputField>(true)) input.interactable = false;
 		}
@@ -313,7 +312,7 @@ namespace TruePlanet
 				options.Validate(); int seed = Integer(_seed); string name = _name.text;
 				_generating = true; _drawFinished = false; _surface.Invalidate(); SetControlsReady(false); _play.interactable = false;
 				_status.text = _planet == null ? "Generating planet..." : "Re-generating planet...";
-				_progress.Show(_status.text, 0, 7, pending: "geography, settlements, atlas and overlays");
+				_progress.Show(_status.text, 0, 7);
 				StartCoroutine(GenerateAsync(seed, options, name));
 			}
 			catch (Exception error) { ShowFailure("Cannot generate planet", error); }
@@ -330,7 +329,7 @@ namespace TruePlanet
 				if (!ReferenceEquals(previous, progress))
 				{
 					previous = progress; _status.text = progress.Stage;
-					_progress.Show(progress.Stage, progress.Completed, 7, pending: "remaining generation stages, atlas and overlays");
+					_progress.Show(progress.Stage, progress.Completed, 7);
 				}
 				yield return null;
 			}
@@ -355,9 +354,9 @@ namespace TruePlanet
 			_sizeLabel.text = planet.FormatVersion == 3 ? "Map: " + TilePresentation.MapSize(_localSize) : "Max: " + Size(_largest);
 			_resolution = planet.Options.Resolution; _resolutionLabel.text = Detail(_resolution);
 			_heading.text = planet.FormatVersion == 3 ? TilePresentation.Heading : "World / Province";
-			_inspector.text = planet.Name + "\n\n" + planet.Provinces.Length + " provinces\n" + (planet.TopologyVersion == 1 ? planet.TileOwners.Length + " tiles\n" : "") + planet.Nations.Length + " nations\n" + planet.Provinces.Sum(p => p.Villages.Length) + " villages\n\n"
-				+ (planet.FormatVersion == 3 ? "Fixed map size: " + TilePresentation.MapSize(planet.Options.LocalSize) + "\nSelect a land tile to inspect its settlements." : "Tiles form provinces; nations own whole provinces.\nSelect land to inspect its province and settlements.");
-			_status.text = "Seed " + planet.Seed + ". Drawing map.";
+			_inspector.text = planet.Name + "\n\n" + planet.Provinces.Length + " provinces\n" + planet.Nations.Length + " nations\n"
+				+ planet.Provinces.Sum(p => p.Villages.Length) + " settlements\n\nSelect land to inspect its biome and settlements.";
+			_status.text = _surface.Ready ? "Select land to explore." : "Preparing the atlas...";
 		}
 		private void Inspect(int id)
 		{
@@ -384,6 +383,7 @@ namespace TruePlanet
 		{
 			TileLandSample land = TileLand.For(_planet).Cells[tile];
 			TerrainSample sample = _surface.Geography.Sample(land.DryPoint);
+			_heading.text = TilePresentation.BiomeName(sample);
 			if (_terrainTile != tile)
 			{
 				_terrainPlan = LocalTerrainPlan.Build(_planet, tile);
@@ -395,14 +395,14 @@ namespace TruePlanet
 			_play.interactable = land.Eligible && (!_inGame || tile != TileGame.Active.TileId);
 			_status.text = TilePresentation.Status(_inGame);
 		}
-		private void Save() => Attempt(() => { _planet.Name = _name.text.Trim(); string path = PlanetStore.Save(TruePlanetMod.SaveRoot, _planet); _status.text = "Saved " + _planet.Name + " to " + path; RefreshSaves(); });
+		private void Save() => Attempt(() => { _planet.Name = _name.text.Trim(); string path = PlanetStore.Save(TruePlanetMod.SaveRoot, _planet); _status.text = "Saved " + _planet.Name + "."; TruePlanetMod.Log.Info("Saved world to " + path); RefreshSaves(); });
 		private void RefreshSaves()
 		{
 			for (int i = _saved.childCount - 1; i >= 0; i--) { var child = _saved.GetChild(i).gameObject; child.SetActive(false); Destroy(child); }
 			foreach (string path in PlanetStore.Files(TruePlanetMod.SaveRoot))
 			{
 				try { Planet saved = PlanetStore.Load(path); Button(_saved, saved.Name + " / seed " + saved.Seed, () => Attempt(() => { Display(PlanetStore.Load(path)); _savedPanel.SetActive(false); })); }
-				catch (Exception e) { Label(_saved, Path.GetFileName(Path.GetDirectoryName(path)) + ": " + e.Message, 16); }
+				catch (Exception e) { Label(_saved, "A saved world could not be read.", 16); TruePlanetMod.Log.Warning("Cannot read saved world " + path + ": " + e); }
 			}
 			if (_saved.childCount == 0) Label(_saved, "No saved worlds. Generate a world, then Save world.", 16);
 		}
@@ -416,7 +416,7 @@ namespace TruePlanet
 		private void Attempt(Action action)
 		{
 			if (_generating || !_generate.interactable) return;
-			try { action(); } catch (Exception e) { _status.text = e.Message; TruePlanetMod.Log.Warning("Atlas operation failed: " + e.Message); }
+			try { action(); } catch (Exception e) { _status.text = "That action could not finish. Try again or return with Back."; TruePlanetMod.Log.Warning("Atlas operation failed: " + e); }
 		}
 		private static string Size(ProvinceSize size) => size == ProvinceSize.Huge ? "Huge (32x20)" : size == ProvinceSize.ExtraLarge ? "Extra Large (24x14)" : "Large (20x12)";
 		private static string Detail(TileResolution resolution) => resolution == TileResolution.Standard ? "Tiles: Standard (10,242)" : "Tiles: Detailed (40,962)";

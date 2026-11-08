@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -162,22 +163,26 @@ namespace TruePlanet
 				_vertices = new LineVertex[Math.Min(MapStyle.BatchSize * 8, Math.Max(vertexCount, _vertices.Length * 2))];
 			for (int i = 0; i < _count; i++)
 			{
-				MapStroke stroke = _strokes[_start + i]; Vector2 along = (stroke.B - stroke.A).normalized, side = new Vector2(-along.y, along.x);
-				float halfWidth = stroke.Width * .5f;
-				Vector2 a = stroke.A + side * halfWidth, b = stroke.B + side * halfWidth, c = stroke.B - side * halfWidth, d = stroke.A - side * halfWidth;
+				MapStroke stroke = _strokes[_start + i]; Vector2 along = (stroke.B - stroke.A).normalized;
+				float sideX = -along.y, sideY = along.x, halfWidth = stroke.Width * .5f;
+				float ax = stroke.A.x + sideX * halfWidth, ay = stroke.A.y + sideY * halfWidth;
+				float bx = stroke.B.x + sideX * halfWidth, by = stroke.B.y + sideY * halfWidth;
+				float cx = stroke.B.x - sideX * halfWidth, cy = stroke.B.y - sideY * halfWidth;
+				float dx = stroke.A.x - sideX * halfWidth, dy = stroke.A.y - sideY * halfWidth;
 				Color32 clear = stroke.Color; clear.a = 0;
 				int at = i * 8;
-				Vertex(at, a, stroke.Color); Vertex(at + 1, b, stroke.Color);
-				Vertex(at + 2, c, stroke.Color); Vertex(at + 3, d, stroke.Color);
-				Vertex(at + 4, a + (side - along) * _fringe, clear);
-				Vertex(at + 5, b + (side + along) * _fringe, clear);
-				Vertex(at + 6, c + (along - side) * _fringe, clear);
-				Vertex(at + 7, d - (side + along) * _fringe, clear);
+				Vertex(at, ax, ay, stroke.Color); Vertex(at + 1, bx, by, stroke.Color);
+				Vertex(at + 2, cx, cy, stroke.Color); Vertex(at + 3, dx, dy, stroke.Color);
+				Vertex(at + 4, ax + (sideX - along.x) * _fringe, ay + (sideY - along.y) * _fringe, clear);
+				Vertex(at + 5, bx + (sideX + along.x) * _fringe, by + (sideY + along.y) * _fringe, clear);
+				Vertex(at + 6, cx + (along.x - sideX) * _fringe, cy + (along.y - sideY) * _fringe, clear);
+				Vertex(at + 7, dx - (sideX + along.x) * _fringe, dy - (sideY + along.y) * _fringe, clear);
 			}
 		}
-		private void Vertex(int index, Vector2 position, Color32 color)
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private void Vertex(int index, float x, float y, Color32 color)
 		{
-			_vertices[index].Position = position;
+			_vertices[index].Position = new Vector3(x, y, 0);
 			_vertices[index].Color = color;
 		}
 		private static ushort[] BuildIndices()

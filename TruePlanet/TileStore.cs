@@ -21,8 +21,10 @@ namespace TruePlanet
         public int FormatVersion = 1;
         public string CampaignId, WorldId, Revision;
         public int ActiveTile;
+        public int BaseTile = -1;
         public TileSnapshot[] Tiles = new TileSnapshot[0];
         public int[] SubjugatedTiles = Array.Empty<int>();
+        public MissionReference[] Missions = Array.Empty<MissionReference>();
         public CampaignCarry Carry;
     }
     internal sealed class TileStore
@@ -31,9 +33,16 @@ namespace TruePlanet
         { MissingMemberHandling = MissingMemberHandling.Error, Formatting = Formatting.Indented };
         private readonly Planet _world;
         private readonly string _directory, _worldJson;
-        private readonly HashSet<int> _settledTiles;
-        internal int SettledTileCount => _settledTiles.Count;
-        internal bool IsSettledTile(int tile) => _settledTiles.Contains(tile);
+        private readonly Dictionary<int, int> _settlementsPerTile;
+        internal readonly int SettlementCount;
+        internal int SettledTileCount => _settlementsPerTile.Count;
+        internal bool IsSettledTile(int tile) => _settlementsPerTile.ContainsKey(tile);
+        internal int CountSubjugatedSettlements(HashSet<int> tiles)
+        {
+            int count = 0;
+            foreach (var entry in _settlementsPerTile) if (tiles.Contains(entry.Key)) count += entry.Value;
+            return count;
+        }
 
         internal TileStore(string root, Planet world)
         {
@@ -42,7 +51,8 @@ namespace TruePlanet
             if (world.FormatVersion != 3) throw new InvalidDataException("Campaign snapshots require a geographic tile world.");
             Component(world.Id); _worldJson = JsonConvert.SerializeObject(world, Json);
             _world = JsonConvert.DeserializeObject<Planet>(_worldJson, Json); _world.Validate();
-            _settledTiles = new HashSet<int>(_world.Provinces.SelectMany(p => p.Villages).Select(v => v.TileId));
+            _settlementsPerTile = _world.Provinces.SelectMany(p => p.Villages).GroupBy(v => v.TileId).ToDictionary(group => group.Key, group => group.Count());
+            SettlementCount = _settlementsPerTile.Values.Sum();
             _directory = Path.Combine(Path.GetFullPath(root), world.Id);
             string path = Path.Combine(_directory, "planet.json");
             Directory.CreateDirectory(_directory);
@@ -66,6 +76,7 @@ namespace TruePlanet
                 throw new InvalidDataException("Campaign manifest identity differs from its path.");
             return manifest;
         }
+        internal MissionStore Missions(string campaignId) => new MissionStore(CampaignDirectory(campaignId), campaignId, _world.Id);
         internal TileSnapshot ImportCompletedNativeSave(TileContext context, string zipPath, bool held)
         {
             ValidateContext(context);
@@ -120,11 +131,12 @@ namespace TruePlanet
         }
         private void Validate(CampaignManifest manifest, bool requireRevision = true)
         {
-            if (manifest == null || manifest.FormatVersion != 1 || manifest.WorldId != _world.Id || manifest.Carry == null || manifest.Tiles == null || manifest.SubjugatedTiles == null)
+            if (manifest == null || manifest.FormatVersion != 1 || manifest.WorldId != _world.Id || manifest.Carry == null || manifest.Tiles == null || manifest.SubjugatedTiles == null || manifest.Missions == null)
                 throw new InvalidDataException("Unsupported or incomplete campaign manifest.");
             GuidId(manifest.CampaignId);
             if (requireRevision) GuidId(manifest.Revision);
             Tile(manifest.ActiveTile); manifest.Carry.Validate();
+            if (manifest.BaseTile >= 0) Tile(manifest.BaseTile);
             var tiles = new HashSet<int>(); var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (TileSnapshot snapshot in manifest.Tiles)
             {
@@ -134,8 +146,24 @@ namespace TruePlanet
             }
             var subjugated = new HashSet<int>();
             foreach (int tile in manifest.SubjugatedTiles)
-                if (!_settledTiles.Contains(tile) || !subjugated.Add(tile) || tile != manifest.ActiveTile && !tiles.Contains(tile))
+                if (!_settlementsPerTile.ContainsKey(tile) || !subjugated.Add(tile) || tile != manifest.ActiveTile && !tiles.Contains(tile))
                     throw new InvalidDataException("Subjugation progress must reference distinct visited settled tiles.");
+            if (manifest.Missions.Length != 0)
+            {
+                MissionStore missions = Missions(manifest.CampaignId);
+                missions.ValidateOwnership(manifest.Missions);
+                foreach (MissionReference reference in manifest.Missions)
+                {
+                    MissionRecord mission = missions.Read(reference);
+                    Tile(mission.SourceTile); Tile(mission.DestinationTile);
+                    if (mission.SourceTile != manifest.BaseTile && mission.Kind == MissionKind.Raid)
+                        throw new InvalidDataException("A kennel raid must depart from the campaign base.");
+                    ValidateSnapshot(manifest.CampaignId, mission.SourceBefore);
+                    ValidateSnapshot(manifest.CampaignId, mission.DestinationBefore);
+                    if (mission.SourceAfter != null) ValidateSnapshot(manifest.CampaignId, mission.SourceAfter);
+                    if (mission.DestinationAfter != null) ValidateSnapshot(manifest.CampaignId, mission.DestinationAfter);
+                }
+            }
         }
         private void ValidateSnapshot(string campaignId, TileSnapshot snapshot)
         {

@@ -82,30 +82,6 @@ namespace RuinarchDebug
             throw new InvalidDataException("No eligible " + (coastal ? "coastal" : "dry") + " geographic tile in test world.");
         }
 
-        private static int LargestMountainComponent(float[,] elevation)
-        {
-            int width = elevation.GetLength(0), height = elevation.GetLength(1), largest = 0;
-            var seen = new bool[width, height];
-            for (int startX = 0; startX < width; startX++) for (int startY = 0; startY < height; startY++)
-            {
-                if (seen[startX, startY] || elevation[startX, startY] <= .78f) continue;
-                int count = 0;
-                var queue = new Queue<int>(); queue.Enqueue(startX * height + startY); seen[startX, startY] = true;
-                while (queue.Count != 0)
-                {
-                    int current = queue.Dequeue(), x = current / height, y = current % height; count++;
-                    for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++)
-                    {
-                        int nx = x + dx, ny = y + dy;
-                        if (dx == 0 && dy == 0 || nx < 0 || ny < 0 || nx >= width || ny >= height
-                            || seen[nx, ny] || elevation[nx, ny] <= .78f) continue;
-                        seen[nx, ny] = true; queue.Enqueue(nx * height + ny);
-                    }
-                }
-                largest = Math.Max(largest, count);
-            }
-            return largest;
-        }
 
         private static int NativeWaterBands(float[,] elevation)
         {
@@ -161,6 +137,12 @@ namespace RuinarchDebug
             }
 
             object world = GenerateRevisionWorld(planetType.Assembly);
+            Check("atlas biome classification matches the live native climate asset at every boundary", () => NativeClimateLookup(world));
+            Check("coastlines and ridges remain continuous across plate boundaries", () => GeographicContinuity(world));
+            Check("local maps remain inside their geographic cells", () => LocalFootprintOwnership(world));
+            Check("solid mountain interiors cannot be played or settled while lowland remains available", () => MountainInteriorEligibility(world));
+            Check("mountain caves remain sparse, connected and sealed outside their entrances", () => SparseCaveConnectivity(world));
+            Check("neighboring cave exits share geographic edges and native mountain terrain", () => GeographicCaveConnections(world));
             int tile = RevisionTile(world, coastal: true);
             object plan = RevisionStatic(planType, "Build", world, tile);
             Check("local terrain plan feeds native dimensions and exact classifications", () =>
@@ -177,12 +159,6 @@ namespace RuinarchDebug
                 return (width == 140 && height == 140 && open + mountains + water == width * height
                     && open == (int)RevisionMember(plan, "Open") && mountains == (int)RevisionMember(plan, "Mountains")
                     && water == (int)RevisionMember(plan, "Water"), $"dimensions={width}x{height}; open={open}; mountains={mountains}; water={water}");
-            });
-            Check("one mountain mass cannot consume more than a quarter of a new map", () =>
-            {
-                var elevation = (float[,])RevisionMember(plan, "Elevation");
-                int largest = LargestMountainComponent(elevation), count = elevation.Length;
-                return (largest * 4 <= count, $"largest={largest}; cells={count}");
             });
             Check("continuous coastal depth covers every native water band", () =>
             {
@@ -223,24 +199,6 @@ namespace RuinarchDebug
                 return (true, "256 independent legacy samples");
             });
 
-            Type tileGameType = planetType.Assembly.GetType("TruePlanet.TileGame", true);
-            MethodInfo nativeSize = tileGameType.GetMethod("NativeVillageSize", RevisionMembers);
-            Check("capital records request developed native settlement tiers", () =>
-            {
-                if (nativeSize == null) return (false, "TileGame.NativeVillageSize is unavailable");
-                Array provinces = (Array)RevisionMember(world, "Provinces");
-                object capital = null, ordinary = null;
-                foreach (object province in provinces) foreach (object village in (Array)RevisionMember(province, "Villages"))
-                {
-                    if ((bool)RevisionMember(village, "Capital")) capital = village; else ordinary = village;
-                }
-                Type sizeType = planetType.Assembly.GetType("TruePlanet.LocalMapSize", true);
-                object small = Enum.ToObject(sizeType, 0), large = Enum.ToObject(sizeType, 2);
-                bool valid = (VILLAGE_SIZE)nativeSize.Invoke(null, new[] { capital, small }) == VILLAGE_SIZE.Medium
-                    && (VILLAGE_SIZE)nativeSize.Invoke(null, new[] { capital, large }) == VILLAGE_SIZE.Large
-                    && (VILLAGE_SIZE)nativeSize.Invoke(null, new[] { ordinary, large }) == VILLAGE_SIZE.Small;
-                return (valid, "Small capital=Medium; Large capital=Large; ordinary=Small");
-            });
 
             Type mapGeometryType = planetType.Assembly.GetType("TruePlanet.MapGeometry", true);
             object revisionGeography = Activator.CreateInstance(planetType.Assembly.GetType("TruePlanet.PlanetGeography", true), world);
@@ -338,24 +296,6 @@ namespace RuinarchDebug
                     if ((double)RevisionMember(RevisionCall(revisionGeography, "Sample", midpoint), "Height") <= 0) return (false, "wet midpoint");
                 }
                 return (true, "all LOD midpoints remain dry");
-            });
-
-            Type surfaceType = planetType.Assembly.GetType("TruePlanet.PlanetSurface", true);
-            Check("deep-ocean median filtering preserves coast and land fixtures", () =>
-            {
-                int width = (int)surfaceType.GetField("Width", RevisionMembers).GetValue(null);
-                int height = (int)surfaceType.GetField("Height", RevisionMembers).GetValue(null);
-                var raw = new float[width * height]; for (int i = 0; i < raw.Length; i++) raw[i] = -.5f;
-                int centerX = 100, centerY = 100, center = centerY * width + centerX;
-                for (int y = centerY - 1; y <= centerY + 1; y++) for (int x = centerX - 1; x <= centerX + 1; x++) raw[y * width + x] = -.08f;
-                raw[center] = -.02f;
-                int coastal = 102 * width + 102, land = 104 * width + 104;
-                raw[coastal] = -.004f; raw[land] = .5f;
-                object[] arguments = { raw, null };
-                var filtered = (float[])surfaceType.GetMethod("FilterDeepWater", RevisionMembers).Invoke(null, arguments);
-                return (!ReferenceEquals(raw, filtered) && filtered[center] == -.08f && filtered[center] != raw[center]
-                    && filtered[coastal] == raw[coastal] && filtered[land] == raw[land],
-                    $"ridge {raw[center]} -> {filtered[center]}; coast={filtered[coastal]}; land={filtered[land]}");
             });
 
             for (int seedIndex = 0; seedIndex < 8; seedIndex++) foreach (int resolution in new[] { 5, 6 })

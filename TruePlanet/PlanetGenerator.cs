@@ -13,16 +13,16 @@ namespace TruePlanet
 				WildShare = options.WildShare, LocalSize = options.LocalSize, Resolution = options.Resolution };
 			string identity = seed.ToString("X8") + "-" + copy.Provinces + "-" + copy.Nations + "-" + (int)copy.LocalSize
 				+ "-" + BitConverter.DoubleToInt64Bits(copy.LandShare).ToString("X16") + "-" + BitConverter.DoubleToInt64Bits(copy.WildShare).ToString("X16");
-            var planet = new Planet { Id = "planet-" + identity + "-g4-t1r" + (int)copy.Resolution + "-n2-l2",
+            var planet = new Planet { Id = "planet-" + identity + "-g5-t1r" + (int)copy.Resolution + "-n3-l3",
                 Name = "World " + seed.ToString(CultureInfo.InvariantCulture), Seed = seed, Options = copy,
-                GeographyVersion = 4, FormatVersion = 3, TopologyVersion = 1, NationalGenerationVersion = 2, LocalMapVersion = 2 };
-			progress?.Invoke("Calibrating oceans", 0);
+                GeographyVersion = 5, FormatVersion = 3, TopologyVersion = 1, NationalGenerationVersion = 3, LocalMapVersion = 3 };
+			progress?.Invoke("Shaping oceans", 0);
 			planet.SeaLevel = new PlanetGeography(planet).CalibrateSeaLevel(copy.LandShare);
-			progress?.Invoke("Sampling land and coastlines", 1);
+			progress?.Invoke("Shaping land and coasts", 1);
 			TileLand land = TileLand.For(planet);
-			progress?.Invoke("Placing nations, villages and roads", 2);
+			progress?.Invoke("Placing nations and settlements", 2);
 			NationalProvinces.Build(planet, new Random(seed), land);
-			progress?.Invoke("Checking world integrity", 3);
+			progress?.Invoke("Finishing the planet", 3);
 			planet.Validate();
 			progress?.Invoke("Planet generated", 4);
 			return planet;

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using HarmonyLib;
 using Inner_Maps.Location_Structures;
+using Newtonsoft.Json;
 
 namespace TruePlanet
 {
@@ -29,6 +30,9 @@ namespace TruePlanet
         public int Mana, SpiritEnergy, ChaoticEnergy, MaxChaoticEnergy;
         public CampaignSkill[] Skills = new CampaignSkill[0];
         public PLAYER_SKILL_TYPE[] Powers = new PLAYER_SKILL_TYPE[0];
+        // Null only in campaigns written before portable native configuration was recorded.
+        public WorldSettingsData Configuration;
+        public bool MoreLoadoutOptions;
         private static readonly AccessTools.FieldRef<CurrenciesComponent, int> Capacity =
             AccessTools.FieldRefAccess<CurrenciesComponent, int>("<maxChaoticEnergy>k__BackingField");
         private static readonly AccessTools.FieldRef<CurrenciesComponent, int> Spirit =
@@ -52,6 +56,8 @@ namespace TruePlanet
             var carry = new CampaignCarry { Mana = currency.mana, SpiritEnergy = currency.spiritEnergy,
                 ChaoticEnergy = currency.chaoticEnergy, MaxChaoticEnergy = currency.maxChaoticEnergy,
                 Archetype = PlayerSkillManager.Instance.selectedArchetype,
+                Configuration = CaptureConfiguration(),
+                MoreLoadoutOptions = SaveManager.Instance.currentSaveDataPlayer.moreLoadoutOptions,
                 PortalLevel = portal == null ? previous?.PortalLevel ?? 1 : portal.level,
                 PortalChoices = portal == null ? CopyPortalChoices(previous?.PortalChoices) : component.portalUpgradeItems
                     .OrderBy(pair => pair.Key).SelectMany(pair => pair.Value.OrderBy(item => item.itemIndex).Select(item => new CampaignPortalChoice
@@ -67,7 +73,27 @@ namespace TruePlanet
                     Cooldown = s.baseCooldown, CooldownTick = s.currentCooldownTick, UnlockCost = s.unlockCost,
                     RemainingChaosOrbs = s.remainingChaosOrbs, Pierce = s.basePierce, Unlocked = s.isUnlockedBaseOnRequirements
                 }).ToArray() };
+            carry.Configuration.playerSkillSettings.startingPortalLevel = carry.PortalLevel;
             carry.Validate(); return carry;
+        }
+        private static WorldSettingsData CaptureConfiguration()
+        {
+            WorldSettingsData source = WorldSettings.Instance.worldSettingsData;
+            // Native templates contain Unity Sprite references. Never serialize them into portable rules.
+            return JsonConvert.DeserializeObject<WorldSettingsData>(JsonConvert.SerializeObject(new
+            {
+                source.worldType, source.victoryCondition, source.playerSkillSettings, source.mapSettings, source.villageSettings,
+                factionSettings = new { source.factionSettings.disableNewFactions, source.factionSettings.disableFactionIdeologyChanges }
+            }));
+        }
+        internal WorldSettingsData RestoreConfiguration(WorldSettingsData local)
+        {
+            if (Configuration == null) return local;
+            WorldSettingsData copy = JsonConvert.DeserializeObject<WorldSettingsData>(JsonConvert.SerializeObject(Configuration));
+            copy.mapSettings = local.mapSettings;
+            copy.factionSettings.factionTemplates = local.factionSettings.factionTemplates;
+            copy.playerSkillSettings.startingPortalLevel = PortalLevel;
+            return copy;
         }
         internal void Validate()
         {
@@ -83,6 +109,10 @@ namespace TruePlanet
                 if (!types.Contains(type) || !powers.Add(type)) throw new InvalidDataException("Portable power has no unique skill progression record.");
             if (!Enum.IsDefined(typeof(PLAYER_ARCHETYPE), Archetype) || PortalLevel < 1 || PortalChoices == null)
                 throw new InvalidDataException("Invalid portable Portal progression.");
+            if (Configuration != null && (Configuration.playerSkillSettings == null || Configuration.villageSettings == null
+                || Configuration.factionSettings == null || Configuration.mapSettings == null
+                || Configuration.factionSettings.factionTemplates == null || Configuration.factionSettings.factionTemplates.Count != 0))
+                throw new InvalidDataException("Invalid portable native configuration.");
             var upgradeIdentities = new HashSet<long>();
             foreach (CampaignPortalChoice choice in PortalChoices)
             {
@@ -152,7 +182,11 @@ namespace TruePlanet
             foreach (CampaignSkill saved in Skills)
             {
                 SkillData skill = manager.GetSkillData(saved.Type);
-                skill.FinishCooldown(); skill.SetCurrentLevel(saved.Level);
+                // Detach the destination timer, without pretending that a cooldown completed.
+                var cooldownTick = AccessTools.MethodDelegate<SignalHandler.SignalListener>(
+                    AccessTools.Method(typeof(SkillData), "PerTickCooldown"), skill);
+                SignalHandler.RemoveListener(Signals.TICK_STARTED, cooldownTick, false);
+                skill.SetCurrentLevel(saved.Level);
                 if (powers.Contains(saved.Type)) component.AddAndCategorizePlayerSkill(skill);
                 else if (skill.isInUse) { skill.SetBonusCharges(0); component.RemovePlayerSkill(skill); }
                 skill.SetIsUnlockBaseOnRequirements(saved.Unlocked);
@@ -163,7 +197,8 @@ namespace TruePlanet
                 skill.SetManaCost(saved.ManaCost); skill.SetBaseSpiritEnergyCost(saved.SpiritEnergyCost);
                 skill.SetBaseCooldownOnly(saved.Cooldown); skill.SetCurrentCooldownTick(saved.CooldownTick);
                 skill.SetUnlockCost(saved.UnlockCost); skill.SetRemainingChaosOrbs(saved.RemainingChaosOrbs);
-                skill.SetPierce(saved.Pierce); skill.ResetAllChargesUIText(); skill.OnLoadSpell();
+                skill.SetPierce(saved.Pierce); skill.ResetAllChargesUIText();
+                if (skill.isInUse || skill.isTemporarilyInUse) skill.OnLoadSpell();
             }
             CurrenciesComponent currency = player.currenciesComponent;
             Capacity(currency) = MaxChaoticEnergy;
@@ -172,6 +207,7 @@ namespace TruePlanet
             // counter still follows the campaign when the destination mode hides it.
             RestoreSpiritEnergy();
             currency.AdjustManaNoLimit(Mana - currency.mana, shouldBroadcastSignal: true);
+            SaveManager.Instance.currentSaveDataPlayer.SetMoreLoadoutOptions(MoreLoadoutOptions);
             if (currency.mana != Mana || currency.spiritEnergy != SpiritEnergy || currency.chaoticEnergy != ChaoticEnergy
                 || currency.maxChaoticEnergy != MaxChaoticEnergy)
                 throw new InvalidOperationException("Native currency restoration changed the carried campaign values.");
